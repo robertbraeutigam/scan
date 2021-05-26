@@ -25,14 +25,15 @@ These are the main considerations driving the design of this protocol:
 
 ## Solution Overview
 
-SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools and
-devices can be used to build the physical network, including routers, repeaters, cables
-or even WiFi. There is no requirement on the physical network topology, nor on any particular
+SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools 
+and devices, such as routers, repeaters, cables, WiFi or even VPNs,
+can be used to build the physical network.
+There is no requirement on the physical network topology, nor on any particular
 network service to be available, as long as individual devices can communicate with each other.
 
 All communication is peer-to-peer and end-to-end encrypted with automatically
 rotating keys. This means there is no central component or server, and all
-communication is secured against third parties.
+communication is secured against third parties even through untrusted infrastructure.
 
 All devices have a uniform interface, which mainly consist of these things:
 
@@ -59,7 +60,8 @@ For example connecting the data from a switch to the on/off
 control of a light source. Because the *kind* of both the data and control are known, the connection
 can be made even if the exact semantics of either side is unknown or not defined.
 
-Of course auto-wiring can be done using standardized semantics of data, if applicable. Such as 
+Of course auto-wiring, the process of automatically connecting data to controls,
+can be achieved using standardized semantics of data, if applicable. Such as 
 auto-connecting a Plotter to a GPS Receiver.
 
 ## Appendix A: Selected Use-Cases
