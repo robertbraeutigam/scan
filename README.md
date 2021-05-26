@@ -295,6 +295,34 @@ properties. Any display software should use these, if available, to present to t
 
 ### Data
 
+All data is part of a time-series. That means all data packets relate to a single time instant.
+Additionally all data items are categorized into the following *kinds*:
+
+* IDs: Values with unlimited cardinality. Device IDs, IP, Serial numbers, etc.
+* Tags: Values strongly limited or enumerated. Types, Channel, States.
+* Timestamps: An absolute instant in time.
+* Counters: A monotonic counter that always goes up, but which may reset at times to 0.
+* Geo: Coordinates. Current position, waypoints, target, etc.
+* Events: An event that happened. An error, alert, change of state.
+* Raw: Binary data with type. Picture taken, part of a video, etc.
+* Values: Measured or otherwise observed value. These always have a unit (see relevant chapter).
+  For example: tank level, current speed, motor power, battery level, etc.
+* Max/Min/Avg Values: Aggregate values. The interval of aggregation is not given explicitly,
+  multiple aggregation windows may co-exist. For example: Max temperature of engine, Max speed, Average speed, etc.
+
+These *kinds* exist to allow for a uniform handling to some extent regardless of
+actual semantics. For example it is possible to display and compare values by converting them to the same
+scale, plot them on a chart (when dimensions are compatible), analyze them, set alert thresholds,
+log them, etc.
+
+A single device may produce different data packets, it may describe them in an array of following objects:
+
+```json
+{
+
+}
+```
+
 ### Controls
 
 ### Wiring
@@ -316,3 +344,4 @@ the Engine's output power.
 There is a Monitor device which continuously shows the feed coming from
 a Security Camera.
 
+## Appendix B: Units
