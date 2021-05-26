@@ -170,6 +170,27 @@ handshake is not yet finished.
 
 ### Message Choreography
 
+All communication happens through TCP/IP connections. The *initiator* of the connection
+is the party that opens the TCP/IP connection, the *responder* the one that accepts
+the connection. The *initiator* sends *commands* to the *responder*, while the *responder*
+continuously submits data when it is available and updates its capabilities if they change.
+
+The overall choreography of the network protocol is as follows:
+
+1. Initiator opens connection and sends "Initiate Handshake" message
+2. Responder sends "Continue Handshake"
+3. If handshake not concluded, Initiator also sends "Continue Handshake".
+   If handshake not concluded after that, go to 2.
+4. Responder sends "Data and Controls" message
+
+After this the Responder sends "Data Frame" messages if there is new or updated data available,
+and sends "Data and Controls" whenever its controls or data strucutre change. Also it may
+send "Command Response" frames in response to "Command Request" frames.
+
+The Initiator may send "Command Request" messages at any time.
+
+Any party may close the connection at any time.
+
 ## Appendix A: Selected Use-Cases
 
 ### Switch controls Light
