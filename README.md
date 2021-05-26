@@ -168,6 +168,43 @@ Neither parties may send any other frame types until the handshake is concluded.
 parties may assume implicitly that a Continue Handshake frame will come next if the
 handshake is not yet finished.
 
+#### Frame type: 03 (Capabilities)
+
+Sent by the initiator immediately after the channel is established. It defines
+what capabilities and attributes the initiator supports regarding the continued
+communication.
+
+The initiator may send updates to its capabilities at any time.
+
+Payload strucutre:
+* Json (string, encrypted)
+
+The JSON message is as follows:
+
+```json
+{
+   "language": "en_US"
+}
+```
+
+The `language` describes the language for all the data, messages and descriptions
+received from the responder. The responder must honor this language preference
+if it has proper i18n resources to do it. It may however default to some other langauge
+if it can't do it.
+
+Future versions of this message may contain new properties. Implementations may ignore
+properties they don't know.
+
+#### Frame type: 04 (Data and Controls)
+
+Sent by the responder to the initiator to signal the supported data items and
+controls available on the device.
+
+Payload strucutre:
+* Json (string, encrypted)
+
+See relevant chapter.
+
 ### Message Choreography
 
 All communication happens through TCP/IP connections. The *initiator* of the connection
@@ -181,7 +218,8 @@ The overall choreography of the network protocol is as follows:
 2. Responder sends "Continue Handshake"
 3. If handshake not concluded, Initiator also sends "Continue Handshake".
    If handshake not concluded after that, go to 2.
-4. Responder sends "Data and Controls" message
+4. Initiator sends "Capabilities" message
+5. Responder sends "Data and Controls" message
 
 After this the Responder sends "Data Frame" messages if there is new or updated data available,
 and sends "Data and Controls" whenever its controls or data strucutre change. Also it may
@@ -189,7 +227,61 @@ send "Command Response" frames in response to "Command Request" frames.
 
 The Initiator may send "Command Request" messages at any time.
 
+Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
+established is an error. The connection must be closed as a result. This also means that
+after the connection is established, all messages have encrypted JSON as payload.
+
 Any party may close the connection at any time.
+
+## Data and Controls
+
+The "Data and Controls" message describes following information:
+
+* Meta-data about the device
+* Data structures
+* Controls
+* Current wiring
+
+It is in the following JSON format:
+
+```json
+{
+  "name": "Switch",                   # Official name of the device
+  "manufacturer": "Acme Inc.",
+  "hardwareVersion": "1.2.1.0",
+  "firmwareVersion": "12.3.1",
+
+  "displayName": "Schalter",          # Localized name for display
+  "displayIcon": "...",               # Base64 32x32 PNG or JPEG
+
+  "serialNumber": "SW000012",         # Non-defined property
+
+  "i18n": {
+    "serialNumber": "Serialnummer"
+  }
+}
+```
+
+Notes about meta-data: Devices may use meta-data to auto-wire themselves. In
+particular `manufacturer` and `name` should be stable enough to do text
+matching on.
+
+The `hardwareVersion` and `firmwareVersion` may be used to determine whether
+a given firmware update is compatible with the device. Software devices
+must omit `hardwareVersion`, but must use the `firmwareVersion`. Hardware
+devices must include a `hardwareVersion`.
+
+Both `displayName` and `displayIcon` are optional. Display tools should use these
+prominently if they are available.
+
+Devices may specify any additional (non-standard) meta-data properties in the meta-data
+section. Generic display tools should display these along with the standard properties.
+
+If any property has a `display*` prefixed version, any generic display should prefer
+those instead of the non-display version.
+
+The `i18n` object may contain translations for the property names of any additional meta-data
+properties. Any display software should use these, if available, to present to the user.
 
 ## Appendix A: Selected Use-Cases
 
