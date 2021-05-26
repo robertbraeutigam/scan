@@ -242,7 +242,7 @@ The "Data and Controls" message describes following information:
 * Controls
 * Current wiring
 
-It is in the following JSON format:
+### Structure and Meta-data
 
 ```json
 {
@@ -258,6 +258,16 @@ It is in the following JSON format:
 
   "i18n": {
     "serialNumber": "Serialnummer"
+  },
+
+  "data": [
+    ...see 'data' chapter...
+  ] 
+  "controls": [
+    ...see 'controls' chapter...
+  ]
+  "wiring": {
+    ...see 'wiring' chapter...
   }
 }
 ```
@@ -282,6 +292,12 @@ those instead of the non-display version.
 
 The `i18n` object may contain translations for the property names of any additional meta-data
 properties. Any display software should use these, if available, to present to the user.
+
+### Data
+
+### Controls
+
+### Wiring
 
 ## Appendix A: Selected Use-Cases
 
