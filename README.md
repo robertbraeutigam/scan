@@ -1,6 +1,6 @@
 # SCAN, Simple Control and Acquisition Network
 
-*Version 1.0, 2021-05-25*
+*Version 0.1, 2021-05-25*
 
 The SCAN is an open, free, easy-to-use, extensible, DIY-friendly
 way to collect data and control devices on a network.
@@ -19,7 +19,7 @@ These are the main considerations driving the design of this protocol:
 - **DIY** friendly. No proprietary components, processes or certification requirements.
   A private individual should be able to create a compatible device easily and completely
   independently.
-- **Transparent**. It should be very easy to discover which devices need what inputs and react or control
+- **Transparent**. It should be very easy to discover which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, like through documentation, but through the actual 
   protocol itself.
 - Does **not require** a complete and **perfect list of codes**, nor a perfect usage on the part
@@ -84,22 +84,39 @@ auto-connecting a Plotter to a GPS Receiver.
 
 ## Network Protocol
 
-The network protocol is build on top of TCP/IP, using a peer-to-peer logical topology. That is,
+The network protocol is designed to be a "layer" on top of TCP/IP. It is independent and
+ignorant of the "application layer" protocol defined in the next chapters.
+
+The main purpose and design goals of this layer are the following:
+* Provide **security** features, such as authentication, basic authorization and anti-tempering features.
+* Logical **routing** capabilities, provide a virtual flat topology.
+* Enable **multiplexing**, so that multiple logical connections can be established through one TCP/IP connection.
+* Enable **message mixing**. Enable a device to interject messages even if another message is currently
+  being sent or even streamed indefinitely.
+* Intentionally **fragmenting** messages so each fragment can be validated on its own and
+  potentially partially processed, without assembling the whole message in memory.
+
+Devices essentially get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
 "master" or "server" software or hardware component.
 
-Since no specific network topology is required, the network protocol has to support every possible
-topology. For this reason it contains additional logical routing information and is designed
+To support every possible TCP/IP topology, each frame contains additional logical routing information and is designed
 to be able to be multiplexed, forwarded and proxied. 
 
 The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
-excluding the frame header. If there is a payload of more than that it needs to be handled as
-described by the message type.
+excluding the frame header. If there is a payload of more than that, or the size is not known
+(such as the case with streaming data), the message needs to be fragmented to chunks not more
+than 65535 bytes.
+
+A logical connection is a connection between two devices identified by their public static keys. There
+can be at most one connection between any two devices, so a pair of public static keys uniquely identifies
+a logical connection. Note however, that one TCP/IP connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
-they must immediately close the connection without any further messages, unless otherwise
-instructed by specific messages. The initiating party must
-not retry opening connections more often than 60 times / minute, but may implement any heuristics
+they must immediately close the logical connection. If the logical connection is the only one in
+the "physical" TCP/IP connection, that needs to be closed instead. If not, a close message
+needs to be sent.
+The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
 ### Types
@@ -107,8 +124,8 @@ to distribute those reconnects inside the minute.
 All number types, if not stated otherwise, are network byte order (big-endian, most significant byte
 first) and are unsigned.
 
-An array of any type is a concatenation of values of the given type. The length is not explicitly
-supplied and should be available from either the message overall length of some other means.
+A byte array is a concatenation of bytes. The length is not explicitly
+supplied but should be available from either the message overall length or by some other means.
 
 A string is a length (2 bytes) followed by a byte array that contains UTF-8 encoded bytes of characters.
 
@@ -116,15 +133,17 @@ A string is a length (2 bytes) followed by a byte array that contains UTF-8 enco
 
 All packets have the following header:
 
+* Source peer (32 bytes) (clear)
 * Destination peer (32 bytes) (clear)
 * Frame type (1 byte) (clear)
 * Length of payload (2 bytes) (clear)
 
-The destination is the public identity key of the target device. Note: this device may not
-be a party to this communication. Devices may communicate with proxies, gateways or other
+The source is the sending peer's public identity key.
+The destination is the public identity key of the target device. Note: none of the devices must necessarily
+be a party to this TCP/IP connection. Devices may communicate with proxies, gateways or other
 infrastructure components without their explicit knowledge. The sending device can assume
 that the receiving device is either the destination itself, or can route the message
-to the destination device.
+to the destination device, and vice-versa.
 
 The frame type describes the payload that follows the header. Devices must ignore messages
 with unknown frame type.
@@ -134,7 +153,7 @@ with unknown frame type.
 #### Frame type: 01 (Initiate Handshake)
 
 Sent from the initiator of the connection immediately upon establishing the
-TCP/IP connection. It transmits th first handshake message together with the
+TCP/IP connection. It transmits the first handshake message together with the
 Noise Protocol Name.
 
 Payload structure:
@@ -142,24 +161,26 @@ Payload structure:
 * Handshake (byte array)
 
 The Noise Protocol Name is the exact protocol used for the following handshake
-and data exchange. If the recepient disagrees with the protocol it must close the
-connection.
+and data exchange. If the recipient disagrees with the protocol it must close the
+logical connection.
 
-The only protocol supported at this time is: **Noise_IKpsk2_25519_AESGCM_SHA256**.
+The only protocol supported at this time is: **Noise_KKpsk2_25519_AESGCM_SHA256**.
 
-Since the sender obviously has to know the public static key of the recipient
-(it is in the frame header for routing purposes) the second character is
-always '*K*'. Also, to be able to answer the recipient has to receive the
-public static key of the sender immediately, hence the '*I*' first character.
+The '*KK*' variant comes from the fact, that the frame already contains the 
+public static key of both the sender and responder. So both static keys are
+already *K*nown.
 
 For the recipient to "authenticate" the sender, that is, to evaluate whether
 the two are allowed to talk, there may be multiple possible
-strategies. White listing allowed devices is inpractical in a large installations.
-Instead this specifiaction requires a shared key (PSK) in all devices that belong to the
-same logical "network".
+strategies. White listing allowed devices is impractical in large installations.
+Instead this specification requires a shared key (PSK) in all devices that belong to the
+same logical "network". All devices that possess this shared key are said to be
+in the "same network". Note: this is in terms of "logical" network
+and is not the same as being in the same TCP/IP network, subnet or similar lower level
+structure.
 
-During the on-boarding of a device, it must be given the shared key for the
-whole network for it to be able to communicate. See relevant chapter for
+During the on-boarding of a device, the PSK must be supplied 
+for it to be able to communicate. See relevant chapter for
 more details.
 
 The protocol name also has to be included in the *prologue* of the Noise Handshake to
@@ -167,16 +188,129 @@ make sure it has not been tampered with.
 
 #### Frame type: 02 (Continue Handshake)
 
-Sent potentially by both parties. If continues the handshake after it has been initiated.
+Sent potentially by both parties. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
 and continue in turn until the connection is established.
 
 Payload structure:
 * Handshake (byte array)
 
-Neither parties may send any other frame types until the handshake is concluded. Both
-parties may assume implicitly that a Continue Handshake frame will come next if the
-handshake is not yet finished.
+#### Frame type: 03 (Close Connection)
+
+There can be more than one logical connection in a single TCP/IP connection. In this case
+the party trying to terminate a logical connection must use this message to indicate
+that the communication is considered terminated. This means the initiator will need
+to begin again with an Initiate Handshake if it wants to re-establish the connection.
+
+Note that if the TCP/IP connection has only this one logical connection, then
+that needs to be closed instead of sending this message.
+
+This message has no payload.
+
+#### Frame type: 04 (Application Message)
+
+The actual payload of the application layer described in the next chapters. This message
+may be sent by both the initiator and responder.
+
+Payload structure:
+* Message counter (4 bytes)
+* Fragment counter (4 byte)
+* Payload (encrypted)
+
+The message counter is a counter maintained by the sender, starts at 0 and
+increases with each message. The counter must increase by at least 1 with each message.
+
+The fragment counter is also maintained by the sender, starts at 0 and increases
+by at least 1 for each new fragment of the message. If a message is too large to fit
+into one Application Message frame, it must be fragmented, with each fragment receiving
+an incremental fragment counter, but the same message counter.
+
+The last fragment of a message is the one where the whole payload is less than 65535 bytes.
+Conversely, if the payload length (in the frame header) is 65535, there must be a
+following fragment. If the last fragment's payload length is exactly 65535 by chance,
+then a new fragment needs to be sent with 0 net payload, which is the length
+of the decrypted application level payload.
+
+Note that the message and fragment counter together uniquely identifies a frame from a
+given sender to a given recipient. The recipient must keep track of what message and
+fragment counters it received and must close the logical connection if on any messages that don't present a completely
+new combination. Note: the sender needs to only keep one "last seen" message counter, and
+one "last seen" fragment counter for each in-progress message to fulfill this requirement.
+
+The message and fragment counter together (8 bytes) represent the nonce to be used
+to encrypt and decrypt the payload.
+
+If any of the counters overflow the connection must be closed.
+
+Sender must rotate (rekey) its sending key after each message sent. Note: TCP/IP guarantees
+the order of delivery, so recipient can do the same. Also this means that different fragments
+of the same message will always be encrypted with a different key.
+
+### Message Choreography
+
+All communication happens through TCP/IP connections. There can be only one logical connection
+between the same source and target. If a logical connection already exists, that must be used.
+If not, a new logical connection needs to be established. If there is already a TCP/IP
+connection from the source to the target, that TCP/IP connection must be used. If not, a new TCP/IP
+connection must be established first.
+
+The *initiator* of the connection is the party that opens the logical connection.
+The *responder* is the one that accepts the connection.
+
+The overall choreography of the network protocol is as follows:
+
+1. Initiator opens connection and sends "Initiate Handshake" message.
+2. Responder sends "Continue Handshake".
+3. If handshake not concluded, Initiator also sends "Continue Handshake".
+   If handshake not concluded after that, go to 2.
+4. Both parties are now free to send any number of Application Messages.
+
+Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
+established is an error. The logical connection must be closed as a result.
+
+Any party may close the connection at any time for any reason. It is assumed that
+the connection will be re-opened by the Initiator if needed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+After this the Responder sends "Data Frame" messages if there is new or updated data available,
+and sends "Data and Controls" whenever its controls or data structure change. Also it may
+send "Command Response" frames in response to "Command Request" frames.
+
+The Initiator may send "Command Request" messages at any time, or "Capabilities" messages
+if the capabilities change.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #### Frame type: 03 (Capabilities)
 
@@ -186,7 +320,7 @@ communication.
 
 The initiator may send updates to its capabilities at any time.
 
-Payload strucutre:
+Payload structure:
 * Gzipped Json (string, encrypted)
 
 The JSON message is as follows:
@@ -199,7 +333,7 @@ The JSON message is as follows:
 
 The `language` describes the language for all the data, messages and descriptions
 received from the responder. The responder must honor this language preference
-if it has proper i18n resources to do it. It may however default to some other langauge
+if it has proper i18n resources to do it. It may however default to some other language
 if it can't do it.
 
 Future versions of this message may contain new properties. Implementations may ignore
@@ -210,42 +344,13 @@ properties they don't know.
 Sent by the responder to the initiator to signal the supported data items and
 controls available on the device.
 
-Payload strucutre:
+Payload structure:
 * Gzipped Json (byte array, encrypted)
 
 This is sent by the responder right after establishing a connection, and
 every time automatically if anything changes.
 
 See relevant chapter.
-
-### Message Choreography
-
-All communication happens through TCP/IP connections. The *initiator* of the connection
-is the party that opens the TCP/IP connection, the *responder* the one that accepts
-the connection. The *initiator* sends *commands* to the *responder*, while the *responder*
-continuously submits data when it is available and updates its capabilities if they change.
-
-The overall choreography of the network protocol is as follows:
-
-1. Initiator opens connection and sends "Initiate Handshake" message.
-2. Responder sends "Continue Handshake".
-3. If handshake not concluded, Initiator also sends "Continue Handshake".
-   If handshake not concluded after that, go to 2.
-4. Initiator sends first "Capabilities" message
-5. Responder sends first "Data and Controls" message
-
-After this the Responder sends "Data Frame" messages if there is new or updated data available,
-and sends "Data and Controls" whenever its controls or data strucutre change. Also it may
-send "Command Response" frames in response to "Command Request" frames.
-
-The Initiator may send "Command Request" messages at any time, or "Capabilities" messages
-if the capabilities change.
-
-Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
-established is an error. The connection must be closed as a result. This also means that
-after the connection is established, all messages have encrypted, gzipped JSON as payload.
-
-Any party may close the connection at any time.
 
 ## Data and Controls
 
