@@ -177,7 +177,7 @@ communication.
 The initiator may send updates to its capabilities at any time.
 
 Payload strucutre:
-* Json (string, encrypted)
+* Gzipped Json (string, encrypted)
 
 The JSON message is as follows:
 
@@ -201,7 +201,10 @@ Sent by the responder to the initiator to signal the supported data items and
 controls available on the device.
 
 Payload strucutre:
-* Json (string, encrypted)
+* Gzipped Json (byte array, encrypted)
+
+This is sent by the responder right after establishing a connection, and
+every time automatically if anything changes.
 
 See relevant chapter.
 
@@ -214,22 +217,23 @@ continuously submits data when it is available and updates its capabilities if t
 
 The overall choreography of the network protocol is as follows:
 
-1. Initiator opens connection and sends "Initiate Handshake" message
-2. Responder sends "Continue Handshake"
+1. Initiator opens connection and sends "Initiate Handshake" message.
+2. Responder sends "Continue Handshake".
 3. If handshake not concluded, Initiator also sends "Continue Handshake".
    If handshake not concluded after that, go to 2.
-4. Initiator sends "Capabilities" message
-5. Responder sends "Data and Controls" message
+4. Initiator sends first "Capabilities" message
+5. Responder sends first "Data and Controls" message
 
 After this the Responder sends "Data Frame" messages if there is new or updated data available,
 and sends "Data and Controls" whenever its controls or data strucutre change. Also it may
 send "Command Response" frames in response to "Command Request" frames.
 
-The Initiator may send "Command Request" messages at any time.
+The Initiator may send "Command Request" messages at any time, or "Capabilities" messages
+if the capabilities change.
 
 Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
 established is an error. The connection must be closed as a result. This also means that
-after the connection is established, all messages have encrypted JSON as payload.
+after the connection is established, all messages have encrypted, gzipped JSON as payload.
 
 Any party may close the connection at any time.
 
@@ -298,16 +302,16 @@ properties. Any display software should use these, if available, to present to t
 All data is part of a time-series. That means all data packets relate to a single time instant.
 Additionally all data items are categorized into the following *kinds*:
 
-* IDs: Values with unlimited cardinality. Device IDs, IP, Serial numbers, etc.
-* Tags: Values strongly limited or enumerated. Types, Channel, States.
-* Timestamps: An absolute instant in time.
-* Counters: A monotonic counter that always goes up, but which may reset at times to 0.
-* Geo: Coordinates. Current position, waypoints, target, etc.
-* Events: An event that happened. An error, alert, change of state.
-* Raw: Binary data with type. Picture taken, part of a video, etc.
-* Values: Measured or otherwise observed value. These always have a unit (see relevant chapter).
+* **ID**s: Values with unlimited cardinality. Device IDs, IP, Serial numbers, etc.
+* **Tag**s: Values strongly limited or enumerated. Types, Channel, States.
+* **Timestamp**s: An absolute instant in time.
+* **Counter**s: A monotonic counter that always goes up, but which may reset at times to 0.
+* **Geo**: Coordinates. Current position, waypoints, target, etc.
+* **Event**s: An event that happened. An error, alert, change of state.
+* **Raw**: Binary data with type. Picture taken, part of a video, etc.
+* **Value**s: Measured or otherwise observed value. These always have a unit (see relevant chapter).
   For example: tank level, current speed, motor power, battery level, etc.
-* Max/Min/Avg Values: Aggregate values. The interval of aggregation is not given explicitly,
+* **Max/Min/Avg Value**s: Aggregate values. The interval of aggregation is not given explicitly,
   multiple aggregation windows may co-exist. For example: Max temperature of engine, Max speed, Average speed, etc.
 
 These *kinds* exist to allow for a uniform handling to some extent regardless of
