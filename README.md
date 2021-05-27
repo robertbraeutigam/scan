@@ -49,6 +49,16 @@ All devices have a uniform interface, which mainly consist of these things:
 * The specification of Controls they offer
 * A uniform wiring interface
 
+SCAN is designed to work with smart(er) devices. That means that it is assumed that each
+device knows the meaning, the semantics of what it does. For example while there could
+be devices with generic input/output capabilities, to be compatible with SCAN, these
+devices would need some configuration capabilities (outside of the scope of this specification)
+to tell what those inputs *are* in a particular setup.
+
+It isn't enough for a device to publish a value of an "analogue input" in Volts for example.
+It has to know that input is connected to a thermistor and is actually measuring the
+_temperature of the engine_.
+
 All data is defined as a time-series. That is, each data point has a time
 when it was produced, and all the related data elements produced at that instant.
 Data elements are not defined in terms of technology (like 32bit or 64bit numbers),
@@ -89,7 +99,7 @@ described by the message type.
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
 they must immediately close the connection without any further messages, unless otherwise
 instructed by specific messages. The initiating party must
-not retry opening connections more often than 60 times / minute, but may implemenent any heuristics
+not retry opening connections more often than 60 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
 ### Types
