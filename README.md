@@ -82,13 +82,13 @@ Of course auto-wiring, the process of automatically connecting data to controls,
 can be achieved using standardized semantics of data, if applicable. Such as 
 auto-connecting a Plotter to a GPS Receiver.
 
-## Network Protocol
+## Network Layer
 
 The network protocol is designed to be a "layer" on top of TCP/IP. It is independent and
 ignorant of the "application layer" protocol defined in the next chapters.
 
 The main purpose and design goals of this layer are the following:
-* Provide **security** features, such as authentication, basic authorization and anti-tempering features.
+* Provide **security** features, such as authentication, authorization and anti-tempering features.
 * Logical **routing** capabilities, provide a virtual flat topology.
 * Enable **multiplexing**, so that multiple logical connections can be established through one TCP/IP connection.
 * Enable **message mixing**. Enable a device to interject messages even if another message is currently
@@ -96,9 +96,9 @@ The main purpose and design goals of this layer are the following:
 * Intentionally **fragmenting** messages so each fragment can be validated on its own and
   potentially partially processed, without assembling the whole message in memory.
 
-Devices essentially get a peer-to-peer, secure, flat logical topology. That is,
+Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
-"master" or "server" software or hardware component.
+"server", or any central software or hardware components.
 
 To support every possible TCP/IP topology, each frame contains additional logical routing information and is designed
 to be able to be multiplexed, forwarded and proxied. 
@@ -108,8 +108,9 @@ excluding the frame header. If there is a payload of more than that, or the size
 (such as the case with streaming data), the message needs to be fragmented to chunks not more
 than 65535 bytes.
 
-A logical connection is a connection between two devices identified by their public static keys. There
-can be at most one connection between any two devices, so a pair of public static keys uniquely identifies
+A logical connection is a connection between two devices identified by their public static keys. This also
+means there
+can be at most one logical connection between any two devices, because the unordered pair of public static keys uniquely identifies
 a logical connection. Note however, that one TCP/IP connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
@@ -229,7 +230,9 @@ The last fragment of a message is the one where the whole payload is less than 6
 Conversely, if the payload length (in the frame header) is 65535, there must be a
 following fragment. If the last fragment's payload length is exactly 65535 by chance,
 then a new fragment needs to be sent with 0 net payload, which is the length
-of the decrypted application level payload.
+of the decrypted application level payload. Note: 0 net payload will not result
+in a 0 payload length. The payload length will include both counters and the 
+authentication code used by the encryption scheme.
 
 Note that the message and fragment counter together uniquely identifies a frame from a
 given sender to a given recipient. The recipient must keep track of what message and
@@ -271,77 +274,48 @@ established is an error. The logical connection must be closed as a result.
 Any party may close the connection at any time for any reason. It is assumed that
 the connection will be re-opened by the Initiator if needed.
 
+## Application Layer
 
+The application layer is defined by specific payloads in Application Messages and their
+choreography after a logical connection on the network layer has been established.
 
+The Initiator of the network connection is called a Controller Device on this layer, while the Responder
+is called the Controlled Device. A single connection only allows for one side to be the Controller.
+This means, that since existing connections must be re-used, no two devices can control each other at the same time.
 
+When the network layer logical connection is established, the Controlled must first send
+a Device Description Message before anything else, then it automatically must begin to submit
+Data Messages, while at the same time responding to Command Messages.
 
+The Controller may send Command Messages and may process all the incoming Data and Command
+Responses.
 
+Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
+themselves. For example in a single Light and a single Button setup, we may traditionally think,
+that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
+That is, to initiate a connection to the Button, and based on Data the Button generates control its own
+operation. In this case the Light will obviously not send any Commands to the Button, but will nonetheless
+assume the role of the "Controller".
 
+### Message Header
 
+Application Messages have a header:
 
+* Message Type (1 byte)
 
+Note that there is no message length defined. Messages are split on network layer level to
+smaller packets. Recipients are expected to be able to process partial messages as data
+becomes available. This also means that messages can be of unlimited size, for example for
+a streaming video feed.
 
+Note that because of message mixing, a single device may even stream multiple unlimited feeds
+in parallel.
 
+### Message Types
 
+#### Message type: 01 (Device Description)
 
-
-
-
-
-
-After this the Responder sends "Data Frame" messages if there is new or updated data available,
-and sends "Data and Controls" whenever its controls or data structure change. Also it may
-send "Command Response" frames in response to "Command Request" frames.
-
-The Initiator may send "Command Request" messages at any time, or "Capabilities" messages
-if the capabilities change.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### Frame type: 03 (Capabilities)
-
-Sent by the initiator immediately after the channel is established. It defines
-what capabilities and attributes the initiator supports regarding the continued
-communication.
-
-The initiator may send updates to its capabilities at any time.
-
-Payload structure:
-* Gzipped Json (string, encrypted)
-
-The JSON message is as follows:
-
-```json
-{
-   "language": "en_US"
-}
-```
-
-The `language` describes the language for all the data, messages and descriptions
-received from the responder. The responder must honor this language preference
-if it has proper i18n resources to do it. It may however default to some other language
-if it can't do it.
-
-Future versions of this message may contain new properties. Implementations may ignore
-properties they don't know.
-
-#### Frame type: 04 (Data and Controls)
-
-Sent by the responder to the initiator to signal the supported data items and
+Sent by the Responder to the Initiator to signal the supported data items and
 controls available on the device.
 
 Payload structure:
