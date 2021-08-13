@@ -2,17 +2,18 @@
 
 *Version 0.1, 2021-05-25*
 
-The SCAN is an open, free, easy-to-use, extensible, DIY-friendly
+SCAN is an open, free, easy-to-use, extensible, DIY-friendly
 way to collect data and control devices on a network.
 
 ## Goals
 
 These are the main considerations driving the design of this protocol:
 
-- **Security first**, but only to an extent dictated by proper threat modeling.
+- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, etc.,
+  as simply as possible with no complex certificate management nor third-party involvment.
 - **Minimal effort** implementations. The effort to implement compatible devices
   should be linear to the extent of features the device will support. I.e.
-  simple devices (like a Light) should be almost no effort to implement, while
+  simple devices (like a Light source or a Button) should be almost no effort to implement, while
   more complicated devices may require more thorough analysis and design.
 - **Driven by individuals**, not industry. I.e. does not have to support complicated
   use-cases which are almost never used, or used only because of historical reasons.
@@ -21,7 +22,7 @@ These are the main considerations driving the design of this protocol:
   independently.
 - **Transparent**. It should be very easy to discover which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, like through documentation, but through the actual 
-  protocol itself.
+  protocol itself on the fly runtime.
 - Does **not require** a complete and **perfect list of codes**, nor a perfect usage on the part
   of the devices to be *fully* usable.
 
@@ -49,19 +50,14 @@ All devices have a uniform interface, which mainly consist of these things:
 * The specification of Controls they offer
 * A uniform wiring interface
 
-SCAN is designed to work with smart(er) devices. That means that it is assumed that each
-device knows the meaning, the semantics of what it does. For example while there could
-be devices with generic input/output capabilities, to be compatible with SCAN, these
-devices would need some configuration capabilities (outside of the scope of this specification)
-to tell what those inputs *are* in a particular setup.
-
-It isn't enough for a device to publish a value of an "analogue input" in Volts for example.
-It has to know that input is connected to a thermistor and is actually measuring the
-_temperature of the engine_.
+SCAN is designed to work in a distributed fashion. All devices are potentially
+data acquisition or control devices or both, with two devices already capable
+of working together without any dedicated control device or server. Introducing
+more components does not require any central component to exist either.
 
 All data is defined as a time-series. That is, each data point has a time
 when it was produced, and all the related data elements produced at that instant.
-Data elements are not defined in terms of technology (like 32bit or 64bit numbers),
+Data elements are not defined in terms of format (like 32bit or 64bit numbers),
 but in terms of what *kind* of data elements they are. Whether they represent an 
 Identification (ID) of some sort, or an Event, or a Measurement (see relevant chapter).
 
@@ -78,7 +74,7 @@ For example connecting the data from a switch to the on/off
 control of a light source. Because the *kind* of both the data and control are known, the connection
 can be made even if the exact semantics of either side is unknown or not defined.
 
-Of course auto-wiring, the process of automatically connecting data to controls,
+Auto-wiring, the process of automatically connecting data to controls,
 can be achieved using standardized semantics of data, if applicable. Such as 
 auto-connecting a Plotter to a GPS Receiver.
 
@@ -252,13 +248,17 @@ of the same message will always be encrypted with a different key.
 ### Message Choreography
 
 All communication happens through TCP/IP connections. There can be only one logical connection
-between the same source and target. If a logical connection already exists, that must be used.
+between any two parties. If a logical connection already exists, that must be used.
 If not, a new logical connection needs to be established. If there is already a TCP/IP
 connection from the source to the target, that TCP/IP connection must be used. If not, a new TCP/IP
 connection must be established first.
 
 The *initiator* of the connection is the party that opens the logical connection.
 The *responder* is the one that accepts the connection.
+
+It is an error to try to initiate or accept a connection if the peer is already a responder to the
+other party. Each party is either an initiator or responder with regards to another party
+with which a connection is already open.
 
 The overall choreography of the network protocol is as follows:
 
@@ -283,12 +283,19 @@ The Initiator of the network connection is called a Controller Device on this la
 is called the Controlled Device. A single connection only allows for one side to be the Controller.
 This means, that since existing connections must be re-used, no two devices can control each other at the same time.
 
-When the network layer logical connection is established, the Controlled must first send
-a Device Description Message before anything else, then it automatically must begin to submit
-Data Messages, while at the same time responding to Command Messages.
+When the network layer logical connection is established the Controller first
+has to send an Request for Data packet. Controlled Device must then
+send a Device Description, and then automatically begin sending Data. The Controller
+may send Commands occasionally to which the Controlled Device is expected to answer.
 
-The Controller may send Command Messages and may process all the incoming Data and Command
-Responses.
+When the logical connection is established and the Controlled Device starts sending Data,
+it must send any Data about its own state that the Controller might not know about. If there are
+hardware states (like switch state, lever state) it must immediately send those to the Controller.
+
+The purpose of this is to allow a broken connection to be re-established without loss of state on
+either side of the connection. The Controlled Device is not required to maintain the exact state
+it was in. It may decide to fail to a safe state if the Controller is disconnected, but it must
+re-synchronize the Controller to its current state upon reconnect.
 
 Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
 themselves. For example in a single Light and a single Button setup, we may traditionally think,
@@ -308,25 +315,55 @@ smaller packets. Recipients are expected to be able to process partial messages 
 becomes available. This also means that messages can be of unlimited size, for example for
 a streaming video feed.
 
+If the messages are longer than suggested through its parameters then any additional bytes
+may be ignored. This is for backwards compatibility reasons in case new fields are added
+to messages where that is possible.
+
 Note that because of message mixing, a single device may even stream multiple unlimited feeds
 in parallel.
 
 ### Message Types
 
-#### Message type: 01 (Device Description)
+#### Message type: 01 (Request for Data)
 
-Sent by the Responder to the Initiator to signal the supported data items and
-controls available on the device.
+Sent by the Controller to request continuous sending of data from the Controlled.
 
 Payload structure:
-* Gzipped Json (byte array, encrypted)
+* Language (string)
 
-This is sent by the responder right after establishing a connection, and
-every time automatically if anything changes.
+The Controlled must use the desired language setting if translations for that language are
+available. If not, it may default to a factory langauge.
+
+#### Message type: 02 (Device Description)
+
+Sent by the Controlled Device right after a Request for Data is received.
+
+Payload structure:
+* Gzipped Json (byte array)
 
 See relevant chapter.
 
-## Data and Controls
+#### Message type: 02 (Data)
+
+Sent by the Controlled Device every time new Data is acquired. This might be reading
+from external signals, or internal state changes.
+
+Data must also be sent to synchronize any Controllers to the current hardware / internal
+state of the Device upon a connection is established.
+
+Payload structure:
+* Gzipped Json (byte array)
+
+See relevant chapter.
+
+#### Message type: 03 (Raw Data)
+
+Sent by the Controlled Device when a large or streaming raw data element is available.
+
+Payload structure:
+* 
+
+## Device Description
 
 The "Data and Controls" message describes following information:
 
@@ -354,7 +391,7 @@ The "Data and Controls" message describes following information:
   },
 
   "data": [
-    ...see 'data' chapter...
+    ...see 'data definition' chapter...
   ] 
   "controls": [
     ...see 'controls' chapter...
@@ -386,7 +423,13 @@ those instead of the non-display version.
 The `i18n` object may contain translations for the property names of any additional meta-data
 properties. Any display software should use these, if available, to present to the user.
 
-### Data
+### Data Definition
+
+### Controls
+
+### Wiring
+
+## Data
 
 All data is part of a time-series. That means all data packets relate to a single time instant.
 Additionally all data items are categorized into the following *kinds*:
@@ -415,10 +458,6 @@ A single device may produce different data packets, it may describe them in an a
 
 }
 ```
-
-### Controls
-
-### Wiring
 
 ## Appendix A: Selected Use-Cases
 
