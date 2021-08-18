@@ -21,7 +21,7 @@ These are the main considerations driving the design of this protocol:
   A private individual should be able to create a compatible device easily and completely
   independently.
 - **Transparent**. It should be very easy to discover which devices need what inputs and react to-, or control
-  what other devices. Not out-of-band, like through documentation, but through the actual 
+  what other devices. Not out-of-band, for example through documentation, but through the actual 
   protocol itself on the fly runtime.
 - Does **not require** a complete and **perfect list of codes**, nor a perfect usage on the part
   of the devices to be *fully* usable.
@@ -36,24 +36,25 @@ These other design decisions were also used:
 
 SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools 
 and devices, such as routers, repeaters, cables, WiFi or even VPNs,
-can be used to build the physical network.
+can be used to build the "physical" network.
 There is no requirement on the physical network topology, nor on any particular
 network service to be available, as long as individual devices can communicate with each other.
 
 All communication is peer-to-peer and end-to-end encrypted with automatically
-rotating keys. This means there is no central component or server, and all
+rotating keys. There is no central component nor server, and all
 communication is secured against third parties even through untrusted infrastructure.
 
-All devices have a uniform interface, which mainly consist of these things:
+All devices have a uniform interface, which mainly consist of these categories:
 
-* The specification of Data they produce
-* The specification of Controls they offer
-* A uniform wiring interface
+* Data. Specification, generation or consumption of individual data points.
+* Controls. Specification and invocation of controls that may change the device's state.
+* Wiring. Dynamic description of the relationships between data and controls.
 
 SCAN is designed to work in a distributed fashion. All devices are potentially
-data acquisition or control devices or both, with two devices already capable
+data acquisition or control devices or both, with only two devices already capable
 of working together without any dedicated control device or server. Introducing
-more components does not require any central component to exist either.
+more components does not require any central component to exist either, although the
+option is available if needed.
 
 All data is defined as a time-series. That is, each data point has a time
 when it was produced, and all the related data elements produced at that instant.
@@ -168,9 +169,7 @@ public static key of both the sender and responder. So both static keys are
 already *K*nown.
 
 For the recipient to "authenticate" the sender, that is, to evaluate whether
-the two are allowed to talk, there may be multiple possible
-strategies. White listing allowed devices is impractical in large installations.
-Instead this specification requires a shared key (PSK) in all devices that belong to the
+the two are allowed to talk, this specification requires a shared key (PSK) in all devices that belong to the
 same logical "network". All devices that possess this shared key are said to be
 in the "same network". Note: this is in terms of "logical" network
 and is not the same as being in the same TCP/IP network, subnet or similar lower level
@@ -211,7 +210,7 @@ may be sent by both the initiator and responder.
 
 Payload structure:
 * Message counter (4 bytes)
-* Fragment counter (4 byte)
+* Fragment counter (4 bytes)
 * Payload (encrypted)
 
 The message counter is a counter maintained by the sender, starts at 0 and
