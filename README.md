@@ -56,6 +56,9 @@ of working together without any dedicated control device or server. Introducing
 more components does not require any central component to exist either, although the
 option is available if needed.
 
+Additional transparent network elements, like proxies or gateways, to expand
+the network or connect networks on separate physical infrastructure is supported.
+
 All data is defined as a time-series. That is, each data point has a time
 when it was produced, and all the related data elements produced at that instant.
 Data elements are not defined in terms of format (like 32bit or 64bit numbers),
@@ -133,7 +136,7 @@ All packets have the following header:
 
 * Source peer (32 bytes) (clear)
 * Destination peer (32 bytes) (clear)
-* Frame type (1 byte) (clear)
+* Frame type (1 byte) (clear-aad)
 * Length of payload (2 bytes) (clear)
 
 The source is the sending peer's public identity key.
@@ -265,7 +268,7 @@ The overall choreography of the network protocol is as follows:
 2. Responder sends "Continue Handshake".
 3. If handshake not concluded, Initiator also sends "Continue Handshake".
    If handshake not concluded after that, go to 2.
-4. Both parties are now free to send any number of Application Messages.
+4. Both parties are now free to send, stream any number of Application Messages in any order including in parallel.
 
 Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
 established is an error. The logical connection must be closed as a result.
