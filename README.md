@@ -276,6 +276,10 @@ established is an error. The logical connection must be closed as a result.
 Any party may close the connection at any time for any reason. It is assumed that
 the connection will be re-opened by the Initiator if needed.
 
+### Autodetection
+
+TODO: query-based, or detect-all only?
+
 ## Application Layer
 
 The application layer is defined by specific payloads in Application Messages and their
