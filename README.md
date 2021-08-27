@@ -10,7 +10,7 @@ way to collect data and control devices on a network.
 These are the main considerations driving the design of this protocol:
 
 - **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, etc.,
-  as simply as possible with no complex certificate management nor third-party involvment.
+  as simply as possible with no complex certificate management nor third-party involvement.
 - **Minimal effort** implementations. The effort to implement compatible devices
   should be linear to the extent of features the device will support. I.e.
   simple devices (like a Light source or a Button) should be almost no effort to implement, while
@@ -23,13 +23,12 @@ These are the main considerations driving the design of this protocol:
 - **Transparent**. It should be very easy to discover which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through the actual 
   protocol itself on the fly runtime.
-- Does **not require** a complete and **perfect list of codes**, nor a perfect usage on the part
-  of the devices to be *fully* usable.
+- Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
+  some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
 
 These other design decisions were also used:
 
-- Minimal setup required. Having only two devices should already work, without any
-  additional components.
+- Minimal setup required, ideally plug-and-play in most cases.
 - Should work over the internet and in any network topology, trusted or not.
 
 ## Solution Overview
@@ -38,7 +37,8 @@ SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet 
 and devices, such as routers, repeaters, cables, WiFi or even VPNs,
 can be used to build the "physical" network.
 There is no requirement on the physical network topology, nor on any particular
-network service to be available, as long as individual devices can communicate with each other.
+network service to be available, as long as individual devices can communicate with each other at least
+in one direction.
 
 All communication is peer-to-peer and end-to-end encrypted with automatically
 rotating keys. There is no central component nor server, and all
@@ -105,11 +105,12 @@ to be able to be multiplexed, forwarded and proxied.
 
 The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
 excluding the frame header. If there is a payload of more than that, or the size is not known
-(such as the case with streaming data), the message needs to be fragmented to chunks not more
-than 65535 bytes.
+(such as the case with streaming data), the message needs to be fragmented to chunks of exactly
+65535 bytes, except for the last chunk.
 
-A logical connection is a connection between two devices identified by their public static keys. This also
-means there
+A logical connection is a connection between two devices identified by their public static keys. All
+devices have a static key pair, the public part of which identifies the device uniquely and securely
+on the network. There 
 can be at most one logical connection between any two devices, because the unordered pair of public static keys uniquely identifies
 a logical connection. Note however, that one TCP/IP connection can tunnel more than one logical connection.
 
@@ -165,31 +166,49 @@ The Noise Protocol Name is the exact protocol used for the following handshake
 and data exchange. If the recipient disagrees with the protocol it must close the
 logical connection.
 
-The only protocol supported at this time is: **Noise_KKpsk2_25519_AESGCM_SHA256**.
+The protocol name has to be included in the *prologue* of the Noise Handshake to
+make sure it has not been tampered with.
 
+All devices must support the following protocols:
+
+* **Noise_KK[psk1]_25519_AESGCM_SHA256**: This is a bi-directional protocol. 
 The '*KK*' variant comes from the fact, that the frame already contains the 
 public static key of both the sender and responder. So both static keys are
 already *K*nown.
+* **Noise_K[psk1]_25519_AESGCM_SHA256**: This is an uni-directional protocol,
+suitable only for sending. After this message the device is free to send
+payload messages immediately.
 
-For the recipient to "authenticate" the sender, that is, to evaluate whether
-the two are allowed to talk, this specification requires a shared key (PSK) in all devices that belong to the
-same logical "network". All devices that possess this shared key are said to be
-in the "same network". Note: this is in terms of "logical" network
-and is not the same as being in the same TCP/IP network, subnet or similar lower level
-structure.
+The handshake makes sure that both parties actually possess the secret
+private part of their static identity. In essence this makes sure that
+both devices are who they pretend to be. This takes care of authentication.
 
-During the on-boarding of a device, the PSK must be supplied 
-for it to be able to communicate. See relevant chapter for
-more details.
+Both devices should however also do *authorization*, that is, check
+what the other device is allowed to do. Devices are free to implement
+any allow-, or deny-listing based on the public static key, or implement
+other restrictions based on the public static key.
 
-The protocol name also has to be included in the *prologue* of the Noise Handshake to
-make sure it has not been tampered with.
+All devices must however support handshaking with a given PSK (Private Shared Key).
+
+A PSK is a way to invert the authorization strategy above. Instead of
+defining restrictions on the target device where the action to be restricted takes place,
+that target device can instead generate a PSK, essentially grouping devices
+together and defining group-level privileges, instead of one by one.
+
+Every device must come with a unique PSK already set up, or should be unusable until some device
+specific setup process generates it. The PSK must also be resettable or changeable.
+
+Note, that the handshake does not identify the PSK used explicitly. The responder
+might therefore need to try multiple PSKs to know which one the initiator is using.
+The protocol is designed so a single try takes a single hashing operation only.
 
 #### Frame type: 02 (Continue Handshake)
 
 Sent potentially by both parties. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
 and continue in turn until the connection is established.
+
+For zero-roundtrip protocols, this message will never be sent.
 
 Payload structure:
 * Handshake (byte array)
@@ -265,20 +284,79 @@ with which a connection is already open.
 The overall choreography of the network protocol is as follows:
 
 1. Initiator opens connection and sends "Initiate Handshake" message.
-2. Responder sends "Continue Handshake".
+2. Responder sends "Continue Handshake", if not a zero-roundtrip protocol is used.
 3. If handshake not concluded, Initiator also sends "Continue Handshake".
    If handshake not concluded after that, go to 2.
-4. Both parties are now free to send, stream any number of Application Messages in any order including in parallel.
+4. Both parties are now free to send, stream any number of Application Messages in any order including in parallel. Note: If
+a zero-roundtrip protocol is used only the initiator can send.
 
 Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
 established is an error. The logical connection must be closed as a result.
 
-Any party may close the connection at any time for any reason. It is assumed that
-the connection will be re-opened by the Initiator if needed.
+Any party may close the connection at any time for any reason. The initiator is
+free to re-open the connection at any time.
 
-### Autodetection
+### Address Resolution
 
-TODO: query-based, or detect-all only?
+To be able to establish a "physical" TCP/IP connection between parties having static keys,
+there must be a way to query the network what actual TCP/IP address is associated with
+a given static key. This mechanism is not unlike what IP does to query the network
+for a MAC address for a given IP.
+
+It is possible that devices will be available through non-static IP addresses, for example
+through WiFi with DHCP. For this reason a device should attempt an address resolution every time before
+establishing a TCP/IP connection. The device may use cached values of already resolved TCP/IP
+addresses, it must however fall back on a resolution process if connection can not be established
+with cached value.
+
+#### Configuration
+
+Devices may support a statically configured resolution table.
+
+This may be the case for devices that are not on any "local" network. Connected through
+untrusted networks, such as cellular networks or other host networks.
+
+The configured table may be composed of multiple key and address (or hostname) pairs, or
+contain a wildcard route for all keys to a single host. The latter enables the device
+to connect through a SCAN gateway.
+
+####
+ Local Network
+
+If a device does not have a statically available address for a static key,
+a local TCP/IP network resolution has to be attempted through a multicast UDP message.
+
+The UDP packet needs to be sent to 224.0.0.1, port 11372. The contents as follows:
+* Source static key (32 bytes)
+* Target query static keys... (32 bytes each)
+
+The query can contain any number of target addresses between 0 and 100. All the
+hostdevices with the listed keys must respond to this query. A query with 0
+target keys is a wildcard query, which means *all* devices in the local network
+must respond.
+
+Note that wildcard queries may or may not return all devices depending on 
+online/offline status, or network topology.
+
+Devices that answer must do so with a UDP reply. Contents as follows:
+* Static keys... (32 bytes each)
+
+This reply tells the requester that these static keys are reachable at
+the address this UDP Packet is from. A device, such as a gateway,
+may represent multiple devices on the local network, that is why
+multiple static keys may reside at the same IP address.
+
+#### Non-local Networks, NAT or Firewalled Networks
+
+If one or more, or even all of the devices are scattered across different
+IP networks, local address resolution will obviously not work. In case
+any of these devices need to initiate a connection to another device,
+they need to be configured with a static resolution table as 
+described above.
+
+It may be the case that devices behind firewalls or NATs will only be able
+to initiate connections, but not receive them. This must be taken into account
+when configuring the application layer later.
 
 ## Application Layer
 
@@ -289,11 +367,21 @@ The Initiator of the network connection is called a Controller Device on this la
 is called the Controlled Device. A single connection only allows for one side to be the Controller.
 This means, that since existing connections must be re-used, no two devices can control each other at the same time.
 
-When the network layer logical connection is established the Controller first
-has to send an Request for Data packet. Controlled Device must then
-send a Device Description, and then automatically begin sending Data. The Controller
-may send Commands occasionally to which the Controlled Device is expected to answer.
+Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
+themselves. For example in a single Light and a single Button setup, we may traditionally think,
 
+that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
+That is, to initiate a connection to the Button, and based on Data the Button generates control its own
+operation. In this case the Light will obviously not send any Commands to the Button, but will nonetheless
+assume the role of the "Controller" for the purposes of this specification.
+
+The application layer is a request-response type protocol. The Controller may make requests, and
+the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
+responses to be sent in parallel, including many streaming responses, or multiple responses for
+a single request.
+
+
+TODO: following is somewhere else
 When the logical connection is established and the Controlled Device starts sending Data,
 it must send any Data about its own state that the Controller might not know about. If there are
 hardware states (like switch state, lever state) it must immediately send those to the Controller.
@@ -303,12 +391,65 @@ either side of the connection. The Controlled Device is not required to maintain
 it was in. It may decide to fail to a safe state if the Controller is disconnected, but it must
 re-synchronize the Controller to its current state upon reconnect.
 
-Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
-themselves. For example in a single Light and a single Button setup, we may traditionally think,
-that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
-That is, to initiate a connection to the Button, and based on Data the Button generates control its own
-operation. In this case the Light will obviously not send any Commands to the Button, but will nonetheless
-assume the role of the "Controller".
+### Message Format
+
+Both request and response formats largely follow the HTTP format, in that it is line-based (LF only)
+up until the payload. These lines are key-value pairs, called the "headers". The request has additionally a "command" with a
+specific meaning.
+
+#### Request Messages
+
+Requests look like as follows:
+
+```
+OPTIONS SCAN/1.0
+Id: 1-2-3-4
+Language: de_DE
+Accept-Type: application/x.scan.device
+```
+
+Or:
+
+```
+COMMAND update_firmware SCAN/1.0
+Id: 1-2-3-5
+Language: de_DE
+Content-Type: application/octet-stream
+
+[binary data]
+```
+
+It has the following components:
+* The request line. It contains a `method`, an optional parameter to the `method`, and the scan-version.
+* Any amount of headers in the form of key, then colon, then value. Header keys are case-insensitive.
+* An optional empty line (LFLF). Required if binary data follows.
+* Optional binary data.
+
+Note: all requests must have an `Id` so the responses to this requests may be identified.
+
+#### Response Messages
+
+Responses look like:
+
+```
+SCAN/1.0 200 OK
+Ref: 1-2-3-4
+Language: de_DE
+Content-Type: application/x.scan.device
+
+[data]
+```
+
+Or as an answer with no content to a command:
+
+```
+SCAN/1.0 204 OK
+Ref: 1-2-3-5
+```
+
+
+
+### Headers
 
 ### Message Header
 
@@ -361,13 +502,6 @@ Payload structure:
 * Gzipped Json (byte array)
 
 See relevant chapter.
-
-#### Message type: 03 (Raw Data)
-
-Sent by the Controlled Device when a large or streaming raw data element is available.
-
-Payload structure:
-* 
 
 ## Device Description
 
