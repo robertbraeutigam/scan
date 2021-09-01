@@ -285,6 +285,8 @@ established is an error. The logical connection must be closed as a result.
 Any party may close the connection at any time for any reason. The initiator is
 free to re-open the connection at any time.
 
+The handshake message that completes the handshake may optionally already contain the first payload.
+
 ### Address Resolution
 
 To be able to establish a "physical" TCP/IP connection between parties having static keys,
@@ -309,25 +311,26 @@ The configured table may be composed of multiple key and address (or hostname) p
 contain a wildcard route for all keys to a single host. The latter enables the device
 to connect through a SCAN gateway.
 
-####
- Local Network
+#### Local Network
 
 If a device does not have a statically available address for a static key,
 a local TCP/IP network resolution has to be attempted through a multicast UDP message.
 
 The UDP packet needs to be sent to 224.0.0.1, port 11372. The contents as follows:
-* Source static key (32 bytes)
+* 01 (fixed byte)
 * Target query static keys... (32 bytes each)
 
 The query can contain any number of target addresses between 0 and 100. All the
-hostdevices with the listed keys must respond to this query. A query with 0
+host devices with the listed keys must respond to this query. A query with 0
 target keys is a wildcard query, which means *all* devices in the local network
 must respond.
 
 Note that wildcard queries may or may not return all devices depending on 
 online/offline status, or network topology.
 
-Devices that answer must do so with a UDP reply. Contents as follows:
+All devices must be subscribed to the above multicast address and must reply when they are a target
+of a query with a UDP reply. Contents as follows:
+* 02 (fixed byte)
 * Static keys... (32 bytes each)
 
 This reply tells the requester that these static keys are reachable at
@@ -588,6 +591,10 @@ A single device may produce different data packets, it may describe them in an a
 }
 ```
 
+## Backpressure
+
+TODO:
+
 ## Appendix A: Selected Use-Cases
 
 ### Switch controls Light
@@ -605,4 +612,7 @@ the Engine's output power.
 There is a Monitor device which continuously shows the feed coming from
 a Security Camera.
 
+### There are multiple Meters over the Cell-Network sending data to a central Server
+
 ## Appendix B: Units
+
