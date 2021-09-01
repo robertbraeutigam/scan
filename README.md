@@ -161,6 +161,7 @@ Noise Protocol Name.
 Payload structure:
 * Noise Protocol Name (string) (clear-prologue)
 * Handshake (byte array)
+* (Payload) (optional encrypted byte array)
 
 The Noise Protocol Name is the exact protocol used for the following handshake
 and data exchange. If the recipient disagrees with the protocol it must close the
@@ -195,12 +196,19 @@ defining restrictions on the target device where the action to be restricted tak
 that target device can instead generate a PSK, essentially grouping devices
 together and defining group-level privileges, instead of one by one.
 
-Every device must come with a unique PSK already set up, or should be unusable until some device
-specific setup process generates it. The PSK must also be resettable or changeable.
+Every device must come with a unique PSK already set up for administrative (full) access,
+or must be only capable of setting an administrative PSK before any other messages
+are processed.
 
 Note, that the handshake does not identify the PSK used explicitly. The responder
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only.
+
+This frame contains an optional payload. If the handshake is complete after
+the initial handshake message, the initiator is free to send the first payload
+in the same message. This allows devices that do not maintain a connection,
+maybe because they are off-line most of the time, to send messages to other
+parties as quickly and as compactly as possible.
 
 #### Frame type: 02 (Continue Handshake)
 
@@ -212,6 +220,10 @@ For zero-roundtrip protocols, this message will never be sent.
 
 Payload structure:
 * Handshake (byte array)
+* (Payload) (optional encrypted byte array)
+
+If the handshake is complete after this continued handshake message, the message 
+may then contain the first message payload.
 
 #### Frame type: 03 (Close Connection)
 
@@ -231,40 +243,17 @@ The actual payload of the application layer described in the next chapters. This
 may be sent by both the initiator and responder.
 
 Payload structure:
-* Message counter (4 bytes)
-* Fragment counter (4 bytes)
 * Payload (encrypted)
 
-The message counter is a counter maintained by the sender, starts at 0 and
-increases with each message. The counter must increase by at least 1 with each message.
+After a message is sent, the sender is required to "rekey" its sending key. After a message
+is received, the receiver is required to "rekey" its receiving key. This means
+messages are perfectly forward secure, as each message is encrypted with a different key.
 
-The fragment counter is also maintained by the sender, starts at 0 and increases
-by at least 1 for each new fragment of the message. If a message is too large to fit
-into one Application Message frame, it must be fragmented, with each fragment receiving
-an incremental fragment counter, but the same message counter.
+If any decryption errors occur, meaning that for some reason the sender and receiver becomes
+out of sync, the connection must be closed.
 
-The last fragment of a message is the one where the whole payload is less than 65535 bytes.
-Conversely, if the payload length (in the frame header) is 65535, there must be a
-following fragment. If the last fragment's payload length is exactly 65535 by chance,
-then a new fragment needs to be sent with 0 net payload, which is the length
-of the decrypted application level payload. Note: 0 net payload will not result
-in a 0 payload length. The payload length will include both counters and the 
-authentication code used by the encryption scheme.
-
-Note that the message and fragment counter together uniquely identifies a frame from a
-given sender to a given recipient. The recipient must keep track of what message and
-fragment counters it received and must close the logical connection if on any messages that don't present a completely
-new combination. Note: the sender needs to only keep one "last seen" message counter, and
-one "last seen" fragment counter for each in-progress message to fulfill this requirement.
-
-The message and fragment counter together (8 bytes) represent the nonce to be used
-to encrypt and decrypt the payload.
-
-If any of the counters overflow the connection must be closed.
-
-Sender must rotate (rekey) its sending key after each message sent. Note: TCP/IP guarantees
-the order of delivery, so recipient can do the same. Also this means that different fragments
-of the same message will always be encrypted with a different key.
+All encryption happens with "nonce" of 0 bytes. This is acceptable since each message will
+use a different key.
 
 ### Message Choreography
 
