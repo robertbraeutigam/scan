@@ -252,7 +252,7 @@ messages are perfectly forward secure, as each message is encrypted with a diffe
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, the connection must be closed.
 
-All encryption happens with "nonce" of 0 bytes. This is acceptable since each message will
+All encryption happens with "nonce" of zero. This is acceptable since each message will
 use a different key.
 
 ### Message Choreography
@@ -361,19 +361,19 @@ This means, that since existing connections must be re-used, no two devices can 
 
 Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
 themselves. For example in a single Light and a single Button setup, we may traditionally think,
-
 that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
-That is, to initiate a connection to the Button, and based on Data the Button generates control its own
-operation. In this case the Light will obviously not send any Commands to the Button, but will nonetheless
-assume the role of the "Controller" for the purposes of this specification.
+That is, to initiate a connection to the Button and based on Data the Button generates control its own
+operation. In this case the Light will obviously not send any "control" the Button in the traditional meaning,
+but will nonetheless
+assume the role of the "Controller" for the purposes of this specification. It will send Commands
+to read the Data from the Button.
 
 The application layer is a request-response type protocol. The Controller may make requests, and
 the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
 responses to be sent in parallel, including many streaming responses, or multiple responses for
 a single request.
 
-
-TODO: following is somewhere else
+-- 
 When the logical connection is established and the Controlled Device starts sending Data,
 it must send any Data about its own state that the Controller might not know about. If there are
 hardware states (like switch state, lever state) it must immediately send those to the Controller.
@@ -382,6 +382,66 @@ The purpose of this is to allow a broken connection to be re-established without
 either side of the connection. The Controlled Device is not required to maintain the exact state
 it was in. It may decide to fail to a safe state if the Controller is disconnected, but it must
 re-synchronize the Controller to its current state upon reconnect.
+
+### Data
+
+Devices may generate Data during their operation. Data may be a mix between states the device
+has or measured values from the outside world. This Data is represented in a unified format,
+which is designed to be used even without full understanding of the semantics involved.
+
+Data has two main building blocks, its *identification* and its *content*.
+
+#### Data Identification
+
+All Data has a base **name**. This name carries the semantics of the data, like 'throttle_position',
+or 'position'. Some standardized semantics are defined in this specification to enable a more
+seamless integration between devices. However, this specification is specially designed to not
+rely solely on standardized semantics.
+
+Data also always has a **time**. This means all Data is actually a *time series*. The *time*
+of a single Datapoint is the time this data was first generated. For measured values this is the
+time the value was measured at, for states it is the time the state was established, for
+aggregations it is the time the aggregate was first generated.
+
+Specifically, *time* is not always the current time. Devices may under some circumstances
+be required to submit values from the past. These circumstances may range from the device
+actually storing historical values and submitting them as Data, to the Device losing
+the connection to some other party and may be required to "catch up" the other party
+on changes when re-establishing a connection.
+
+Data may be an aggregation of an underlying value. There are these aggregations supported:
+* sum
+* count
+* min
+* max
+
+All aggregations also have an **aggregation name**. This enables the aggregation
+of the same value into multiple time-frames or according to different parameters. For
+example a Device may emit min/max values for weekly and monthly aggregations at the same time.
+
+Data may have **tags** attached to them. Tags are key-value pairs, where the value comes from a limited set.
+Each tag defines a separate, small dimension for the Data, for example: sensor=1/2/3/4, ip_type=TCP/UDP,
+region=eu/us, etc. Note that tags must be of low cardinality, that is, from a known limited set of
+values. This specifically excludes Identifiers, Text and other unlimited or large value sets.
+
+To summarize, the *identification* of a Data point includes the following information:
+* Name
+* Time
+* Aggregate name and function (optional, single)
+* Tags (optional, many)
+
+#### Data Content
+
+All Data in SCAN is typed. That means each semantic name carries the type information with it,
+which must be one of the following things:
+* Enumeration
+* Counter
+* Geo
+* Event
+* Raw
+* Measurement
+
+TODO
 
 ### Message Format
 
@@ -591,9 +651,45 @@ A single device may produce different data packets, it may describe them in an a
 }
 ```
 
-## Backpressure
+## Technical Discussions
 
-TODO:
+### Backpressure
+
+Backpressure is the mechanism by which consumers of messages can tell producers to slow
+down producing messages in the event that they can't consume them fast enough.
+
+In SCAN backpressure is done via the already built-in mechanisms of TCP. If a consumer
+is not ready to process another message it will not empty the TCP/IP receive buffer,
+therefore eventually the buffer runs full, which will result in not acknowledging
+packets. This will eventually result in the send buffer of the producer to fill up as well.
+
+All devices must respond to backpressure by *dropping* messages, as not dropping messages,
+such as queueing them will likely not alleviate the underlying problems. This only works
+if both commands and data are designed to *lose only resolution* when losing or dropping
+messages, not lose the command or data itself.
+
+This in essence means that both commands and data must be designed to be *stateless*. All
+supplied data needs to stand in its own, without referencing older data points. 
+For example instead of supplying data like "3L flow since last data", use absolute
+measures like "34566L flow total". Commands
+must be designed to be absolute as well. For example instead of having commands like
+"+10% Power", commands need absolute values like "70% Power".
+
+### Quality of Service
+
+Data does not have any acknowledgements outside of TCP layer acknowledgements. Those
+however do not indicate a successful processing or even reception at the endpoint,
+since proxies or other intermediaries may be in the network path.
+
+It doesn't need one though, because any issues in reception will eventually result
+in the connection to be closed. A new connection will then submit stateless data
+again, which will catch up the other party. Some resolution might get lost however.
+
+Commands do have an explicit acknowledgement and therefore may need to be repeated
+if that acknowledgement is late or does not arrive. For this reason all commands
+must be *idempotent*. This just means that if the same command is repeated several
+times for some reason, the end-result must be the same as when the command
+is executed only once. Not counting the potential overhead of network and compute usage.
 
 ## Appendix A: Selected Use-Cases
 
@@ -616,3 +712,15 @@ a Security Camera.
 
 ## Appendix B: Units
 
+
+## Appendix C: Terminology
+
+* **Initiator**: The party who establishes a network layer connection to another party.
+* **Responder**: The party who receives a network layer connection from another party.
+* **Device**: A party in a SCAN network. Although the term "Device" implies a physical
+machine, a Device may be fully software implemented, or one physical device may even represent
+multiple logical Devices.
+* **Controller**: The *Initiator* on the application layer. The party who invokes commands
+on the other party.
+* **Controlled**: The *Responder* on the application layer. The part who responds to commands
+from the other party.
