@@ -104,9 +104,7 @@ To support every possible TCP/IP topology, each frame contains additional logica
 to be able to be multiplexed, forwarded and proxied. 
 
 The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
-excluding the frame header. If there is a payload of more than that, or the size is not known
-(such as the case with streaming data), the message needs to be fragmented to chunks of exactly
-65535 bytes, except for the last chunk.
+excluding the frame header.
 
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
@@ -138,7 +136,7 @@ All packets have the following header:
 * Source peer (32 bytes) (clear)
 * Destination peer (32 bytes) (clear)
 * Frame type (1 byte) (clear-aad)
-* Length of payload (2 bytes) (clear)
+* Number of following bytes (2 bytes) (clear)
 
 The source is the sending peer's public identity key.
 The destination is the public identity key of the target device. Note: none of the devices must necessarily
@@ -204,7 +202,7 @@ Note, that the handshake does not identify the PSK used explicitly. The responde
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only.
 
-This frame contains an optional payload of maximum 65535 bytes. If the handshake is complete after
+This frame may contain an optional payload. If the handshake is complete after
 the initial handshake message, the initiator is free to send the first payload
 in the same message. This allows devices that do not maintain a connection,
 maybe because they are off-line most of the time, to send messages to other
@@ -223,8 +221,8 @@ Payload structure:
 * (Payload) (optional encrypted byte array)
 
 If the handshake is complete after this continued handshake message, the message 
-may then contain the first message payload. This payload is however limited to
-65535 bytes.
+may then contain the first message payload. This payload is however limited to this
+frame only.
 
 #### Frame type: 03 (Close Connection)
 
@@ -244,6 +242,7 @@ The actual payload of the application layer described in the next chapters. This
 may be sent by both the initiator and responder.
 
 Payload structure:
+* Message Id (4 bytes)
 * Payload (encrypted)
 
 After a message is sent, the sender is required to "rekey" its sending key. After a message
@@ -253,8 +252,21 @@ messages are perfectly forward secure, as each message is encrypted with a diffe
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, the connection must be closed.
 
-All encryption happens with "nonce" of zero. This is acceptable since each message will
-use a different key.
+All encryption happens with "nonce" of all zero.
+
+The Message Id is a unique number in the current communication. Senders must never repeat
+the same Message Id in a session. If this can not be fulfilled, the connection must be closed.
+
+If a message is too large to fit
+into one Application Message frame, it must be fragmented, with each fragment having the
+same Message Id.
+
+The last fragment of a message must have a payload that is less than the maximum size of the message.
+Conversely, if the payload length (in the frame header) is 65535 (the maximum), there must be a
+following fragment. If the last fragment's length is exactly 65535 by chance,
+then a new fragment needs to be sent with 0 net payload, which is the length
+of the decrypted application level payload. Note: 0 net payload will not result
+in a 0 message length.
 
 ### Message Choreography
 
@@ -364,25 +376,15 @@ Note that in any setup the Controller and Controlled roles may be defined indepe
 themselves. For example in a single Light and a single Button setup, we may traditionally think,
 that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
 That is, to initiate a connection to the Button and based on Data the Button generates control its own
-operation. In this case the Light will obviously not send any "control" the Button in the traditional meaning,
+operation. In this case the Light will obviously not "control" the Button in the traditional meaning,
 but will nonetheless
 assume the role of the "Controller" for the purposes of this specification. It will send Commands
 to read the Data from the Button.
 
-The application layer is a request-response type protocol. The Controller may make requests, and
+The application layer is a request-response type protocol. The Controller may make requests and
 the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
-responses to be sent in parallel, including many streaming responses, or multiple responses for
+responses to be sent in parallel, including many streaming responses or multiple responses for
 a single request.
-
--- 
-When the logical connection is established and the Controlled Device starts sending Data,
-it must send any Data about its own state that the Controller might not know about. If there are
-hardware states (like switch state, lever state) it must immediately send those to the Controller.
-
-The purpose of this is to allow a broken connection to be re-established without loss of state on
-either side of the connection. The Controlled Device is not required to maintain the exact state
-it was in. It may decide to fail to a safe state if the Controller is disconnected, but it must
-re-synchronize the Controller to its current state upon reconnect.
 
 ### Data
 
@@ -411,7 +413,7 @@ actually storing historical values and submitting them as Data, to the Device lo
 the connection to some other party and may be required to "catch up" the other party
 on changes when re-establishing a connection.
 
-Data may be an aggregation of an underlying value. These aggregations supported:
+Data may be an aggregation of an underlying value. Currently supported aggregations are:
 * sum
 * count
 * min
@@ -436,51 +438,80 @@ To summarize, the *identification* of a Data point includes the following inform
 #### Data Content
 
 All Data in SCAN is typed. Each semantic name must have a specific type of content attached, 
-identified by media types.
+identified by a media type. That is, all names must produce the same type.
 
 ### Message Format
 
-Each message starts with a message type:
-* Message type (byte)
+There are two types of messages: requests and responses.
 
-#### Message type: 01 (Options)
+Requests are sent by the Controller and the Responses sent by the Controlled. The Controlled
+can not send requests back nor can the Controller send responses.
 
-The Controller may send this message to query the Controlled for meta-information about
-itself. The Controlled Device will send a meta-information package with the given
-localization.
+#### Request
+
+Requests contain one of the following *actions*:
+* OPTIONS: Get meta-information from the Controlled about Data, Controls and Wiring, as well
+  as auxiliary information about the device itself
+* STREAM: Instruct the Controlled to send Data updates continuously. The Controlled
+  must get the Controller up-to-date on all Data as soon as possible, then can
+  send Data as specified by its own logic. For example only when something changes, or
+  at periodic intervals, or a mix of both.
+* USE: Use the specified control on the Controlled Device.
 
 Content:
-* Request Id (number, 4 bytes)
-* Locale (string)
-* Accept-Types (strings)
+* Action (1 byte, OPTIONS: 1, STREAM: 2, USE: 3)
+* Number of headers (1 byte)
+* Headers
 
-The Request Id will be used in the answer to reference this request. There are no
-restrictions in what value this is.
+Headers consist of following records, where the number of these records
+is specified by "Number of headers":
+* Header type (1 byte)
+* Value (string)
+
+Following headers are specified:
+* 01: Locale
+* 02: Accept-Type
+* 04: Content-Length
+
+The Message Id from the Network Layer will be used in the answer to reference this request. There are no
+restrictions in what value this is, the Controller can manage these as it sees fit.
+
+Headers are all optional. If the Controlled does not know or implement a specific header,
+then it is free to ignore it.
 
 The Locale will be used to translate names, keys and other text by the Controlled.
 
 The Accept-Types field describes which Media-Types the Controller is able or willing
 to accept as answer.
 
-#### Message type: 02 (Stream)
+The Content-Length is the length of the following content. This must be supplied if known.
 
-The Controller may send this message to instruct the Controlled Device to send
-data continuously as they change and/or as they get measured.
+#### Response
+
+Responses are always in reaction to a previous request, therefore always refer
+back to its Request.
+
+There may be multiple responses to a single request. Responses may be streams
+of unlimited length.
 
 Content:
-* Request Id (number, 4 bytes)
-* Locale (string)
-* Accept-Types (strings)
+* Reference Id (number, 4 bytes)
+* Number of headers (1 byte)
+* Headers
+* Content
 
-The Locale will be used to translate possible messages in the Data.
+Following headers are specified:
+* 01: Locale
+* 03: Content-Type
+* 04: Content-Length
 
-The Accept-Types field describes which Media-Types the Controller is able or willing
-to accept as answer.
+The Reference Id is the Message Id of the Request.
 
-#### Message type: 03 (Data)
+The Locale defines what language the content is in, if any.
 
-A Data packet sent by the Controlled. It may include any information, including
-the meta-data about the Device itself.
+The Content-Type specifies what the content is.
+
+The Content-Length is the length of the following content. This must be supplied if known.
 
 ## Device Description
 
