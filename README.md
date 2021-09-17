@@ -394,14 +394,15 @@ Data has two main building blocks, its *identification* and its *content*.
 #### Data Identification
 
 All Data has a base **name**. This name carries the semantics of the data, like 'throttle_position',
-or 'position'. Some standardized semantics are defined in this specification to enable a more
-seamless integration between devices. However, this specification is specially designed to not
+or 'geo_position'. Some standardized semantics are defined in this specification to enable a more
+seamless integration between devices. However, this specification is explicitly designed to not
 rely solely on standardized semantics.
 
 Data also always has a **time**. This means all Data is actually a *time series*. The *time*
-of a single Datapoint is the time this data was first generated. For measured values this is the
+of a single Datapoint is the time this data was first generated or measured. For measured values this is the
 time the value was measured at, for states it is the time the state was established, for
-aggregations it is the time the aggregate was first generated.
+aggregations it is the time the aggregate was first applicable to, for example an end of an
+aggregation interval.
 
 Specifically, *time* is not always the current time. Devices may under some circumstances
 be required to submit values from the past. These circumstances may range from the device
@@ -409,7 +410,7 @@ actually storing historical values and submitting them as Data, to the Device lo
 the connection to some other party and may be required to "catch up" the other party
 on changes when re-establishing a connection.
 
-Data may be an aggregation of an underlying value. There are these aggregations supported:
+Data may be an aggregation of an underlying value. These aggregations supported:
 * sum
 * count
 * min
@@ -417,7 +418,8 @@ Data may be an aggregation of an underlying value. There are these aggregations 
 
 All aggregations also have an **aggregation name**. This enables the aggregation
 of the same value into multiple time-frames or according to different parameters. For
-example a Device may emit min/max values for weekly and monthly aggregations at the same time.
+example a Device may emit min/max values for weekly and monthly aggregations for the same
+underlying value.
 
 Data may have **tags** attached to them. Tags are key-value pairs, where the value comes from a limited set.
 Each tag defines a separate, small dimension for the Data, for example: sensor=1/2/3/4, ip_type=TCP/UDP,
@@ -432,128 +434,52 @@ To summarize, the *identification* of a Data point includes the following inform
 
 #### Data Content
 
-All Data in SCAN is typed. That means each semantic name carries the type information with it,
-which must be one of the following things:
-* Enumeration
-* Counter
-* Geo
-* Event
-* Raw
-* Measurement
-
-TODO
+All Data in SCAN is typed. Each semantic name must have a specific type of content attached, 
+identified by media types.
 
 ### Message Format
 
-Both request and response formats largely follow the HTTP format, in that it is line-based (LF only)
-up until the payload. These lines are key-value pairs, called the "headers". The request has additionally a "command" with a
-specific meaning.
+Each message starts with a message type:
+* Message type (byte)
 
-#### Request Messages
+#### Message type: 01 (Options)
 
-Requests look like as follows:
+The Controller may send this message to query the Controlled for meta-information about
+itself. The Controlled Device will send a meta-information package with the given
+localization.
 
-```
-OPTIONS SCAN/1.0
-Id: 1-2-3-4
-Language: de_DE
-Accept-Type: application/x.scan.device
-```
+Content:
+* Request Id (number, 4 bytes)
+* Locale (string)
+* Accept-Types (strings)
 
-Or:
+The Request Id will be used in the answer to reference this request. There are no
+restrictions in what value this is.
 
-```
-COMMAND update_firmware SCAN/1.0
-Id: 1-2-3-5
-Language: de_DE
-Content-Type: application/octet-stream
+The Locale will be used to translate names, keys and other text by the Controlled.
 
-[binary data]
-```
+The Accept-Types field describes which Media-Types the Controller is able or willing
+to accept as answer.
 
-It has the following components:
-* The request line. It contains a `method`, an optional parameter to the `method`, and the scan-version.
-* Any amount of headers in the form of key, then colon, then value. Header keys are case-insensitive.
-* An optional empty line (LFLF). Required if binary data follows.
-* Optional binary data.
+#### Message type: 02 (Stream)
 
-Note: all requests must have an `Id` so the responses to this requests may be identified.
+The Controller may send this message to instruct the Controlled Device to send
+data continuously as they change and/or as they get measured.
 
-#### Response Messages
+Content:
+* Request Id (number, 4 bytes)
+* Locale (string)
+* Accept-Types (strings)
 
-Responses look like:
+The Locale will be used to translate possible messages in the Data.
 
-```
-SCAN/1.0 200 OK
-Ref: 1-2-3-4
-Language: de_DE
-Content-Type: application/x.scan.device
+The Accept-Types field describes which Media-Types the Controller is able or willing
+to accept as answer.
 
-[data]
-```
+#### Message type: 03 (Data)
 
-Or as an answer with no content to a command:
-
-```
-SCAN/1.0 204 OK
-Ref: 1-2-3-5
-```
-
-
-
-### Headers
-
-### Message Header
-
-Application Messages have a header:
-
-* Message Type (1 byte)
-
-Note that there is no message length defined. Messages are split on network layer level to
-smaller packets. Recipients are expected to be able to process partial messages as data
-becomes available. This also means that messages can be of unlimited size, for example for
-a streaming video feed.
-
-If the messages are longer than suggested through its parameters then any additional bytes
-may be ignored. This is for backwards compatibility reasons in case new fields are added
-to messages where that is possible.
-
-Note that because of message mixing, a single device may even stream multiple unlimited feeds
-in parallel.
-
-### Message Types
-
-#### Message type: 01 (Request for Data)
-
-Sent by the Controller to request continuous sending of data from the Controlled.
-
-Payload structure:
-* Language (string)
-
-The Controlled must use the desired language setting if translations for that language are
-available. If not, it may default to a factory langauge.
-
-#### Message type: 02 (Device Description)
-
-Sent by the Controlled Device right after a Request for Data is received.
-
-Payload structure:
-* Gzipped Json (byte array)
-
-See relevant chapter.
-
-#### Message type: 02 (Data)
-
-Sent by the Controlled Device every time new Data is acquired. This might be reading
-from external signals, or internal state changes.
-
-Data must also be sent to synchronize any Controllers to the current hardware / internal
-state of the Device upon a connection is established.
-
-Payload structure:
-* Gzipped Json (byte array)
-
-See relevant chapter.
+A Data packet sent by the Controlled. It may include any information, including
+the meta-data about the Device itself.
 
 ## Device Description
 
@@ -621,36 +547,6 @@ properties. Any display software should use these, if available, to present to t
 
 ### Wiring
 
-## Data
-
-All data is part of a time-series. That means all data packets relate to a single time instant.
-Additionally all data items are categorized into the following *kinds*:
-
-* **ID**s: Values with unlimited cardinality. Device IDs, IP, Serial numbers, etc.
-* **Tag**s: Values strongly limited or enumerated. Types, Channel, States.
-* **Timestamp**s: An absolute instant in time.
-* **Counter**s: A monotonic counter that always goes up, but which may reset at times to 0.
-* **Geo**: Coordinates. Current position, waypoints, target, etc.
-* **Event**s: An event that happened. An error, alert, change of state.
-* **Raw**: Binary data with type. Picture taken, part of a video, etc.
-* **Value**s: Measured or otherwise observed value. These always have a unit (see relevant chapter).
-  For example: tank level, current speed, motor power, battery level, etc.
-* **Max/Min/Avg Value**s: Aggregate values. The interval of aggregation is not given explicitly,
-  multiple aggregation windows may co-exist. For example: Max temperature of engine, Max speed, Average speed, etc.
-
-These *kinds* exist to allow for a uniform handling to some extent regardless of
-actual semantics. For example it is possible to display and compare values by converting them to the same
-scale, plot them on a chart (when dimensions are compatible), analyze them, set alert thresholds,
-log them, etc.
-
-A single device may produce different data packets, it may describe them in an array of following objects:
-
-```json
-{
-
-}
-```
-
 ## Technical Discussions
 
 ### Backpressure
@@ -688,8 +584,8 @@ again, which will catch up the other party. Some resolution might get lost howev
 Commands do have an explicit acknowledgement and therefore may need to be repeated
 if that acknowledgement is late or does not arrive. For this reason all commands
 must be *idempotent*. This just means that if the same command is repeated several
-times for some reason, the end-result must be the same as when the command
-is executed only once. Not counting the potential overhead of network and compute usage.
+times for some reason, the end-result must be the same as if the command
+was executed only once. Not counting the potential overhead of network and compute usage.
 
 ## Appendix A: Selected Use-Cases
 
@@ -710,8 +606,31 @@ a Security Camera.
 
 ### There are multiple Meters over the Cell-Network sending data to a central Server
 
-## Appendix B: Units
+## Appendix B: Media-Types
 
+TODO:
+All Data in SCAN is typed. That means each semantic name carries the type information with it,
+which must be one of the following things:
+* Enumeration
+* Counter
+* Geo
+* Event
+* Raw
+* Measurement
+
+An *Enumeration* is a set of string values. A single member from this set may be the content
+of an enumeration type data point. There are predefined enumeration types already defined in
+this specification.
+
+A *Counter* is an monotonically increasing integer value that may reset to zero from time to time.
+Typical examples include non-persistent counters for some event that resets when the device is
+re-started.
+
+A *Geo* data type is a geographical coordinate.
+
+An *Event* has no value, just a name. Such as: Alarm, Error, Navigation Point Reached, etc.
+
+*Raw* types have both a media-type and a byte array content. These are 
 
 ## Appendix C: Terminology
 
