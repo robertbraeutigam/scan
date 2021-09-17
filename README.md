@@ -7,7 +7,7 @@ way to collect data and control devices on a network.
 
 ## Goals
 
-These are the main considerations driving the design of this protocol:
+The main considerations driving the design of this protocol:
 
 - **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, etc.,
   as simply as possible with no complex certificate management nor third-party involvement.
@@ -193,8 +193,8 @@ All devices must however support handshaking with a given PSK (Private Shared Ke
 
 A PSK is a way to invert the authorization strategy above. Instead of
 defining restrictions on the target device where the action to be restricted takes place,
-that target device can instead generate a PSK, essentially grouping devices
-together and defining group-level privileges, instead of one by one.
+that target device can instead generate a PSK, essentially representing a group of devices,
+and defining group-level privileges, instead of one by one.
 
 Every device must come with a unique PSK already set up for administrative (full) access,
 or must be only capable of setting an administrative PSK before any other messages
@@ -204,7 +204,7 @@ Note, that the handshake does not identify the PSK used explicitly. The responde
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only.
 
-This frame contains an optional payload. If the handshake is complete after
+This frame contains an optional payload of maximum 65535 bytes. If the handshake is complete after
 the initial handshake message, the initiator is free to send the first payload
 in the same message. This allows devices that do not maintain a connection,
 maybe because they are off-line most of the time, to send messages to other
@@ -223,7 +223,8 @@ Payload structure:
 * (Payload) (optional encrypted byte array)
 
 If the handshake is complete after this continued handshake message, the message 
-may then contain the first message payload.
+may then contain the first message payload. This payload is however limited to
+65535 bytes.
 
 #### Frame type: 03 (Close Connection)
 
