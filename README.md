@@ -363,6 +363,11 @@ It may be the case that devices behind firewalls or NATs will only be able
 to initiate connections, but not receive them. This must be taken into account
 when configuring the application layer later.
 
+#### Announcement
+
+Devices must always announce themselves when they become available on the local
+network. They must send their static address as though someone had queried them.
+
 ## Application Layer
 
 The application layer is defined by specific payloads in Application Messages and their
