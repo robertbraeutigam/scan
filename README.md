@@ -231,8 +231,13 @@ the party trying to terminate a logical connection must use this message to indi
 that the communication is considered terminated. This means the initiator will need
 to begin again with an Initiate Handshake if it wants to re-establish the connection.
 
-Note that if the TCP/IP connection has only this one logical connection, then
+If the TCP/IP connection has only this one logical connection, then
 that needs to be closed instead of sending this message.
+
+This message may be sent by intermediaries between the initiator and responder. For example
+a proxy might generate a Close Connection message if a TCP/IP connection to one party is lost
+and the other one is still connected through a TCP/IP connection that has other active
+connections.
 
 This message has no payload.
 
@@ -245,9 +250,9 @@ Payload structure:
 * Message Id (4 bytes)
 * Payload (encrypted)
 
-After a message is sent, the sender is required to "rekey" its sending key. After a message
+After a frame is sent, the sender is required to "rekey" its sending key. After a frame
 is received, the receiver is required to "rekey" its receiving key. This means
-messages are perfectly forward secure, as each message is encrypted with a different key.
+frames are perfectly forward secure, as each frame is encrypted with a different key.
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, the connection must be closed.
@@ -266,7 +271,7 @@ Conversely, if the payload length (in the frame header) is 65535 (the maximum), 
 following fragment. If the last fragment's length is exactly 65535 by chance,
 then a new fragment needs to be sent with 0 net payload, which is the length
 of the decrypted application level payload. Note: 0 net payload will not result
-in a 0 message length.
+in a 0 frame length.
 
 ### Message Choreography
 
@@ -366,7 +371,7 @@ when configuring the application layer later.
 #### Announcement
 
 Devices must always announce themselves when they become available on the local
-network. They must send their static address as though someone had queried them.
+network. They must send their static address with the UDP packet (type 02) as above.
 
 ## Application Layer
 
