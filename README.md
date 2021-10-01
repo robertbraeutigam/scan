@@ -170,11 +170,11 @@ make sure it has not been tampered with.
 
 All devices must support the following protocols:
 
-* **Noise_KK[psk1]_25519_AESGCM_SHA256**: This is a bi-directional protocol. 
+* **Noise_KKpsk1_25519_AESGCM_SHA256**: This is a bi-directional protocol. 
 The '*KK*' variant comes from the fact, that the frame already contains the 
 public static key of both the sender and responder. So both static keys are
 already *K*nown.
-* **Noise_K[psk1]_25519_AESGCM_SHA256**: This is an uni-directional protocol,
+* **Noise_Kpsk1_25519_AESGCM_SHA256**: This is an uni-directional protocol,
 suitable only for sending. After this message the device is free to send
 payload messages immediately.
 
@@ -185,18 +185,19 @@ both devices are who they pretend to be. This takes care of authentication.
 Both devices should however also do *authorization*, that is, check
 what the other device is allowed to do. Devices are free to implement
 any allow-, or deny-listing based on the public static key, or implement
-other restrictions based on the public static key.
+other restrictions based on either the public static key, time of day
+or any other information gained during communications.
 
-All devices must however support handshaking with a given PSK (Private Shared Key).
+All handshakes contain a PSK (Private Shared Key).
 
-A PSK is a way to invert the authorization strategy above. Instead of
-defining restrictions on the target device where the action to be restricted takes place,
-that target device can instead generate a PSK, essentially representing a group of devices,
-and defining group-level privileges, instead of one by one.
+A PSK works as a "role" during authorization. Since the responder may assign
+privileges to certain PSKs, the PSK presented by the initiator categorizes
+it to have those privileges. PSKs can be potentially published to multiple devices,
+effectively creating a role or group of devices.
 
 Every device must come with a unique PSK already set up for administrative (full) access,
-or must be only capable of setting an administrative PSK before any other messages
-are processed.
+or must be only capable of setting/assigning an administrative PSK before any other functionality
+is available.
 
 Note, that the handshake does not identify the PSK used explicitly. The responder
 might therefore need to try multiple PSKs to know which one the initiator is using.
@@ -447,22 +448,52 @@ To summarize, the *identification* of a Data point includes the following inform
 
 #### Data Content
 
-All Data in SCAN is typed. Each semantic name must have a specific type of content attached, 
-identified by a media type. That is, all names must produce the same type.
+All Data in SCAN is typed, represented by a specific Media-Type. See relevant chapter for all
+Media Types.
 
-### Message Format
+Even one name identifying a specific semantics may have multiple matching Media-Types to
+represent it.
 
-There are two types of messages: requests and responses.
+### Requests
 
-Requests are sent by the Controller and the Responses sent by the Controlled. The Controlled
-can not send requests back nor can the Controller send responses.
+A request is a message sent from the Controller to the Controlled. Its format is as follows:
+* Action (byte)
+* Headers (a map, detailed below)
+* Content
 
-#### Request
+All requests contain an action (see below), some headers that describes an optional
+variable count and length parameter field, and an optional content.
+
+### Responses
+
+A response is sent from the Controlled to the Controller, always as a response to a previous
+request. There may be multiple responses to the same request, depending on the action
+requested and other circumstances.
+
+The format of the response is as follows:
+* Reference Id (number, 4 bytes)
+* Headers (a map, detailed below)
+* Content
+
+The Reference Id is the Message Id from the Network Layer that contained the Request.
+There may be multiple Responses with the same Reference Id.
+
+### Actions
+
+#### OPTIONS
+
+Represented by the byte value: 01.
+
+Request the Controlled to supply meta-information about the device itself, including
+what Controls it has, what Data it can provide, what Wiring it has currently configured.
+
+### Headers
 
 Requests contain one of the following *actions*:
 * OPTIONS: Get meta-information from the Controlled about Data, Controls and Wiring, as well
   as auxiliary information about the device itself
-* STREAM: Instruct the Controlled to send Data updates continuously. The Controlled
+* STREAM: Instruct the Controlled to send Data updates continuously, or update parameters if
+  it is already streaming data. The Controlled
   must get the Controller up-to-date on all Data as soon as possible, then can
   send Data as specified by its own logic. For example only when something changes, or
   at periodic intervals, or a mix of both.
