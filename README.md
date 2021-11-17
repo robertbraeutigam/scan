@@ -379,35 +379,6 @@ when configuring the application layer later.
 Devices must always announce themselves when they become available on the local
 network. They must send their static address with the UDP packet (type 02) as above.
 
-#### Link-Local Address Selection
-
-Devices may choose to auto-select an IP address if a DHCP server is not available, following RFC 3927.
-
-Since SCAN devices may be limited in accessing the link-layer network, this specification
-requires that SCAN devices use application-level claim and defend mechanisms as described below:
-
-* An IP address in the link-local range must be choosen at random.
-The random generator initialization must include the device's static public key to
-make the random generator unique.
-* The device then must configure the IP stack with that IP address. It must not however
-answer any queries or connection requests until this process completes.
-* The "probe", described by the RFC then can proceed, using the UDP wildcard query above.
-* If no devices answer with the choosen IP address during the specified, the device
-is free to claim the address. The claim is the Announcement above.
-* If during the claim period there is no other claim for the IP (Announcement), the claim is successful and the device
-may proceed to make and accept connections.
-
-The device must continue to monitor Announcements to detect any conflicts.
-If at any time there is another claim with the same IP by another device, the
-device must react as described in the RFC. In short, try to defend the claim,
-or if that is no longer applicable, abandon the IP address and choose a new one.
-
-This method obviously only works with SCAN devices. If there are other devices
-claiming IPs on the network by some other means (through ARP for example),
-the SCAN devices should be configured to use their own exclusive network address segment
-as soon as possible. Although this configuration may only be possible after a successful
-joining of the network.
-
 ## Application Layer
 
 The application layer is defined by specific payloads in Application Messages and their
