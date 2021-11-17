@@ -195,13 +195,15 @@ privileges to certain PSKs, the PSK presented by the initiator categorizes
 it to have those privileges. PSKs can be potentially published to multiple devices,
 effectively creating a role or group of devices.
 
-Every device must come with a unique PSK already set up for administrative (full) access,
-or must be only capable of setting/assigning an administrative PSK before any other functionality
-is available.
+Every device must come with a unique PSK already set up for administrative (full) access.
+It should be possible to reset the device to this "factory" PSK along with all other
+configuration to allow for lost or forgotten PSKs. This "factory PSK" should be
+changed before using in a production setting.
 
 Note, that the handshake does not identify the PSK used explicitly. The responder
 might therefore need to try multiple PSKs to know which one the initiator is using.
-The protocol is designed so a single try takes a single hashing operation only.
+The protocol is designed so a single try takes a single hashing operation only. Still,
+this mechanism is designed with a limited set of possible PSKs in mind.
 
 This frame may contain an optional payload. If the handshake is complete after
 the initial handshake message, the initiator is free to send the first payload
@@ -244,7 +246,7 @@ This message has no payload.
 
 #### Frame type: 04 (Application Message)
 
-The actual payload of the application layer described in the next chapters. This message
+The actual payload of the application layer is described in the next chapters. This message
 may be sent by both the initiator and responder.
 
 Payload structure:
@@ -314,7 +316,7 @@ a given static key. This mechanism is not unlike what IP does to query the netwo
 for a MAC address for a given IP.
 
 It is possible that devices will be available through non-static IP addresses, for example
-through WiFi with DHCP. For this reason a device should attempt an address resolution every time before
+through WiFi with DHCP or even random link-local addresses. For this reason a device should attempt an address resolution every time before
 establishing a TCP/IP connection. The device may use cached values of already resolved TCP/IP
 addresses, it must however fall back on a resolution process if connection can not be established
 with cached value.
@@ -357,6 +359,9 @@ the address this UDP Packet is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
+If the number of static keys in the response exceed 100, the responding device
+must repeat this UDP reply message until all known static keys are sent.
+
 #### Non-local Networks, NAT or Firewalled Networks
 
 If one or more, or even all of the devices are scattered across different
@@ -373,6 +378,29 @@ when configuring the application layer later.
 
 Devices must always announce themselves when they become available on the local
 network. They must send their static address with the UDP packet (type 02) as above.
+
+#### Link-Local Address Selection
+
+Devices may choose to auto-select an IP address if a DHCP server is not available, following RFC3927.
+
+To do this the above specification instructs devices to choose an IP address
+randomly, and then "claim" and "defend" this choose IP address. SCAN devices 
+may select an IP address this way, with the following extensions:
+
+* The random generator initialization must include the device's static public key to
+make it unique.
+* The probe to see whether a particular IP address is taken must be a
+UDP wildcard query as described above. As all devices are required to answer, if some
+device answers with the selected IP, the test fails.
+* If no devices answer with the candidate IP address inside 1 second, the device
+is free to claim the address. The claim is the Announcement above.
+* If at any time there is another claim with the same IP by another device, this device
+must immediately close all connections and repeat this process of finding another
+suitable IP address.
+
+This method obviously only works with SCAN devices. If there are other devices
+claiming IPs on the network by some other means (through ARP for example),
+the SCAN devices should be configured to use their own exclusive network address segment.
 
 ## Application Layer
 
@@ -396,63 +424,6 @@ The application layer is a request-response type protocol. The Controller may ma
 the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
 responses to be sent in parallel, including many streaming responses or multiple responses for
 a single request.
-
-### Data
-
-Devices may generate Data during their operation. Data may be a mix between states the device
-has or measured values from the outside world. This Data is represented in a unified format,
-which is designed to be used even without full understanding of the semantics involved.
-
-Data has two main building blocks, its *identification* and its *content*.
-
-#### Data Identification
-
-All Data has a base **name**. This name carries the semantics of the data, like 'throttle_position',
-or 'geo_position'. Some standardized semantics are defined in this specification to enable a more
-seamless integration between devices. However, this specification is explicitly designed to not
-rely solely on standardized semantics.
-
-Data also always has a **time**. This means all Data is actually a *time series*. The *time*
-of a single Datapoint is the time this data was first generated or measured. For measured values this is the
-time the value was measured at, for states it is the time the state was established, for
-aggregations it is the time the aggregate was first applicable to, for example an end of an
-aggregation interval.
-
-Specifically, *time* is not always the current time. Devices may under some circumstances
-be required to submit values from the past. These circumstances may range from the device
-actually storing historical values and submitting them as Data, to the Device losing
-the connection to some other party and may be required to "catch up" the other party
-on changes when re-establishing a connection.
-
-Data may be an aggregation of an underlying value. Currently supported aggregations are:
-* sum
-* count
-* min
-* max
-
-All aggregations also have an **aggregation name**. This enables the aggregation
-of the same value into multiple time-frames or according to different parameters. For
-example a Device may emit min/max values for weekly and monthly aggregations for the same
-underlying value.
-
-Data may have **tags** attached to them. Tags are key-value pairs, where the value comes from a limited set.
-Each tag defines a separate, small dimension for the Data, for example: sensor=1/2/3/4, ip_type=TCP/UDP,
-region=eu/us, etc. Note that tags must be of low cardinality, that is, from a known limited set of
-values. This specifically excludes Identifiers, Text and other unlimited or large value sets.
-
-To summarize, the *identification* of a Data point includes the following information:
-* Name
-* Time
-* Aggregate name and function (optional, single)
-* Tags (optional, many)
-
-#### Data Content
-
-All Data in SCAN is typed, represented by a specific Media-Type. See relevant chapter for all
-Media Types.
-
-Even one name identifying a specific semantics may have multiple matching Media-Types to
-represent it.
 
 ### Requests
 
@@ -486,139 +457,6 @@ Represented by the byte value: 01.
 
 Request the Controlled to supply meta-information about the device itself, including
 what Controls it has, what Data it can provide, what Wiring it has currently configured.
-
-### Headers
-
-Requests contain one of the following *actions*:
-* OPTIONS: Get meta-information from the Controlled about Data, Controls and Wiring, as well
-  as auxiliary information about the device itself
-* STREAM: Instruct the Controlled to send Data updates continuously, or update parameters if
-  it is already streaming data. The Controlled
-  must get the Controller up-to-date on all Data as soon as possible, then can
-  send Data as specified by its own logic. For example only when something changes, or
-  at periodic intervals, or a mix of both.
-* USE: Use the specified control on the Controlled Device.
-
-Content:
-* Action (1 byte, OPTIONS: 1, STREAM: 2, USE: 3)
-* Number of headers (1 byte)
-* Headers
-
-Headers consist of following records, where the number of these records
-is specified by "Number of headers":
-* Header type (1 byte)
-* Value (string)
-
-Following headers are specified:
-* 01: Locale
-* 02: Accept-Type
-* 04: Content-Length
-
-The Message Id from the Network Layer will be used in the answer to reference this request. There are no
-restrictions in what value this is, the Controller can manage these as it sees fit.
-
-Headers are all optional. If the Controlled does not know or implement a specific header,
-then it is free to ignore it.
-
-The Locale will be used to translate names, keys and other text by the Controlled.
-
-The Accept-Types field describes which Media-Types the Controller is able or willing
-to accept as answer.
-
-The Content-Length is the length of the following content. This must be supplied if known.
-
-#### Response
-
-Responses are always in reaction to a previous request, therefore always refer
-back to its Request.
-
-There may be multiple responses to a single request. Responses may be streams
-of unlimited length.
-
-Content:
-* Reference Id (number, 4 bytes)
-* Number of headers (1 byte)
-* Headers
-* Content
-
-Following headers are specified:
-* 01: Locale
-* 03: Content-Type
-* 04: Content-Length
-
-The Reference Id is the Message Id of the Request.
-
-The Locale defines what language the content is in, if any.
-
-The Content-Type specifies what the content is.
-
-The Content-Length is the length of the following content. This must be supplied if known.
-
-## Device Description
-
-The "Data and Controls" message describes following information:
-
-* Meta-data about the device
-* Data structures
-* Controls
-* Current wiring
-
-### Structure and Meta-data
-
-```json
-{
-  "name": "Switch",                   # Official name of the device
-  "manufacturer": "Acme Inc.",
-  "hardwareVersion": "1.2.1.0",
-  "firmwareVersion": "12.3.1",
-
-  "displayName": "Schalter",          # Localized name for display
-  "displayIcon": "...",               # Base64 32x32 PNG or JPEG
-
-  "serialNumber": "SW000012",         # Non-defined property
-
-  "i18n": {
-    "serialNumber": "Serialnummer"
-  },
-
-  "data": [
-    ...see 'data definition' chapter...
-  ] 
-  "controls": [
-    ...see 'controls' chapter...
-  ]
-  "wiring": {
-    ...see 'wiring' chapter...
-  }
-}
-```
-
-Notes about meta-data: Devices may use meta-data to auto-wire themselves. In
-particular `manufacturer` and `name` should be stable enough to do text
-matching on.
-
-The `hardwareVersion` and `firmwareVersion` may be used to determine whether
-a given firmware update is compatible with the device. Software devices
-must omit `hardwareVersion`, but must use the `firmwareVersion`. Hardware
-devices must include a `hardwareVersion`.
-
-Both `displayName` and `displayIcon` are optional. Display tools should use these
-prominently if they are available.
-
-Devices may specify any additional (non-standard) meta-data properties in the meta-data
-section. Generic display tools should display these along with the standard properties.
-
-If any property has a `display*` prefixed version, any generic display should prefer
-those instead of the non-display version.
-
-The `i18n` object may contain translations for the property names of any additional meta-data
-properties. Any display software should use these, if available, to present to the user.
-
-### Data Definition
-
-### Controls
-
-### Wiring
 
 ## Technical Discussions
 
@@ -660,52 +498,7 @@ must be *idempotent*. This just means that if the same command is repeated sever
 times for some reason, the end-result must be the same as if the command
 was executed only once. Not counting the potential overhead of network and compute usage.
 
-## Appendix A: Selected Use-Cases
-
-### Switch controls Light
-
-There are two devices on the network, a Switch and a Light, where
-the Switch has two states and controls the Light.
-
-### Throttle controls Engine
-
-There is a Throttle and an Engine on the network. The Throttle controls
-the Engine's output power.
-
-### Monitor streaming video from Security Camera
-
-There is a Monitor device which continuously shows the feed coming from
-a Security Camera.
-
-### There are multiple Meters over the Cell-Network sending data to a central Server
-
-## Appendix B: Media-Types
-
-TODO:
-All Data in SCAN is typed. That means each semantic name carries the type information with it,
-which must be one of the following things:
-* Enumeration
-* Counter
-* Geo
-* Event
-* Raw
-* Measurement
-
-An *Enumeration* is a set of string values. A single member from this set may be the content
-of an enumeration type data point. There are predefined enumeration types already defined in
-this specification.
-
-A *Counter* is an monotonically increasing integer value that may reset to zero from time to time.
-Typical examples include non-persistent counters for some event that resets when the device is
-re-started.
-
-A *Geo* data type is a geographical coordinate.
-
-An *Event* has no value, just a name. Such as: Alarm, Error, Navigation Point Reached, etc.
-
-*Raw* types have both a media-type and a byte array content. These are 
-
-## Appendix C: Terminology
+## Appendix A: Terminology
 
 * **Initiator**: The party who establishes a network layer connection to another party.
 * **Responder**: The party who receives a network layer connection from another party.
