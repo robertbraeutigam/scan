@@ -381,26 +381,32 @@ network. They must send their static address with the UDP packet (type 02) as ab
 
 #### Link-Local Address Selection
 
-Devices may choose to auto-select an IP address if a DHCP server is not available, following RFC3927.
+Devices may choose to auto-select an IP address if a DHCP server is not available, following RFC 3927.
 
-To do this the above specification instructs devices to choose an IP address
-randomly, and then "claim" and "defend" this choose IP address. SCAN devices 
-may select an IP address this way, with the following extensions:
+Since SCAN devices may be limited in accessing the link-layer network, this specification
+requires that SCAN devices use application-level claim and defend mechanisms as described below:
 
-* The random generator initialization must include the device's static public key to
-make it unique.
-* The probe to see whether a particular IP address is taken must be a
-UDP wildcard query as described above. As all devices are required to answer, if some
-device answers with the selected IP, the test fails.
-* If no devices answer with the candidate IP address inside 1 second, the device
+* An IP address in the link-local range must be choosen at random.
+The random generator initialization must include the device's static public key to
+make the random generator unique.
+* The device then must configure the IP stack with that IP address. It must not however
+answer any queries or connection requests until this process completes.
+* The "probe", described by the RFC then can proceed, using the UDP wildcard query above.
+* If no devices answer with the choosen IP address during the specified, the device
 is free to claim the address. The claim is the Announcement above.
-* If at any time there is another claim with the same IP by another device, this device
-must immediately close all connections and repeat this process of finding another
-suitable IP address.
+* If during the claim period there is no other claim for the IP (Announcement), the claim is successful and the device
+may proceed to make and accept connections.
+
+The device must continue to monitor Announcements to detect any conflicts.
+If at any time there is another claim with the same IP by another device, the
+device must react as described in the RFC. In short, try to defend the claim,
+or if that is no longer applicable, abandon the IP address and choose a new one.
 
 This method obviously only works with SCAN devices. If there are other devices
 claiming IPs on the network by some other means (through ARP for example),
-the SCAN devices should be configured to use their own exclusive network address segment.
+the SCAN devices should be configured to use their own exclusive network address segment
+as soon as possible. Although this configuration may only be possible after a successful
+joining of the network.
 
 ## Application Layer
 
