@@ -490,17 +490,15 @@ is not ready to process another message it will not empty the TCP/IP receive buf
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
 
-Devices should implement an internal queue for messages to handle transient problems
-of the receiver or network.
+Devices must be able to keep two messages in memory for all modalities. The message
+that is currently being sent by the network stack and a queued message. Any or both
+of those might be empty.
 
-At some point however, if the problem persists, 
-there will be new measurements or commands available and both
-the TCP buffer and internal queues will be full. In this case devices must respond by *dropping* messages.
-
-Devices must always drop oldest messages for the same modality first. As streams
-of such messages are always replaceable by the newest member, this will only cause
-resolution loss. Devices must not drop the last (newest) member of any stream of
-messages for the same modality and must keep trying to send that.
+In the case of a new message for a modality where a queued message is already present,
+the queued message must be replaced by the new message. This means the device will
+*drop* obsolete messages intentionally. As streams
+of messages from the same modality are always replaceable by the newest member, this will only cause
+resolution loss. 
 
 ### Quality of Service
 
@@ -526,9 +524,9 @@ TCP timeouts or because the encryption keys become out-of-sync. As the connectio
 the device is again obligated to send the newest of all modalities.
 
 The second part of the guarantee is that the newest data will be delivered as fast as possible. As fast
-as the network and the receiver allows, because if any of those is slow the device will start to
-drop obsolete messages in favor of more recent ones, which will both help solve the problem and
-reduce the time current data gets delivered.
+as the network and the receiver allows, because if any of those is slow the device will drop obsolete messages
+in favor of new ones, which will both help solve the problem and reduce the time the most current data gets delivered to
+a minimum.
 
 ## Appendix A: Terminology
 
