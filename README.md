@@ -207,7 +207,8 @@ this mechanism is designed with a limited set of possible PSKs in mind.
 
 This frame may contain an optional payload. If the handshake is complete after
 the initial handshake message, the initiator is free to send the first payload
-in the same message. This allows devices that do not maintain a connection,
+in the same message, if it fits into the remaining bytes for the frame.
+This allows devices that do not maintain a connection,
 maybe because they are off-line most of the time, to send messages to other
 parties as quickly and as compactly as possible.
 
@@ -224,8 +225,8 @@ Payload structure:
 * (Payload) (optional encrypted byte array)
 
 If the handshake is complete after this continued handshake message, the message 
-may then contain the first message payload. This payload is however limited to this
-frame only.
+may then contain the first message payload, provided it fits the remaining bytes of
+this frame.
 
 #### Frame type: 03 (Close Connection)
 
@@ -250,7 +251,7 @@ The actual payload of the application layer is described in the next chapters. T
 may be sent by both the initiator and responder.
 
 Payload structure:
-* Message Id (4 bytes)
+* Message Id (4 bytes, clear-aad)
 * Payload (encrypted)
 
 After a frame is sent, the sender is required to "rekey" its sending key. After a frame
@@ -262,8 +263,12 @@ out of sync, the connection must be closed.
 
 All encryption happens with "nonce" of all zero.
 
-The Message Id is a unique number in the current communication. Senders must never repeat
+The Message Id must be a uniformly increasing number. Senders must never repeat
 the same Message Id in a session. If this can not be fulfilled, the connection must be closed.
+
+The Receiver must ignore messages with a lower Message Id, than the already processed one. This
+makes sure that if messages are repeated the Receiver will not try to decrypt messages for which
+it doesn't have the keys anymore.
 
 If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
@@ -437,43 +442,93 @@ what Controls it has, what Data it can provide, what Wiring it has currently con
 
 ## Technical Discussions
 
+### The Resolution Principle
+
+In SCAN any piece of data or command must be replaceable by newer versions
+of the same data or command.
+
+This means that any stream of data or commands *for the same thing*
+may be simply substituted by the last (newest) element. In other words, losing messages
+will only decrease the *resolution*, not change the *meaning*.
+
+"The same thing" is called a *modality* for the purposes of this specification. A *modality*
+is a single semantic entity on the device. A single physical sensor or a single logical
+entity that emits data or commands. For a modality any emitted data makes any old data
+from the same modality obsolete for the purposes of determining the state of the modality.
+
+An example would be submitting the current value of a thermistor, the current
+measured temperature. Any stream of this data may be replaced by the last measured
+value and it would only lose some temporal resolution, but the overall meaning
+would not be lost.
+
+A counter example would be a throttle control that submits changes (deltas, not absolute values) to its position.
+If any stream of such data would lose even one piece, it would change the meaning
+of the stream of data. It would result in the wrong setting on the receiver side.
+
+This principle is the backbone of handling backpressure and other connection problems
+and must be adhered to at all times.
+
+For the above to work the device must also make sure that the newest message does
+actually get delivered. So in the case of connection loss all devices must
+send all relevant newest data and/or commands immediately upon the connection is established.
+
+This applies also to the case if the device itself crashes and gets restarted. The device
+must send the newest messages for all modalities, or measure/acquire it explicitly
+again if those messages are no longer available.
+
+As a side-effect messages are also repeatable. Since a stream of two messages with
+the same content would also mean the same thing as one of those messages.
+
 ### Backpressure
 
 Backpressure is the mechanism by which consumers of messages can tell producers to slow
-down producing messages in the event that they can't consume them fast enough.
+down producing messages in the event that they can't consume them fast enough, or if
+the network is saturated and can't handle more traffic.
 
 In SCAN backpressure is done via the already built-in mechanisms of TCP. If a consumer
 is not ready to process another message it will not empty the TCP/IP receive buffer,
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
 
-All devices must respond to backpressure by *dropping* messages, as not dropping messages,
-such as queueing them will likely not alleviate the underlying problems. This only works
-if both commands and data are designed to *lose only resolution* when losing or dropping
-messages, not lose the command or data itself.
+Devices should implement an internal queue for messages to handle transient problems
+of the receiver or network.
 
-This in essence means that both commands and data must be designed to be *stateless*. All
-supplied data needs to stand in its own, without referencing older data points. 
-For example instead of supplying data like "3L flow since last data", use absolute
-measures like "34566L flow total". Commands
-must be designed to be absolute as well. For example instead of having commands like
-"+10% Power", commands need absolute values like "70% Power".
+At some point however, if the problem persists, 
+there will be new measurements or commands available and both
+the TCP buffer and internal queues will be full. In this case devices must respond by *dropping* messages.
+
+Devices must always drop oldest messages for the same modality first. As streams
+of such messages are always replaceable by the newest member, this will only cause
+resolution loss. Devices must not drop the last (newest) member of any stream of
+messages for the same modality and must keep trying to send that.
 
 ### Quality of Service
 
-Data does not have any acknowledgements outside of TCP layer acknowledgements. Those
-however do not indicate a successful processing or even reception at the endpoint,
-since proxies or other intermediaries may be in the network path.
+The Quality of Service of SCAN is not as clear-cut as "At most once", "At least once"
+or "Exactly Once". That is because the purpose of the network is not just getting data,
+but also *controlling* devices based on the most current data available as fast as possible.
 
-It doesn't need one though, because any issues in reception will eventually result
-in the connection to be closed. A new connection will then submit stateless data
-again, which will catch up the other party. Some resolution might get lost however.
+SCAN guarantees that *the most current data* is delivered *as fast as possible* at all times.
 
-Commands do have an explicit acknowledgement and therefore may need to be repeated
-if that acknowledgement is late or does not arrive. For this reason all commands
-must be *idempotent*. This just means that if the same command is repeated several
-times for some reason, the end-result must be the same as if the command
-was executed only once. Not counting the potential overhead of network and compute usage.
+The first part of that guarantee is that at least the most current data for each modality *will*
+be delivered eventually. That means if there is a new piece of data or there is a new command
+it will not get lost, only possibly replaced by an even newer piece of data or command for that same modality.
+This holds under all circumstances, even in the face of network errors and intermediaries having random errors.
+
+This is easy to prove using the following observations:
+* The device is only allowed to throw away "obsolete" messages, so the device will always eventually
+try to send the most current message for each modality.
+* If the device crashes or has other issues, it will restart and then it must start
+with sending the current state again.
+* Messages can not be silently dropped. 
+The very first message that can't be delivered will cause the connection to eventually break either because of
+TCP timeouts or because the encryption keys become out-of-sync. As the connection closes and is re-established
+the device is again obligated to send the newest of all modalities.
+
+The second part of the guarantee is that the newest data will be delivered as fast as possible. As fast
+as the network and the receiver allows, because if any of those is slow the device will start to
+drop obsolete messages in favor of more recent ones, which will both help solve the problem and
+reduce the time current data gets delivered.
 
 ## Appendix A: Terminology
 
@@ -486,3 +541,8 @@ multiple logical Devices.
 on the other party.
 * **Controlled**: The *Responder* on the application layer. The part who responds to commands
 from the other party.
+* **Modality**: A single physical or logical entity in a device, for which any stream of
+consecutive data items (or commands) can be replaced with the latest one without altering
+the meaning of the stream.
+
+
