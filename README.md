@@ -1,6 +1,6 @@
 # SCAN, Simple Control and Acquisition Network
 
-*Version 0.1, 2021-05-25*
+*Draft Version*
 
 SCAN is an open, free, easy-to-use, extensible, DIY-friendly
 way to collect data and control devices on a network.
