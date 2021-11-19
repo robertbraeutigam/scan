@@ -252,6 +252,8 @@ may be sent by both the initiator and responder.
 
 Payload structure:
 * Message Id (4 bytes, clear-aad)
+* Fragment Id (4 bytes, clear-aad)
+* Options (1 byte, clear-aad)
 * Payload (encrypted)
 
 After a frame is sent, the sender is required to "rekey" its sending key. After a frame
@@ -263,23 +265,23 @@ out of sync, the connection must be closed.
 
 All encryption happens with "nonce" of all zero.
 
-The Message Id must be a uniformly increasing number. Senders must never repeat
-the same Message Id in a session. If this can not be fulfilled, the connection must be closed.
+The Fragment Id must be a strictly increasing number and can not be repeated in a connection.
+If this requirement can not be met, the connection must be closed.
 
-The Receiver must ignore messages with a lower Message Id, than the already processed one. This
-makes sure that if messages are repeated the Receiver will not try to decrypt messages for which
-it doesn't have the keys anymore.
+The Receiver must ignore messages with a lower Fragment Id, than the already processed one. This
+makes sure that if frames are repeated the Receiver will not try to decrypt messages for which
+it doesn't have the keys anymore anyway. Frames may be repeated on network or devices failures.
 
-If a message is too large to fit
+The Message Id must be a strictly increasing number. If this requirement can not be met,
+the connection must be closed. The Message Id identifies a single message and all frames
+it consist of. If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
-same Message Id.
+same Message Id. A sender may also choose to fragment messages for other reasons, for example
+to get video frames that are already available quicker to the receiver.
 
-The last fragment of a message must have a payload that is less than the maximum size of the message.
-Conversely, if the payload length (in the frame header) is 65535 (the maximum), there must be a
-following fragment. If the last fragment's length is exactly 65535 by chance,
-then a new fragment needs to be sent with 0 net payload, which is the length
-of the decrypted application level payload. Note: 0 net payload will not result
-in a 0 frame length.
+The options contain following bits:
+* 0 bit: 1=Last fragment of a message, 0=Fragments follow
+* 1-7 bit: Reserved, must be set to 0.
 
 ### Message Choreography
 
@@ -439,6 +441,10 @@ Represented by the byte value: 01.
 
 Request the Controlled to supply meta-information about the device itself, including
 what Controls it has, what Data it can provide, what Wiring it has currently configured.
+
+#### DATA
+
+#### INVOKE
 
 ## Technical Discussions
 
