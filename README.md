@@ -98,7 +98,7 @@ The main purpose and design goals of this layer are the following:
 
 Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
-"server", or any central software or hardware components.
+"server", nor any central software or hardware components.
 
 To support every possible TCP/IP topology, each frame contains additional logical routing information and is designed
 to be able to be multiplexed, forwarded and proxied. 
@@ -414,8 +414,8 @@ A request is a message sent from the Controller to the Controlled. Its format is
 * Headers (a map, detailed below)
 * Content
 
-All requests contain an action (see below), some headers that describes an optional
-variable count and length parameter field, and an optional content.
+All requests contain an action (see below), some headers that describe an optional dynamic
+parameter list and an optional content.
 
 ### Responses
 
@@ -490,15 +490,18 @@ is not ready to process another message it will not empty the TCP/IP receive buf
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
 
-Devices must be able to keep two messages in memory for all modalities. The message
-that is currently being sent by the network stack and a queued message. Any or both
-of those might be empty.
-
-In the case of a new message for a modality where a queued message is already present,
-the queued message must be replaced by the new message. This means the device will
-*drop* obsolete messages intentionally. As streams
-of messages from the same modality are always replaceable by the newest member, this will only cause
-resolution loss. 
+Devices must react to this in one of the following ways:
+* Let the backpressure propagate upstream. That is, block the next sensor reading for example until
+the send buffer clears up. This may be implemented as easily as reading a sensor and
+sending data on the same thread. This will result in losing *resolution*, but not meaning, conforming
+to the resolution principle.
+* If the backpressure does not propagate, *drop* obsolete messages instead of queueing them. Replace
+a non-sent message from the same modality with a new one. Queued obsolete messages have no value
+to a controller and would likely only contribute to the problems causing the backpressure in
+the first place.
+* In case of streaming messages implement custom *drop* policy based on the data. For example
+in video streams drop obsolete frames, or in case of progressive video drop literal resolution
+until the backpressure is eased.
 
 ### Quality of Service
 
