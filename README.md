@@ -435,16 +435,16 @@ There may be multiple Responses with the same Reference Id.
 
 ### Actions
 
-#### OPTIONS
+Devices must ignore action codes that they don't understand.
 
-Represented by the byte value: 01.
+#### OPTIONS (01)
 
 Request the Controlled to supply meta-information about the device itself, including
 what Controls it has, what Data it can provide, what Wiring it has currently configured.
 
-#### DATA
+#### DATA (02)
 
-#### INVOKE
+#### INVOKE (03)
 
 ## Technical Discussions
 
