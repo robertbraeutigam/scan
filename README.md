@@ -133,27 +133,42 @@ A string is a length (2 bytes) followed by a byte array that contains UTF-8 enco
 
 All packets have the following header:
 
-* Source peer (32 bytes) (clear)
-* Destination peer (32 bytes) (clear)
-* Frame type (1 byte) (clear-aad)
+* Header (1 byte) (clear-frame type is aad)
+* (optional) Source peer (32 bytes) (clear)
+* (optional) Destination peer (32 bytes) (clear)
 * Number of following bytes (2 bytes) (clear)
 
-The source is the sending peer's public identity key.
-The destination is the public identity key of the target device. Note: none of the devices must necessarily
-be a party to this TCP/IP connection. Devices may communicate with proxies, gateways or other
-infrastructure components without their explicit knowledge. The sending device can assume
-that the receiving device is either the destination itself, or can route the message
-to the destination device, and vice-versa.
+The header describes what this frame means and certain format parameters. It is organized as follows:
+* Bit 0-5: Frame type (see next chapters)
+* Bit 6: Whether the source peer is given
+* Bit 7: Whether the destination peer is given
 
-The frame type describes the payload that follows the header. Devices must ignore messages
-with unknown frame type.
+The source is the sending peer's public identity key. The destination is the public identity key of the target device. 
+
+If both the source and destination are unique in a given TCP/IP connection, meaning that the TCP/IP
+connection only carries this single logical connection, there is no need to
+continuously send peer identifications. In this case both identifiers can be omitted.
+
+This is also true for cases when either one of the identifications is superfluous. Devices need
+to track logical connections in TCP/IP connections and know when this is the case. This information
+is therefore essentially redundant, but may help some implementations.
+
+The receiving device of a frame may ignore superfluous identifiers without further validation.
+
+Since a single logical connection may traverse multiple TCP/IP connections, when routed through
+proxies or gateways, the presence of peer identifications may be added or removed as needed
+by intermediaries.
 
 ### Frame types
+
+Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
+bytes in the stream.
 
 #### Frame type: 01 (Initiate Handshake)
 
 Sent from the initiator of the connection immediately upon establishing the
-TCP/IP connection. It transmits the first handshake message together with the
+TCP/IP connection. Both sender and destination identifiers must be present in this frame.
+It transmits the first handshake message together with the
 Noise Protocol Name.
 
 Payload structure:
