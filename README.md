@@ -167,7 +167,7 @@ bytes in the stream.
 #### Frame type: 01 (Initiate Handshake)
 
 Sent from the initiator of the connection immediately upon establishing the
-TCP/IP connection. Both sender and destination identifiers must be present in this frame.
+TCP/IP connection.
 It transmits the first handshake message together with the
 Noise Protocol Name.
 
@@ -219,6 +219,8 @@ Note, that the handshake does not identify the PSK used explicitly. The responde
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only. Still,
 this mechanism is designed with a limited set of possible PSKs in mind.
+
+Both the sender and destination identifier must be present in this frame.
 
 This frame may contain an optional payload. If the handshake is complete after
 the initial handshake message, the initiator is free to send the first payload
