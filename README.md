@@ -347,7 +347,7 @@ A handshake is started by the initiator.
 2. Initiator sends "Initiate Handshake" message.
 3. If handshake not concluded, Responder sends "Continue Handshake".
 4. If handshake not concluded, Initiator also sends "Continue Handshake" and process continues at step 3 again.
-5. Logical connection established.
+5. If no errors happened, logical connection established.
 
 After the handshake is finished both parties are now allowed to send any number of application messages in any order, provided
 the chosen Noise protocol allows it.
@@ -363,7 +363,7 @@ The handshake message that completes the handshake may optionally already contai
 1. Initiator sends Application Messages with previously established keys.
 2. If Responder does not remember previous keys, or is unable to decrypt, it sends a Renegotiate frame.
 3. If Responder sent Renegotiate, Initiator removes it keys and closes the connection.
-4. Logical connection established.
+4. Otherwise, logical connection established.
 
 ### Address Resolution
 
