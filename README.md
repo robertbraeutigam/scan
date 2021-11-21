@@ -95,7 +95,7 @@ The main purpose and design goals of this layer are the following:
   being sent or even streamed indefinitely.
 * Intentionally **fragmenting** messages so each fragment can be validated on its own and
   potentially partially processed, without assembling the whole message in memory.
-* As **minimal overhead** as possible.
+* Add as **minimal overhead** as possible.
 
 Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
