@@ -95,6 +95,7 @@ The main purpose and design goals of this layer are the following:
   being sent or even streamed indefinitely.
 * Intentionally **fragmenting** messages so each fragment can be validated on its own and
   potentially partially processed, without assembling the whole message in memory.
+* As **minimal overhead** as possible.
 
 Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
@@ -262,15 +263,16 @@ connections.
 
 This message has no payload.
 
-#### Frame type: 04 (Application Message)
+#### Frame type: 04 (Application Message Intemediate Frame)
+
+A part of an application message, incuding the initial frame, but not the last frame. This frame indicates
+that the message is not complete, additional frames will follow for this message.
 
 The actual payload of the application layer is described in the next chapters. This message
 may be sent by both the initiator and responder.
 
 Payload structure:
 * Message Id (4 bytes, clear-aad)
-* Fragment Id (4 bytes, clear-aad)
-* Options (1 byte, clear-aad)
 * Payload (encrypted)
 
 After a frame is sent, the sender is required to "rekey" its sending key. After a frame
@@ -278,16 +280,9 @@ is received, the receiver is required to "rekey" its receiving key. This means
 frames are perfectly forward secure, as each frame is encrypted with a different key.
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
-out of sync, the connection must be closed.
+out of sync, messages were omitted or repeated for example, the connection must be closed.
 
 All encryption happens with "nonce" of all zero.
-
-The Fragment Id must be a strictly increasing number and can not be repeated in a connection.
-If this requirement can not be met, the connection must be closed.
-
-The Receiver must ignore messages with a lower Fragment Id, than the already processed one. This
-makes sure that if frames are repeated the Receiver will not try to decrypt messages for which
-it doesn't have the keys anymore anyway. Frames may be repeated on network or devices failures.
 
 The Message Id must be a strictly increasing number. If this requirement can not be met,
 the connection must be closed. The Message Id identifies a single message and all frames
@@ -296,9 +291,17 @@ into one Application Message frame, it must be fragmented, with each fragment ha
 same Message Id. A sender may also choose to fragment messages for other reasons, for example
 to get video frames that are already available quicker to the receiver.
 
-The options contain following bits:
-* 0 bit: 1=Last fragment of a message, 0=Fragments follow
-* 1-7 bit: Reserved, must be set to 0.
+#### Frame type: 05 (Application Message Last Frame)
+
+The last frame of an application message. This frame may also be potentially the first and only
+frame the message has. It indicates
+that the application message identified by Message Id is complete with this payload.
+
+Payload structure:
+* Message Id (4 bytes, clear-aad)
+* Payload (encrypted)
+
+Encryption and key management is the same as for intermediate frames.
 
 ### Message Choreography
 
