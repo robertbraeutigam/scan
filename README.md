@@ -120,6 +120,8 @@ needs to be sent.
 The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
+The physical connection is for SCAN logical connection is on port 11372.
+
 ### Types
 
 All number types, if not stated otherwise, are network byte order (big-endian, most significant byte
@@ -394,8 +396,10 @@ to connect through a SCAN gateway.
 If a device does not have a statically available address for a static key,
 a local TCP/IP network resolution has to be attempted through a multicast UDP message.
 
-The UDP packet needs to be sent to 224.0.0.1, port 11372. The contents as follows:
-* 01 (fixed byte)
+The UDP packet needs to be sent to 239.255.255.244, port 11372. The contents as follows:
+* 33 (fixed byte)
+* Number of bytes following (2 bytes)
+* Query Id (4 bytes)
 * Target query static keys... (32 bytes each)
 
 The query can contain any number of target addresses between 0 and 100. All the
@@ -403,21 +407,31 @@ host devices with the listed keys must respond to this query. A query with 0
 target keys is a wildcard query, which means *all* devices in the local network
 must respond.
 
+The query Id is a strictly increasing number for each query.
+
+The query may be repeated at most 5 times, with a random interval between 1-2 seconds, or until
+all queried static keys receive an answer.
+
 Note that wildcard queries may or may not return all devices depending on 
 online/offline status, or network topology.
 
+Note also that the number of bytes is redundant for a UDP packet, but is listed nevertheless
+to be compatible with the message format on the TCP port.
+
 All devices must be subscribed to the above multicast address and must reply when they are a target
-of a query with a UDP reply. Contents as follows:
-* 02 (fixed byte)
+of a query, unless they already answered the given Query Id. The reply must be sent as a TCP/IP
+answer, not a UDP one. With the message format:
+* 34 (fixed byte)
+* Number of bytes following (2 bytes)
 * Static keys... (32 bytes each)
 
 This reply tells the requester that these static keys are reachable at
-the address this UDP Packet is from. A device, such as a gateway,
+the address this connection is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
-If the number of static keys in the response exceed 100, the responding device
-must repeat this UDP reply message until all known static keys are sent.
+The responder may repeat the frame as many times as necessary and then must close the connection
+immediately.
 
 #### Non-local Networks, NAT or Firewalled Networks
 
@@ -434,7 +448,9 @@ when configuring the application layer later.
 #### Announcement
 
 Devices must always announce themselves when they become available on the local
-network. They must send their static address with the UDP packet (type 02) as above.
+network. They must send their static address with the UDP packet (type 34) as above.
+
+This Announcement must be repeated 5 times, with a random interval between 1-2 seconds.
 
 ## Application Layer
 
