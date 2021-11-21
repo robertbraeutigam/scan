@@ -303,12 +303,33 @@ Payload structure:
 
 Encryption and key management is the same as for intermediate frames.
 
+#### Frame type: 06 (Renegotiate)
+
+The responder may send this message to instruct the initiator to reopen the connection with
+a new handshake.
+
+There is no payload in this message.
+
+When a connection is closed or lost, upon re-establishing the initiator may
+continue to send frames with the already established keys for the previously lost logical connection.
+That is, it may continue sending application messages instead of starting with a handshake again.
+
+Devices may support remembering already established keys, or may even persist them to survive
+restarts. Therefore an initiator may try to continue communication with previously established keys.
+
+If this assumption does not hold, the responder must send a Renegotiate frame to indicate that
+it can not in fact decrypt the received messages, either because it does not remember the necessary
+keys or it became out of sync with the initiator and a new handshaking process is needed.
+
+The initiator should assume that the messages it sent in the meantime were not received
+and must remove its old keys and close the connection.
+
 ### Message Choreography
 
 All communication happens through TCP/IP connections. There can be only one logical connection
 between any two parties. If a logical connection already exists, that must be used.
 If not, a new logical connection needs to be established. If there is already a TCP/IP
-connection from the source to the target, that TCP/IP connection must be used. If not, a new TCP/IP
+connection between the source and the target, that TCP/IP connection must be used. If not, a new TCP/IP
 connection must be established first.
 
 The *initiator* of the connection is the party that opens the logical connection.
@@ -318,22 +339,31 @@ It is an error to try to initiate or accept a connection if the peer is already 
 other party. Each party is either an initiator or responder with regards to another party
 with which a connection is already open.
 
-The overall choreography of the network protocol is as follows:
+#### Initiator establishes new connection
 
-1. Initiator opens connection and sends "Initiate Handshake" message.
-2. Responder sends "Continue Handshake", if not a zero-roundtrip protocol is used.
-3. If handshake not concluded, Initiator also sends "Continue Handshake".
-   If handshake not concluded after that, go to 2.
-4. Both parties are now free to send, stream any number of Application Messages in any order including in parallel. Note: If
-a zero-roundtrip protocol is used only the initiator can send.
+A handshake is started by the initiator.
 
-Sending "Initiate Handshake" or "Continue Handshake" messages after the connection has been
-established is an error. The logical connection must be closed as a result.
+1. If there is no TCP/IP connection between the two peers, initiator opens one.
+2. Initiator sends "Initiate Handshake" message.
+3. If handshake not concluded, Responder sends "Continue Handshake".
+4. If handshake not concluded, Initiator also sends "Continue Handshake" and process continues at step 3 again.
+5. Logical connection established.
+
+After the handshake is finished both parties are now allowed to send any number of application messages in any order, provided
+the chosen Noise protocol allows it.
 
 Any party may close the connection at any time for any reason. The initiator is
-free to re-open the connection at any time.
+free to re-open the connection at any time. The Responder may close the connection
+with the Renegotiate frame.
 
 The handshake message that completes the handshake may optionally already contain the first payload.
+
+#### Initiator re-establishes a connection
+
+1. Initiator sends Application Messages with previously established keys.
+2. If Responder does not remember previous keys, or is unable to decrypt, it sends a Renegotiate frame.
+3. If Responder sent Renegotiate, Initiator removes it keys and closes the connection.
+4. Logical connection established.
 
 ### Address Resolution
 
