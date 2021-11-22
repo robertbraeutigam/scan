@@ -84,7 +84,7 @@ auto-connecting a Plotter to a GPS Receiver.
 
 ## Network Layer
 
-The network protocol is designed to be a "layer" on top of TCP/IP. It is independent and
+The network protocol is designed to be a "layer" on top of the IP. It is independent and
 ignorant of the "application layer" protocol defined in the next chapters.
 
 The main purpose and design goals of this layer are the following:
@@ -93,7 +93,7 @@ The main purpose and design goals of this layer are the following:
 * Enable **multiplexing**, so that multiple logical connections can be established through one TCP/IP connection.
 * Enable **message mixing**. Enable a device to interject messages even if another message is currently
   being sent or even streamed indefinitely.
-* Intentionally **fragmenting** messages so each fragment can be validated on its own and
+* Enable **message fragmenting** so each fragment can be validated on its own and
   potentially partially processed, without assembling the whole message in memory.
 * Add as **minimal overhead** as possible.
 
@@ -101,7 +101,7 @@ Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
 "server", nor any central software or hardware components.
 
-To support every possible TCP/IP topology, each frame contains additional logical routing information and is designed
+To support every possible IP topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
 The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
@@ -117,12 +117,29 @@ If any parties to a communication encounter any errors in the protocol or interp
 they must immediately close the logical connection. If the logical connection is the only one in
 the "physical" TCP/IP connection, that needs to be closed instead. If not, a close message
 needs to be sent.
+
 The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
-The physical connection is for SCAN logical connection is on port 11372.
+### Connections
 
-### Types
+SCAN uses two types of communication. Both must be supported by all devices.
+
+* The bulk of the protocol, the application layer, is defined over TCP on port 11372.
+* Additionally a query / announce feature is available over UDP, at the address 239.255.255.244:11372.
+
+While the application layer must always go through TCP, the query / announce part of the
+protocol may use both TCP and UDP and even mix the two if appropriate. See messages
+for further details.
+
+Devices must reuse TCP connections, therefore
+at most one TCP connection must be present between two given peers at all times.
+
+All UDP packets sent, regardless of content must be repeated 5 times with a random interval
+between 1-2 seconds, except if it is known that repeating won't make a difference. Such as
+getting a valid and complete answer to a query.
+
+### Data Types
 
 All number types, if not stated otherwise, are network byte order (big-endian, most significant byte
 first) and are unsigned.
@@ -167,11 +184,14 @@ by intermediaries.
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
 bytes in the stream.
 
+Frame types 0-31 may only be sent on TCP connections, while frames 32-63 may be sent
+and received on both a TCP connection and on the UDP broadcast port.
+
 #### Frame type: 01 (Initiate Handshake)
 
-Sent from the initiator of the connection immediately upon establishing the
-TCP/IP connection.
-It transmits the first handshake message together with the
+Sent from the initiator of the connection immediately upon to establish a logical connection.
+If a TCP connection does not exist yet, the initiator must open one first.
+The frame transmits the first handshake message together with the
 Noise Protocol Name.
 
 Payload structure:
@@ -250,24 +270,23 @@ this frame.
 
 #### Frame type: 03 (Close Connection)
 
-There can be more than one logical connection in a single TCP/IP connection. In this case
+There can be more than one logical connection in a single TCP connection. In this case
 the party trying to terminate a logical connection must use this message to indicate
-that the communication is considered terminated. This means the initiator will need
-to begin again with an Initiate Handshake if it wants to re-establish the connection.
+that the communication is considered terminated. 
 
-If the TCP/IP connection has only this one logical connection, then
-that needs to be closed instead of sending this message.
+If the TCP connection has only this one logical connection, then
+that must be closed instead of sending this message.
 
 This message may be sent by intermediaries between the initiator and responder. For example
-a proxy might generate a Close Connection message if a TCP/IP connection to one party is lost
-and the other one is still connected through a TCP/IP connection that has other active
+a proxy might generate a Close Connection message if a TCP connection to one party is lost
+and the other one is still connected through a TCP connection that has other active
 connections.
 
 This message has no payload.
 
-#### Frame type: 04 (Application Message Intemediate Frame)
+#### Frame type: 04 (Application Message Intermediate Frame)
 
-A part of an application message, incuding the initial frame, but not the last frame. This frame indicates
+A part of an application message, including the initial frame, but not the last frame. This frame indicates
 that the message is not complete, additional frames will follow for this message.
 
 The actual payload of the application layer is described in the next chapters. This message
@@ -325,6 +344,54 @@ keys or it became out of sync with the initiator and a new handshaking process i
 
 The initiator should assume that the messages it sent in the meantime were not received
 and must remove its old keys and close the connection.
+
+#### Frame type: 33 (Identity Query)
+
+Sent either through TCP or UDP to query a host or hosts about the identities it represents.
+
+Payload structure:
+* Query Id (4 bytes)
+* Target query static keys... (32 bytes each)
+
+TODO: describe
+
+The query can contain any number of target addresses between 0 and 100, for which the
+IP address is to be returned. 
+
+The query Id is a strictly increasing number for each query. Devices should remember
+the last query Id for each host for 10 seconds and not respond if they already done so.
+
+ All the
+host devices with the listed keys must respond to this query. A query with 0
+target keys is a wildcard query, which means *all* devices in the local network
+must respond.
+
+
+
+However, if the device is configured with a gateway or multiple gateways, that is, it is assumed not to be in the same administrative
+scope as other devices, it may directly announce itself through TCP to the gateway instead of using UDP. The gateway
+will then represent itself as having that identity to the rest of the network.
+
+
+Note that wildcard queries may or may not return all devices depending on 
+online/offline status, or network topology.
+
+#### Frame type: 34 (Identity Announcement)
+
+Sent either through TCP or UDP to announce an identity being available from a host.
+
+Payload structure:
+* Static keys... (32 bytes each)
+
+TODO:
+
+This reply tells the requester that these static keys are reachable at
+the address this connection is from. A device, such as a gateway,
+may represent multiple devices on the local network, that is why
+multiple static keys may reside at the same IP address.
+
+The responder may repeat the frame as many times as necessary and then must close the connection
+immediately.
 
 ### Message Choreography
 
@@ -393,21 +460,10 @@ to connect through a SCAN gateway.
 
 #### Local Network
 
+TODO: mesh with normal packets above
+
 If a device does not have a statically available address for a static key,
 a local TCP/IP network resolution has to be attempted through a multicast UDP message.
-
-The UDP packet needs to be sent to 239.255.255.244, port 11372. The contents as follows:
-* 33 (fixed byte)
-* Number of bytes following (2 bytes)
-* Query Id (4 bytes)
-* Target query static keys... (32 bytes each)
-
-The query can contain any number of target addresses between 0 and 100. All the
-host devices with the listed keys must respond to this query. A query with 0
-target keys is a wildcard query, which means *all* devices in the local network
-must respond.
-
-The query Id is a strictly increasing number for each query.
 
 The query may be repeated at most 5 times, with a random interval between 1-2 seconds, or until
 all queried static keys receive an answer.
@@ -424,14 +480,6 @@ answer, not a UDP one. With the message format:
 * 34 (fixed byte)
 * Number of bytes following (2 bytes)
 * Static keys... (32 bytes each)
-
-This reply tells the requester that these static keys are reachable at
-the address this connection is from. A device, such as a gateway,
-may represent multiple devices on the local network, that is why
-multiple static keys may reside at the same IP address.
-
-The responder may repeat the frame as many times as necessary and then must close the connection
-immediately.
 
 #### Non-local Networks, NAT or Firewalled Networks
 
@@ -547,6 +595,8 @@ send all relevant newest data and/or commands immediately upon the connection is
 This applies also to the case if the device itself crashes and gets restarted. The device
 must send the newest messages for all modalities, or measure/acquire it explicitly
 again if those messages are no longer available.
+
+TODO: What about one time events?
 
 As a side-effect messages are also repeatable. Since a stream of two messages with
 the same content would also mean the same thing as one of those messages.
