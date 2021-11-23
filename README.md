@@ -585,13 +585,6 @@ A counter example would be a throttle control that submits changes (deltas, not 
 If any stream of such data would lose even one piece, it would change the meaning
 of the stream of data. It would result in the wrong setting on the receiver side.
 
-Another interesting example are events. Since an event
-is conventionally not a "stream", it may not adhere to this principle by default.
-However, devices must consider the timestamp that goes with every piece of data.
-A sender may repeat an event because it would have the same timestamp as before,
-when the event was observed. Therefore the receiver can determine whether it needs
-to handle that event again.
-
 This principle is the backbone of handling backpressure and other connection problems
 and must be adhered to at all times.
 
