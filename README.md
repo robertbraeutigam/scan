@@ -585,6 +585,13 @@ A counter example would be a throttle control that submits changes (deltas, not 
 If any stream of such data would lose even one piece, it would change the meaning
 of the stream of data. It would result in the wrong setting on the receiver side.
 
+Another interesting example are events. Since an event
+is conventionally not a "stream", it may not adhere to this principle by default.
+However, devices must consider the timestamp that goes with every piece of data.
+A sender may repeat an event because it would have the same timestamp as before,
+when the event was observed. Therefore the receiver can determine whether it needs
+to handle that event again.
+
 This principle is the backbone of handling backpressure and other connection problems
 and must be adhered to at all times.
 
@@ -596,7 +603,9 @@ This applies also to the case if the device itself crashes and gets restarted. T
 must send the newest messages for all modalities, or measure/acquire it explicitly
 again if those messages are no longer available.
 
-TODO: What about one time events?
+If a modality can not be directly measured, such as an alert that was generated
+which no longer applies, devices must make sure such data is persisted and available
+in case of a crash or restart.
 
 As a side-effect messages are also repeatable. Since a stream of two messages with
 the same content would also mean the same thing as one of those messages.
