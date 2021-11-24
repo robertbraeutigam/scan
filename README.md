@@ -90,7 +90,7 @@ ignorant of the "application layer" protocol defined in the next chapters.
 The main purpose and design goals of this layer are the following:
 * Provide **security** features, such as authentication, authorization and anti-tempering features.
 * Logical **routing** capabilities, provide a virtual flat topology.
-* Enable **multiplexing**, so that multiple logical connections can be established through one TCP/IP connection.
+* Enable **multiplexing**, so that multiple logical connections can be established through one TCP connection.
 * Enable **message mixing**. Enable a device to interject messages even if another message is currently
   being sent or even streamed indefinitely.
 * Enable **message fragmenting** so each fragment can be validated on its own and
@@ -111,11 +111,11 @@ A logical connection is a connection between two devices identified by their pub
 devices have a static key pair, the public part of which identifies the device uniquely and securely
 on the network. There 
 can be at most one logical connection between any two devices, because the unordered pair of public static keys uniquely identifies
-a logical connection. Note however, that one TCP/IP connection can tunnel more than one logical connection.
+a logical connection. Note however, that one TCP connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
 they must immediately close the logical connection. If the logical connection is the only one in
-the "physical" TCP/IP connection, that needs to be closed instead. If not, a close message
+the "physical" TCP connection, that needs to be closed instead. If not, a close message
 needs to be sent.
 
 The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
@@ -165,17 +165,17 @@ The header describes what this frame means and certain format parameters. It is 
 
 The source is the sending peer's public identity key. The destination is the public identity key of the target device. 
 
-If both the source and destination are unique in a given TCP/IP connection, meaning that the TCP/IP
+If both the source and destination are unique in a given TCP connection, meaning that the TCP
 connection only carries this single logical connection, there is no need to
 continuously send peer identifications. In this case both identifiers can be omitted.
 
 This is also true for cases when either one of the identifications is superfluous. Devices need
-to track logical connections in TCP/IP connections and know when this is the case. This information
+to track logical connections in TCP connections and know when this is the case. This information
 is therefore essentially redundant, but may help some implementations.
 
 The receiving device of a frame may ignore superfluous identifiers without further validation.
 
-Since a single logical connection may traverse multiple TCP/IP connections, when routed through
+Since a single logical connection may traverse multiple TCP connections, when routed through
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries.
 
@@ -399,10 +399,10 @@ because it is likely the query will be received multiple times, but should be an
 
 ### Message Choreography
 
-All communication happens through TCP/IP connections. There can be only one logical connection
+All communication happens through TCP connections. There can be only one logical connection
 between any two parties. If a logical connection already exists, that must be used.
-If not, a new logical connection needs to be established. If there is already a TCP/IP
-connection between the source and the target, that TCP/IP connection must be used. If not, a new TCP/IP
+If not, a new logical connection needs to be established. If there is already a TCP
+connection between the source and the target, that TCP connection must be used. If not, a new TCP
 connection must be established first.
 
 The *initiator* of the connection is the party that opens the logical connection.
@@ -416,7 +416,7 @@ with which a connection is already open.
 
 A handshake is started by the initiator.
 
-1. If there is no TCP/IP connection between the two peers, initiator opens one.
+1. If there is no TCP connection between the two peers, initiator opens one.
 2. Initiator sends "Initiate Handshake" message.
 3. If handshake not concluded, Responder sends "Continue Handshake".
 4. If handshake not concluded, Initiator also sends "Continue Handshake" and process continues at step 3 again.
@@ -608,7 +608,7 @@ down producing messages in the event that they can't consume them fast enough, o
 the network is saturated and can't handle more traffic.
 
 In SCAN backpressure is done via the already built-in mechanisms of TCP. If a consumer
-is not ready to process another message it will not empty the TCP/IP receive buffer,
+is not ready to process another message it will not empty the TCP receive buffer,
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
 
