@@ -347,13 +347,12 @@ and must remove its old keys and close the connection.
 
 #### Frame type: 33 (Identity Query)
 
-Sent either through TCP or UDP to query a host or hosts about the identities it represents.
+This frame is used to establish the IP addresses belonging to static identity keys,
+or to find out what devices are on the network.
 
 Payload structure:
 * Query Id (4 bytes)
 * Target query static keys... (32 bytes each)
-
-TODO: describe
 
 The query can contain any number of target addresses between 0 and 100, for which the
 IP address is to be returned. 
@@ -361,37 +360,42 @@ IP address is to be returned.
 The query Id is a strictly increasing number for each query. Devices should remember
 the last query Id for each host for 10 seconds and not respond if they already done so.
 
- All the
-host devices with the listed keys must respond to this query. A query with 0
-target keys is a wildcard query, which means *all* devices in the local network
-must respond.
+This frame may get sent over UDP or TCP. In case the sender is set up to use a gateway,
+and presumably is not on the same administrative network as other devices, it may send
+the query through TCP directly to the gateway. Otherwise it is a broadcast UDP frame.
 
+If the frame is sent as a broadcast UDP message, all
+devices with the listed keys must respond to this query. If it is sent to a
+gateway, the gateway must respond.
 
-
-However, if the device is configured with a gateway or multiple gateways, that is, it is assumed not to be in the same administrative
-scope as other devices, it may directly announce itself through TCP to the gateway instead of using UDP. The gateway
-will then represent itself as having that identity to the rest of the network.
-
+A query with 0 target keys is a wildcard query, which means *all* devices in the local network
+must respond if sent as a broadcast frame. If sent to a gateway, the gateway must respond with
+all the identity keys that are reachable through the gateway.
 
 Note that wildcard queries may or may not return all devices depending on 
-online/offline status, or network topology.
+online/offline status, or network topology, timeouts or network congestion.
 
 #### Frame type: 34 (Identity Announcement)
 
-Sent either through TCP or UDP to announce an identity being available from a host.
+Announces the identity or identities represented by a device.
 
 Payload structure:
 * Static keys... (32 bytes each)
 
-TODO:
-
 This reply tells the requester that these static keys are reachable at
-the address this connection is from. A device, such as a gateway,
+the address this frame is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
-The responder may repeat the frame as many times as necessary and then must close the connection
-immediately.
+Devices must send Announcements through UDP when they come online.
+
+Devices must answer Identity Queries through a TCP connection. If there is already
+a TCP connection to the device requesting, then that connection must be used. Otherwise
+a TCP connections needs to be established first. This connection must be closed after
+the reply is complete, if it becomes unused.
+
+Devices should remember the query Id answered for 10 seconds, if received through UDP. This is
+because it is likely the query will be received multiple times, but should be answered only once.
 
 ### Message Choreography
 
