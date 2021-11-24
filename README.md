@@ -639,11 +639,12 @@ This is easy to prove using the following observations:
 error which eventually closes the connection. There can not be any other outcomes.
 * If the message is dropped intentionally, that can only happen if a newer message for that modality
 exist, so the guarantee stands.
-* If the message is lost on the network the TCP connection will eventually time out or if it is
-somehow silently dropped the next message will result in a wrong decryption because of rotating the keys.
+* If the message is lost on the network the TCP connection will eventually time out. If it is
+somehow silently dropped, the next message will result in a wrong decryption because of the rotating keys.
 Either way the connection will close.
 * If the source or target device crashes during some phase of the communication the connection will be lost too.
-* If any connection is re-established all of the current state is retransmitted.
+* If any connection is re-established all of the current state is retransmitted. Hence a lost connection
+results in a sort-of "save-point" to be re-established.
 
 The second part of the guarantee is that the newest data will be delivered as fast as possible. As fast
 as the network and the receiver allows, because if any of those is slow the device will drop obsolete messages
