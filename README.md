@@ -625,7 +625,7 @@ until the backpressure is eased.
 
 The Quality of Service of SCAN is not as clear-cut as "At most once", "At least once"
 or "Exactly Once". That is because the purpose of the network is not just getting data,
-but also *controlling* devices based on the most current data available as fast as possible.
+but also *controlling* devices based on the most current data available.
 
 SCAN guarantees that *the most current data* is delivered *as fast as possible* at all times.
 
