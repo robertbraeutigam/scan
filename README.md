@@ -639,14 +639,15 @@ it will not get lost, only possibly replaced by an even newer piece of data or c
 This holds under all circumstances, even in the face of network errors and intermediaries having random errors.
 
 This is easy to prove using the following observations:
-* The device is only allowed to throw away "obsolete" messages, so the device will always eventually
-try to send the most current message for each modality.
-* If the device crashes or has other issues, it will restart and then it must start
-with sending the current state again.
-* Messages can not be silently dropped. 
-The very first message that can't be delivered will cause the connection to eventually break either because of
-TCP timeouts or because the encryption keys become out-of-sync. As the connection closes and is re-established
-the device is again obligated to send the newest of all modalities.
+* After a message is created it either gets delivered, dropped by the device intentionally, or results in an
+error which eventually closes the connection. There can not be any other outcomes.
+* If the message is dropped intentionally, that can only happen if a newer message for that modality
+exist, so the guarantee stands.
+* If the message is lost on the network the TCP connection will eventually time out or if it is
+somehow silently dropped the next message will result in a wrong decryption because of rotating the keys.
+Either way the connection will close.
+* If the source or target device crashes during some phase of the communication the connection will be lost too.
+* If any connection is re-established all of the current state is retransmitted.
 
 The second part of the guarantee is that the newest data will be delivered as fast as possible. As fast
 as the network and the receiver allows, because if any of those is slow the device will drop obsolete messages
