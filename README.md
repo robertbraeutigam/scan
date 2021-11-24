@@ -387,19 +387,21 @@ the address this frame is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
-Devices must send Announcements through UDP when they come online.
+Devices must always announce themselves when they become available.
+The announcement is sent according to network configuration either as
+a UDP broadcast or TCP connection to gateways.
 
 Devices must answer Identity Queries through a TCP connection. If there is already
 a TCP connection to the device requesting, then that connection must be used. Otherwise
-a TCP connections needs to be established first. This connection must be closed after
-the reply is complete, if it becomes unused.
+a TCP connection needs to be established first. This connection must be closed after
+the reply is complete, if it is otherwise unused.
 
-Devices should remember the query Id answered for 10 seconds, if received through UDP. This is
+Devices should remember the last query Id answered for 10 seconds, if received through UDP. This is
 because it is likely the query will be received multiple times, but should be answered only once.
 
 ### Message Choreography
 
-All communication happens through TCP connections. There can be only one logical connection
+There can be only one logical connection
 between any two parties. If a logical connection already exists, that must be used.
 If not, a new logical connection needs to be established. If there is already a TCP
 connection between the source and the target, that TCP connection must be used. If not, a new TCP
@@ -491,12 +493,6 @@ of IP addresses.
 If an IP address can not be found for a given identity key, the connection can not be established.
 Devices may choose display this to the user if capable, or may send specific error events through
 other logical connections.
-
-#### Announcement
-
-Devices must always announce themselves when they become available on the local
-network. The announcement is sent according to network configuration either as
-a UDP broadcast or TCP connection to gateways.
 
 ## Application Layer
 
