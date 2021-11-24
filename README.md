@@ -438,71 +438,65 @@ The handshake message that completes the handshake may optionally already contai
 3. If Responder sent Renegotiate, Initiator removes it keys and closes the connection.
 4. Otherwise, logical connection established.
 
+### Network Configuration
+
+Devices are expected to be available through a variety of network topologies and configurations,
+including through static or non-static IP addresses, through WiFi, with or without DHCP, through VPN,
+or through multiple network segments each with its own network zones or firewalls.
+
+Devices therefore must support low level network configuration options to enable them to participate
+in the SCAN network. These must at least include the following options:
+* Direct connection to SCAN network. Discovery and address resolution through broadcast UDP.
+* Connection through a gateway or gateways. Discovery and address resolution through gateway directly.
+
+Gateways present a way to configure a static set of IP addresses to speak to.
+This may be necessary for devices that are not on any "local" network. Connected through
+untrusted networks, such as cellular networks or other host networks.
+
+In addition, the network must support at least one direction of communication between devices
+or devices and gateways.
+
+Devices should do anything and everything that can be securely done to not have to configure
+the network to use the device. This should include the following:
+* Support WPS to join a WiFi network without configuration.
+* Support, detect and use DHCP if available.
+* Support local-link IP address auto-selection when DHCP not available, to support ad-hoc
+wired networks.
+
+Devices may support other methods to connect to a SCAN network, like VPN, Proxies, or other custom tunnelling
+methods.
+
+At the end of the network configuration devices must be able to send and receive frames to and from
+the rest of the SCAN network.
+
 ### Address Resolution
 
-To be able to establish a "physical" TCP/IP connection between parties having static keys,
-there must be a way to query the network what actual TCP/IP address is associated with
+To be able to establish a "physical" TCP connection between parties having static keys,
+there must be a way to query the network what actual IP address is associated with
 a given static key. This mechanism is not unlike what IP does to query the network
 for a MAC address for a given IP.
 
-It is possible that devices will be available through non-static IP addresses, for example
-through WiFi with DHCP or even random link-local addresses. For this reason a device should attempt an address resolution every time before
-establishing a TCP/IP connection. The device may use cached values of already resolved TCP/IP
+Device must attempt an address resolution every time before
+establishing a TCP connection. The device may use cached values of already resolved IP
 addresses, it must however fall back on a resolution process if connection can not be established
 with cached value.
 
-#### Configuration
+An Address Resolution is sending an Identity Query based on the configured network either through
+UDP broadcast or through TCP directly to a gateway and processing the Identity Announcement
+that comes back.
 
-Devices may support a statically configured resolution table.
+Devices may continue to monitor unsolicited Identity Announcements to build an internal cache
+of IP addresses.
 
-This may be the case for devices that are not on any "local" network. Connected through
-untrusted networks, such as cellular networks or other host networks.
-
-The configured table may be composed of multiple key and address (or hostname) pairs, or
-contain a wildcard route for all keys to a single host. The latter enables the device
-to connect through a SCAN gateway.
-
-#### Local Network
-
-TODO: mesh with normal packets above
-
-If a device does not have a statically available address for a static key,
-a local TCP/IP network resolution has to be attempted through a multicast UDP message.
-
-The query may be repeated at most 5 times, with a random interval between 1-2 seconds, or until
-all queried static keys receive an answer.
-
-Note that wildcard queries may or may not return all devices depending on 
-online/offline status, or network topology.
-
-Note also that the number of bytes is redundant for a UDP packet, but is listed nevertheless
-to be compatible with the message format on the TCP port.
-
-All devices must be subscribed to the above multicast address and must reply when they are a target
-of a query, unless they already answered the given Query Id. The reply must be sent as a TCP/IP
-answer, not a UDP one. With the message format:
-* 34 (fixed byte)
-* Number of bytes following (2 bytes)
-* Static keys... (32 bytes each)
-
-#### Non-local Networks, NAT or Firewalled Networks
-
-If one or more, or even all of the devices are scattered across different
-IP networks, local address resolution will obviously not work. In case
-any of these devices need to initiate a connection to another device,
-they need to be configured with a static resolution table as 
-described above.
-
-It may be the case that devices behind firewalls or NATs will only be able
-to initiate connections, but not receive them. This must be taken into account
-when configuring the application layer later.
+If an IP address can not be found for a given identity key, the connection can not be established.
+Devices may choose display this to the user if capable, or may send specific error events through
+other logical connections.
 
 #### Announcement
 
 Devices must always announce themselves when they become available on the local
-network. They must send their static address with the UDP packet (type 34) as above.
-
-This Announcement must be repeated 5 times, with a random interval between 1-2 seconds.
+network. The announcement is sent according to network configuration either as
+a UDP broadcast or TCP connection to gateways.
 
 ## Application Layer
 
