@@ -217,9 +217,6 @@ All devices must support the following protocols:
 The '*KK*' variant comes from the fact, that the frame already contains the 
 public static key of both the sender and responder. So both static keys are
 already *K*nown.
-* **Noise_Kpsk1_25519_AESGCM_SHA256**: This is an uni-directional protocol,
-suitable only for sending. After this message the device is free to send
-payload messages immediately.
 
 The handshake makes sure that both parties actually possess the secret
 private part of their static identity. In essence this makes sure that
@@ -342,24 +339,22 @@ Encryption and key management is the same as for intermediate frames.
 
 #### Frame type: 07 (Renegotiate)
 
-The responder may send this message to instruct the initiator to reopen the connection with
-a new handshake.
+Both parties may send this message to instruct the other that the last frame
+could not be decrypted. Both parties must drop any potential previous keys
+and the initiator may reopen the connection and start with a new handshake.
 
 There is no payload in this message.
 
-When a connection is closed or lost, upon re-establishing the initiator may
+When a connection is closed or lost, upon re-establishing the initiator or the responder may
 continue to send frames with the already established keys for the previously lost logical connection.
-That is, it may continue sending application messages instead of starting with a handshake again.
+That is, they may continue sending application messages instead of starting with a handshake again.
 
 Devices may support remembering already established keys, or may even persist them to survive
-restarts. Therefore an initiator may try to continue communication with previously established keys.
+restarts. Therefore parties may try to continue communication with previously established keys.
 
-If this assumption does not hold, the responder must send a Renegotiate frame to indicate that
+If this assumption does not hold for a device, it must send a Renegotiate frame to indicate that
 it can not in fact decrypt the received messages, either because it does not remember the necessary
-keys or it became out of sync with the initiator and a new handshaking process is needed.
-
-The initiator should assume that the messages it sent in the meantime were not received
-and must remove its old keys and close the connection.
+keys or it became out of sync with the other party and a new handshaking process is needed.
 
 #### Frame type: 33 (Identity Query)
 
@@ -515,21 +510,8 @@ other logical connections.
 The application layer is defined by specific payloads in Application Messages and their
 choreography after a logical connection on the network layer has been established.
 
-The Initiator of the network connection is called a Controller Device on this layer, while the Responder
-is called the Controlled Device. A single connection only allows for one side to be the Controller.
-This means, that since existing connections must be re-used, no two devices can control each other at the same time.
-
-Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
-themselves. For example in a single Light and a single Button setup, we may traditionally think,
-that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
-That is, to initiate a connection to the Button and based on Data the Button generates control its own
-operation. In this case the Light will obviously not "control" the Button in the traditional meaning,
-but will nonetheless
-assume the role of the "Controller" for the purposes of this specification. It will send Commands
-to read the Data from the Button.
-
-The application layer is a request-response type protocol. The Controller may make requests and
-the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
+The application layer is a request-response protocol. Any party to a connection may make requests and
+the other party may respond. Unlike protocols such as HTTP, this protocol allows many requests and
 responses to be sent in parallel, including many streaming responses or multiple responses for
 a single request.
 
@@ -542,7 +524,7 @@ must be considered "absolute", i.e. referenced from epoch.
 
 ### Requests
 
-A request is a message sent from the Controller to the Controlled. Its format is as follows:
+Request the other party to perform some action. Its format is as follows:
 * Action (byte)
 * Request Id (variable length integer)
 * Content
@@ -558,7 +540,7 @@ Devices must explictly answer action codes that they don't understand with IGNOR
 
 #### OPTIONS (01)
 
-Request the Controlled to supply meta-information about the device itself, including
+Request to supply meta-information about the device itself, including
 what Controls it has, what Data it can provide, what Wiring it has currently configured.
 
 Action will have at most one answer.
@@ -567,7 +549,7 @@ This request has no content.
 
 #### STREAM DATA (02)
 
-Request the Controlled to send values for the specified Data Packet.
+Request to send values for the specified Data Packet.
 
 Action will have any number of responses until this Data Packet is requested again. After
 the first value arrives for the new request, the old Request Id can be reused.
@@ -581,8 +563,8 @@ TODO
 
 ### Responses
 
-A response is sent from the Controlled to the Controller, always as a response to a previous
-request. There may be multiple responses to the same request, depending on the action
+A response to a previous request from the other party.
+There may be multiple responses to the same request, depending on the action
 requested and other circumstances.
 
 The format of the response is as follows:
@@ -629,7 +611,7 @@ TODO
 
 #### IGNORE (255)
 
-Devices must answer an unknown request code with this response. The Controller
+Devices must answer an unknown request code with this response. The requester
 may reuse the Request Id of this exchange.
 
 There is no content for this type.
@@ -731,6 +713,20 @@ as the network and the receiver allows, because if any of those is slow the devi
 in favor of new ones, which will both help solve the problem and reduce the time the most current data gets delivered to
 a minimum.
 
+## Technical Decisions
+
+### Why are zero-roundrip handshakes not supported?
+
+All devices, even those that are implemented to come online for a short period,
+such as battery constrained devices, must linger for some seconds at least to
+enable other devices to send commands while they are online.
+
+This might include sending configuration or firmware updates etc. Since all devices
+presumably will support some set of commands, it makes no sense to support uni-directional
+communication.
+
+This is also the reason that logical connections support request in both directions.
+
 ## Appendix A: Terminology
 
 * **Initiator**: The party who establishes a network layer connection to another party.
@@ -738,10 +734,6 @@ a minimum.
 * **Device**: A party in a SCAN network. Although the term "Device" implies a physical
 machine, a Device may be fully software implemented, or one physical device may even represent
 multiple logical Devices.
-* **Controller**: The *Initiator* on the application layer. The party who invokes commands
-on the other party.
-* **Controlled**: The *Responder* on the application layer. The part who responds to commands
-from the other party.
 * **Modality**: A single physical or logical entity in a device, for which any stream of
 consecutive data items (or commands) can be replaced with the latest one without altering
 the meaning of the stream.
