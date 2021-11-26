@@ -25,6 +25,8 @@ The main considerations driving the design of this protocol:
   protocol itself on the fly runtime.
 - Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
   some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
+- Prevent proprietary extensions and the need to debug devices, as far as possible, by using transparent **dynamic wiring**,
+  instead of devices directly controlling each other.
 
 These other design decisions were also used:
 
@@ -148,6 +150,10 @@ A byte array is a concatenation of bytes. The length is not explicitly
 supplied but should be available from either the message overall length or by some other means.
 
 A string is a length (2 bytes) followed by a byte array that contains UTF-8 encoded bytes of characters.
+
+A variable length integer is a number stored as a variable number of bytes, at most 4, in big-endian
+ordering. On each byte except the last (the 4th byte) the highest bit indicates that a byte still follows.
+Therefore this type is able to store 7+7+7+8=29 bits, with a number up to 127 stored on just 1 byte.
 
 ### Frame Header
 
@@ -293,7 +299,7 @@ The actual payload of the application layer is described in the next chapters. T
 may be sent by both the initiator and responder.
 
 Payload structure:
-* Message Id (4 bytes, clear-aad)
+* Message Id (variable length integer, clear-aad)
 * Payload (encrypted)
 
 After a frame is sent, the sender is required to "rekey" its sending key. After a frame
@@ -305,9 +311,11 @@ out of sync, messages were omitted or repeated for example, the connection must 
 
 All encryption happens with "nonce" of all zero.
 
-The Message Id must be a strictly increasing number. If this requirement can not be met,
-the connection must be closed. The Message Id identifies a single message and all frames
-it consist of. If a message is too large to fit
+The Message Id identifies this message and all frames it consists of. Message Ids should
+be re-used to be able to keep the Id low and in one byte. All values for which
+a Last Frame has been sent should be considered re-usable.
+
+If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
 same Message Id. A sender may also choose to fragment messages for other reasons, for example
 to get video frames that are already available quicker to the receiver.
@@ -315,16 +323,25 @@ to get video frames that are already available quicker to the receiver.
 #### Frame type: 05 (Application Message Last Frame)
 
 The last frame of an application message. This frame may also be potentially the first and only
-frame the message has. It indicates
-that the application message identified by Message Id is complete with this payload.
+frame the message has, although in this case the Single Frame Application Message should be preferred.
+It indicates that the application message identified by Message Id is complete with this payload.
 
 Payload structure:
-* Message Id (4 bytes, clear-aad)
+* Message Id (variable length integer, clear-aad)
 * Payload (encrypted)
 
 Encryption and key management is the same as for intermediate frames.
 
-#### Frame type: 06 (Renegotiate)
+#### Frame type: 06 (Single Frame Application Message)
+
+An application message that fits a single frame.
+
+Payload structure:
+* Payload (encrypted)
+
+Encryption and key management is the same as for intermediate frames.
+
+#### Frame type: 07 (Renegotiate)
 
 The responder may send this message to instruct the initiator to reopen the connection with
 a new handshake.
@@ -527,6 +544,17 @@ A request is a message sent from the Controller to the Controlled. Its format is
 All requests contain an action (see below), some headers that describe an optional dynamic
 parameter list and an optional content.
 
+Devices must ignore action codes that they don't understand.
+
+#### OPTIONS (01)
+
+Request the Controlled to supply meta-information about the device itself, including
+what Controls it has, what Data it can provide, what Wiring it has currently configured.
+
+#### DATA (02)
+
+#### INVOKE (03)
+
 ### Responses
 
 A response is sent from the Controlled to the Controller, always as a response to a previous
@@ -539,20 +567,13 @@ The format of the response is as follows:
 * Content
 
 The Reference Id is the Message Id from the Network Layer that contained the Request.
-There may be multiple Responses with the same Reference Id.
+There may be multiple Responses with the same Reference Id. Such is the case for 
+data which will always refer back to the original request for that data.
 
-### Actions
+#### Data Response
 
-Devices must ignore action codes that they don't understand.
-
-#### OPTIONS (01)
-
-Request the Controlled to supply meta-information about the device itself, including
-what Controls it has, what Data it can provide, what Wiring it has currently configured.
-
-#### DATA (02)
-
-#### INVOKE (03)
+Payload content:
+* 
 
 ## Technical Discussions
 
@@ -665,5 +686,39 @@ from the other party.
 * **Modality**: A single physical or logical entity in a device, for which any stream of
 consecutive data items (or commands) can be replaced with the latest one without altering
 the meaning of the stream.
+* **Operator**: A human user configuring the network and/or devices.
 
+## Appendix B: Predefined Types
+
+Predefined types describe how a data or command element looks like in a way
+that is common among all devices. It is *not necessary* for a device to use
+predefined types, all types can be ad-hoc defined.
+
+Devices should however use predefined types wherever they can to make *wiring*
+easier for an operator.
+
+| Name             | Code    | Description                                      |
+|------------------|---------|--------------------------------------------------|
+| On-Off           |       1 | Indicates an operational status of either on or off. |
+
+## Appendix C: Predefined Semantics
+
+The purpose of predefined semantics is for the device to express what a data element
+or a command element *means* in a way that other devices may understand. It
+is *not necessary* for a device to use predefined semantics. Nor is it necessary for
+a device to know these.
+
+Predefined semantics are merely a *convenience* to enable easy *wiring* of data and
+commands. Even without them operators are still perfectly capable
+of connecting data and commands based on their understanding.
+
+Devices should use predefined semantics wherever they can.
+
+The defined semantics can apply to either a data element, a command element or
+both. In all of the cases the meaning has to stand on its own.
+
+| Name             | Type        | Code    | Description                            |
+|------------------|-------------|---------|----------------------------------------|
+| Main Power       | On-Off      |       1 | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
+| Misc. Power      | On-Off      |       2 | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
 
