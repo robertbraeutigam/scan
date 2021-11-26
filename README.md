@@ -151,9 +151,8 @@ supplied but should be available from either the message overall length or by so
 
 A string is a length (2 bytes) followed by a byte array that contains UTF-8 encoded bytes of characters.
 
-A variable length integer is a number stored as a variable number of bytes, at most 4, in big-endian
-ordering. On each byte except the last (the 4th byte) the highest bit indicates that a byte still follows.
-Therefore this type is able to store 7+7+7+8=29 bits, with a number up to 127 stored on just 1 byte.
+A variable length integer is a number stored as a variable number of bytes, at most 8, in big-endian
+ordering. On each byte except the last (the 8th byte) the highest bit indicates that a byte still follows.
 
 ### Frame Header
 
@@ -311,14 +310,14 @@ out of sync, messages were omitted or repeated for example, the connection must 
 
 All encryption happens with "nonce" of all zero.
 
-The Message Id identifies this message and all frames it consists of. Message Ids should
-be re-used to be able to keep the Id low and in one byte. All values for which
-a Last Frame has been sent should be considered re-usable.
-
 If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
 same Message Id. A sender may also choose to fragment messages for other reasons, for example
 to get video frames that are already available quicker to the receiver.
+
+The Message Id identifies this message and all frames it consists of. Message Ids should
+be re-used to be able to keep the Id low and in one byte. All values for which
+a Last Frame has been sent should be considered re-usable.
 
 #### Frame type: 05 (Application Message Last Frame)
 
@@ -534,26 +533,51 @@ the Controlled may respond. Unlike protocols such as HTTP, this protocol allows 
 responses to be sent in parallel, including many streaming responses or multiple responses for
 a single request.
 
+### Data Types
+
+Timestamp is an absolute or relative millisecond precision value stored as a variable
+length integer. Any value smaller than 1.000.000.000 must be considered a relative
+number of milliseconds from some reference value defined by context. Larger values
+must be considered "absolute", i.e. referenced from epoch.
+
 ### Requests
 
 A request is a message sent from the Controller to the Controlled. Its format is as follows:
 * Action (byte)
-* Headers (a map, detailed below)
+* Request Id (variable length integer)
 * Content
 
 All requests contain an action (see below), some headers that describe an optional dynamic
 parameter list and an optional content.
 
-Devices must ignore action codes that they don't understand.
+The Request Id is a number identifying a request uniquely among the open requests. A number
+can be reused after a request is handled and no more responses for that request can arrive.
+Devices should use the lowest Request Id possible at all times.
+
+Devices must explictly answer action codes that they don't understand with IGNORE responses.
 
 #### OPTIONS (01)
 
 Request the Controlled to supply meta-information about the device itself, including
 what Controls it has, what Data it can provide, what Wiring it has currently configured.
 
-#### DATA (02)
+Action will have at most one answer.
+
+This request has no content.
+
+#### STREAM DATA (02)
+
+Request the Controlled to send values for the specified Data Packet.
+
+Action will have any number of responses until this Data Packet is requested again. After
+the first value arrives for the new request, the old Request Id can be reused.
+
+Request content:
+* Data Packet Id (variable length integer)
 
 #### INVOKE (03)
+
+TODO
 
 ### Responses
 
@@ -562,18 +586,53 @@ request. There may be multiple responses to the same request, depending on the a
 requested and other circumstances.
 
 The format of the response is as follows:
-* Reference Id (number, 4 bytes)
-* Headers (a map, detailed below)
+* Response Type (byte, see next sections)
+* Reference Id (variable length integer)
 * Content
 
-The Reference Id is the Message Id from the Network Layer that contained the Request.
+The Reference Id is the Request Id from the Request for which this message is the response for.
 There may be multiple Responses with the same Reference Id. Such is the case for 
 data which will always refer back to the original request for that data.
 
-#### Data Response
+The Response Type and its content is described in the next sections.
 
-Payload content:
-* 
+#### OPTIONS (01)
+
+Send all the meta-information this device has, specifically device information,
+data definitions, command definitions and wiring information.
+
+TODO
+
+#### DATA (02)
+
+Send data as a response to a specific request. That request identified the Data Packet
+these values are for.
+
+Response content:
+* Data Time (timestamp)
+* Tag Values (array of Tag Value structures, length defined by data defition of device)
+* Data Element Values (the values for all the elements)
+
+The Timestamp, if it is relative, is given from the last data message for this data packet.
+
+A Tag Value consists of:
+* Tag Identifier (variable length integer)
+* Value (length defined by type of tag described in the data description)
+
+A Data Element Value consists of:
+* Element Id (variable length integer)
+* Value (length defined by type described in the data description)
+
+#### EXECUTION REPORT (03)
+
+TODO
+
+#### IGNORE (255)
+
+Devices must answer an unknown request code with this response. The Controller
+may reuse the Request Id of this exchange.
+
+There is no content for this type.
 
 ## Technical Discussions
 
