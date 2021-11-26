@@ -522,6 +522,14 @@ length integer. Any value smaller than 1.000.000.000 must be considered a relati
 number of milliseconds from some reference value defined by context. Larger values
 must be considered "absolute", i.e. referenced from epoch.
 
+A Value structure is a single value to a type defined elsewhere. It's structure is:
+* Identifier (variable length integer)
+* Value (byte array)
+
+The Identifier above refers to some definition specific for the context this
+Value structure is used in. The Value, specifically its size and meaning is
+also defined by the entity referenced by the Identifier.
+
 ### Requests
 
 Request the other party to perform some action. Its format is as follows:
@@ -559,7 +567,11 @@ Request content:
 
 #### INVOKE (03)
 
-TODO
+Request to invoke a command defined on the other party.
+
+Request content:
+* Command Id (variable length integer)
+* Parameter Values (Value structures)
 
 ### Responses
 
@@ -592,18 +604,10 @@ these values are for.
 
 Response content:
 * Data Time (timestamp)
-* Tag Values (array of Tag Value structures, length defined by data defition of device)
-* Data Element Values (the values for all the elements)
+* Tag Values (Value structures for the defined Tags)
+* Data Element Values (Value structures for the defined Data Elements)
 
 The Timestamp, if it is relative, is given from the last data message for this data packet.
-
-A Tag Value consists of:
-* Tag Identifier (variable length integer)
-* Value (length defined by type of tag described in the data description)
-
-A Data Element Value consists of:
-* Element Id (variable length integer)
-* Value (length defined by type described in the data description)
 
 #### EXECUTION REPORT (03)
 
