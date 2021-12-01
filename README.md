@@ -111,7 +111,7 @@ excluding the frame header.
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
 on the network. There 
-can be at most one logical connection between any two devices, because the unordered pair of public static keys uniquely identifies
+can be at most two logical connection between any two devices, because the ordered pair of public static keys uniquely identifies
 a logical connection. Note however, that one TCP connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
@@ -136,9 +136,14 @@ for further details.
 Devices must reuse TCP connections, therefore
 at most one TCP connection must be present between two given peers at all times.
 
-All UDP packets sent, regardless of content must be repeated 5 times with a random interval
-between 1-2 seconds, except if it is known that repeating won't make a difference. Such as
-getting a valid and complete answer to a query.
+All UDP packets sent, regardless of content must be repeated 5 times with random intervals
+in order: 0-100ms, 0-400ms, 0-500ms, 1-2 seconds, 1-2 seconds, having a maximum total time of 5 seconds.
+If the device receives a complete answer for a packet earlier, such as a complete list of
+IP addresses for queried SCAN addresses, it may stop repeating the packet.
+This applies also to devices that come online
+just for sending one message. This means all devices must be available for at least a couple of
+seconds after an initial connect. This also serves the purpose of having a window to communicate
+with the device, such as sending software updates for example.
 
 ### Data Types
 
@@ -191,9 +196,13 @@ bytes in the stream.
 Frame types 0-31 may only be sent on TCP connections, while frames 32-63 may be sent
 and received on both a TCP connection and on the UDP broadcast port.
 
+After the handshake is completed all frames between 0-31 must cause the sender and receiver
+to rotate the appropriate keys. That applies even if the frame did not contain
+a payload and even if the frame is unknown and is being skipped.
+
 #### Frame type: 01 (Initiate Handshake)
 
-Sent from the initiator of the connection immediately upon to establish a logical connection.
+Sent from the initiator of the connection to establish a logical connection.
 If a TCP connection does not exist yet, the initiator must open one first.
 The frame transmits the first handshake message together with the
 Noise Protocol Name.
@@ -201,7 +210,6 @@ Noise Protocol Name.
 Payload structure:
 * Noise Protocol Name (string) (clear-prologue)
 * Handshake (byte array)
-* (Payload) (optional encrypted byte array)
 
 The Noise Protocol Name is the exact protocol used for the following handshake
 and data exchange. If the recipient disagrees with the protocol it must close the
@@ -216,9 +224,6 @@ All devices must support the following protocols:
 The '*KK*' variant comes from the fact, that the frame already contains the 
 public static key of both the sender and responder. So both static keys are
 already *K*nown.
-* **Noise_Kpsk1_25519_AESGCM_SHA256**: This is an uni-directional protocol,
-suitable only for sending. After this message the device is free to send
-payload messages immediately.
 
 The handshake makes sure that both parties actually possess the secret
 private part of their static identity. In essence this makes sure that
@@ -249,28 +254,14 @@ this mechanism is designed with a limited set of possible PSKs in mind.
 
 Both the sender and destination identifier must be present in this frame.
 
-This frame may contain an optional payload. If the handshake is complete after
-the initial handshake message, the initiator is free to send the first payload
-in the same message, if it fits into the remaining bytes for the frame.
-This allows devices that do not maintain a connection,
-maybe because they are off-line most of the time, to send messages to other
-parties as quickly and as compactly as possible.
-
 #### Frame type: 02 (Continue Handshake)
 
 Sent potentially by both parties. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
 and continue in turn until the connection is established.
 
-For zero-roundtrip protocols, this message will never be sent.
-
 Payload structure:
 * Handshake (byte array)
-* (Payload) (optional encrypted byte array)
-
-If the handshake is complete after this continued handshake message, the message 
-may then contain the first message payload, provided it fits the remaining bytes of
-this frame.
 
 #### Frame type: 03 (Close Connection)
 
@@ -300,10 +291,6 @@ Payload structure:
 * Message Id (variable length integer, clear-aad)
 * Payload (encrypted)
 
-After a frame is sent, the sender is required to "rekey" its sending key. After a frame
-is received, the receiver is required to "rekey" its receiving key. This means
-frames are perfectly forward secure, as each frame is encrypted with a different key.
-
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, messages were omitted or repeated for example, the connection must be closed.
 
@@ -329,6 +316,8 @@ Payload structure:
 * Payload (encrypted)
 
 Encryption and key management is the same as for intermediate frames.
+
+The Message Id used in this frame should be considered reusable after this frame is sent.
 
 #### Frame type: 06 (Single Frame Application Message)
 
@@ -416,7 +405,7 @@ because it is likely the query will be received multiple times, but should be an
 
 ### Message Choreography
 
-There can be only one logical connection
+There can be only at most two logical connection
 between any two parties. If a logical connection already exists, that must be used.
 If not, a new logical connection needs to be established. If there is already a TCP
 connection between the source and the target, that TCP connection must be used. If not, a new TCP
@@ -425,9 +414,9 @@ connection must be established first.
 The *initiator* of the connection is the party that opens the logical connection.
 The *responder* is the one that accepts the connection.
 
-It is an error to try to initiate or accept a connection if the peer is already a responder to the
-other party. Each party is either an initiator or responder with regards to another party
-with which a connection is already open.
+Note, there is an asymmetry between the initiator and the responder, because only the initiator
+"sets" the PSK. This means the responder *authorizes* the initiator for the communication, but the
+reverse is not true.
 
 #### Initiator establishes new connection
 
@@ -445,8 +434,6 @@ the chosen Noise protocol allows it.
 Any party may close the connection at any time for any reason. The initiator is
 free to re-open the connection at any time. The Responder may close the connection
 with the Renegotiate frame.
-
-The handshake message that completes the handshake may optionally already contain the first payload.
 
 #### Initiator re-establishes a connection
 
@@ -515,8 +502,7 @@ The application layer is defined by specific payloads in Application Messages an
 choreography after a logical connection on the network layer has been established.
 
 The Initiator of the network connection is called a Controller Device on this layer, while the Responder
-is called the Controlled Device. A single connection only allows for one side to be the Controller.
-This means, that since existing connections must be re-used, no two devices can control each other at the same time.
+is called the Controlled Device. A single logical connection only allows for one side to be the Controller.
 
 Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
 themselves. For example in a single Light and a single Button setup, we may traditionally think,
@@ -576,8 +562,10 @@ This request has no content.
 
 Request the Controlled to send values for the specified Data Packet.
 
-Action will have any number of responses until this Data Packet is requested again. After
-the first value arrives for the new request, the old Request Id can be reused.
+Action will have any number of responses. The Request Id
+of such a request can not be reused, since responses will be received indefinitely.
+
+Any subsequent requests for the same Data must be ignored by the Controlled.
 
 Request content:
 * Data Packet Id (variable length integer)
