@@ -9,8 +9,8 @@ way to collect data and control devices on a network.
 
 The main considerations driving the design of this protocol:
 
-- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, etc.,
-  as simply as possible with no complex certificate management nor third-party involvement.
+- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, no hardcoded defaults, per-device distributed authorization, etc.,
+  without complex certificate management, central authority nor third-party involvement.
 - **Minimal effort** implementations. The effort to implement compatible devices
   should be linear to the extent of features the device will support. I.e.
   simple devices (like a Light source or a Button) should be almost no effort to implement, while
