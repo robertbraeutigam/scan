@@ -63,7 +63,7 @@ the network or connect networks on separate physical infrastructure is supported
 
 All data is defined as a time-series. Each data point has an associated timestamp
 and all the related data elements. Data elements do not
-just carry a technical format (such as how many bytes, etc.), but also meaning, like whether it is an
+just carry a technical format (such as how many bytes, etc.), but also meaning, whether it is an
 Identifiaction, Event or Measurement, etc.
 
 Measurements carry unit information (like Liter, PSI, %, etc.) in addition to a name. This
