@@ -614,6 +614,11 @@ Response content:
 
 The Timestamp, if it is relative, is given from the last data message for this data packet.
 
+Note that Devices must send all Data in order for a given Data Packet.
+There can not be any out-of-order timestamps, but each Packet may advance this
+timestamp in its own context. For example a Data Packet for year-end summary data
+may only advance once a year and send the same Data for the whole year.
+
 #### EXECUTION REPORT (03)
 
 TODO
