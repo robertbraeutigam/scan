@@ -61,11 +61,10 @@ option is available if needed.
 Additional transparent network elements, like proxies or gateways, to expand
 the network or connect networks on separate physical infrastructure is supported.
 
-All data is defined as a time-series. That is, each data point has a time
-when it was produced, and all the related data elements produced at that instant.
-Data elements are not defined in terms of format (like 32bit or 64bit numbers),
-but in terms of what *kind* of data elements they are. Whether they represent an 
-Identification (ID) of some sort, or an Event, or a Measurement (see relevant chapter).
+All data is defined as a time-series. Each data point has an associated timestamp
+and all the related data elements. Data elements do not
+just carry a technical format (such as how many bytes, etc.), but also meaning, like whether it is an
+Identifiaction, Event or Measurement, etc.
 
 Measurements carry unit information (like Liter, PSI, %, etc.) in addition to a name. This
 way data elements don't exclusively rely on their "standardized" semantics, and can be uniformly
