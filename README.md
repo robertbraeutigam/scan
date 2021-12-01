@@ -26,7 +26,7 @@ The main considerations driving the design of this protocol:
 - Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
   some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
 - Prevent proprietary extensions and the need to debug devices, as far as possible, by using transparent **dynamic wiring**,
-  instead of devices directly controlling each other.
+  instead of devices directly hardcoded for each other.
 
 These other design decisions were also used:
 
