@@ -577,12 +577,7 @@ requested and other circumstances.
 
 The format of the response is as follows:
 * Response Type (byte, see next sections)
-* Reference Id (variable length integer)
 * Content
-
-The Reference Id is the Request Id from the Request for which this message is the response for.
-There may be multiple Responses with the same Reference Id. Such is the case for 
-data which will always refer back to the original request for that data.
 
 The Response Type and its content is described in the next sections.
 
@@ -595,13 +590,16 @@ TODO
 
 #### DATA (02)
 
-Send data as a response to a specific request. That request identified the Data Packet
-these values are for.
+Send data values.
 
 Response content:
+* Data Packet Id (variable length number)
 * Data Time (timestamp)
 * Tag Values (Value structures for the defined Tags)
 * Data Element Values (Value structures for the defined Data Elements)
+
+The Data Packet Id identifies the Data Definition that describes the meaning of the
+values submitted here.
 
 The Timestamp, if it is relative, is given from the last data message for this data packet.
 
@@ -609,10 +607,6 @@ Note that Devices must send all Data in order for a given Data Packet.
 There can not be any out-of-order timestamps, but each Packet may advance this
 timestamp in its own context. For example a Data Packet for year-end summary data
 may only advance once a year and send the same Data for the whole year.
-
-#### EXECUTION REPORT (03)
-
-TODO
 
 #### IGNORE (255)
 
