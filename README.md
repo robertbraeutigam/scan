@@ -400,7 +400,7 @@ a TCP connection to the device requesting, then that connection must be used. Ot
 a TCP connection needs to be established first. This connection must be closed after
 the reply is complete, if it is otherwise unused.
 
-Devices should remember the last query Id answered for 10 seconds, if received through UDP. This is
+Devices should remember the last query Id answered for 10 seconds, if received through either UDP or TCP. This is
 because it is likely the query will be received multiple times, but should be answered only once.
 
 ### Message Choreography
@@ -537,15 +537,9 @@ also defined by the entity referenced by the Identifier.
 
 A request is a message sent from the Controller to the Controlled. Its format is as follows:
 * Action (byte)
-* Request Id (variable length integer)
 * Content
 
-All requests contain an action (see below), some headers that describe an optional dynamic
-parameter list and an optional content.
-
-The Request Id is a number identifying a request uniquely among the open requests. A number
-can be reused after a request is handled and no more responses for that request can arrive.
-Devices should use the lowest Request Id possible at all times.
+All requests contain an action (see below) and a content.
 
 Devices must explictly answer action codes that they don't understand with IGNORE responses.
 
@@ -560,12 +554,9 @@ This request has no content.
 
 #### STREAM DATA (02)
 
-Request the Controlled to send values for the specified Data Packet.
+Request the Controlled to send values for the specified Data Packet indefinitely.
 
-Action will have any number of responses. The Request Id
-of such a request can not be reused, since responses will be received indefinitely.
-
-Any subsequent requests for the same Data must be ignored by the Controlled.
+Action will have any number of responses.
 
 Request content:
 * Data Packet Id (variable length integer)
@@ -625,10 +616,10 @@ TODO
 
 #### IGNORE (255)
 
-Devices must answer an unknown request code with this response. The Controller
-may reuse the Request Id of this exchange.
+Devices must answer an unknown request code with this response.
 
-There is no content for this type.
+Content:
+* Action (byte)
 
 ## Technical Discussions
 
