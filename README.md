@@ -541,7 +541,7 @@ A request is a message sent from the Controller to the Controlled. Its format is
 
 All requests contain an action (see below) and a content.
 
-Devices must explictly answer action codes that they don't understand with IGNORE responses.
+Devices must explicitly answer action codes that they don't understand with IGNORE responses.
 
 #### OPTIONS (01)
 
@@ -568,6 +568,35 @@ Request to invoke a command defined on the other party.
 Request content:
 * Command Id (variable length integer)
 * Parameter Values (Value structures)
+
+The Controlled must keep a queue of length 1 for each modality. This is to be able to
+discard obsolete commands fast. Whenever invoke messages arrive for which the
+queue is already full, the old message must be replaced with the new.
+
+#### DATA ADAPTIVE RATE CONTROL (04)
+
+Request the Controlled to adapt its sending rate based on the data contained.
+
+Request content:
+* Data Packet Id (variable length integer)
+* Dropped Messages (2 byte number)
+* Offset (2 byte number)
+
+The Data Packet Id is the data to rate limit.
+
+The Rate Difference is a value in milliseconds that data arrived too early or too late.
+If the consumer had to wait for data, this value is positive. The amount will be
+the exact milliseconds the device was already ready before receiving the message.
+
+The opposite case is a bit more difficult, since messages might be waiting in the
+network buffer unparsed, therefore it is not possible to exactly know when a message
+arrived. Devices must send the first 
+
+TODO: more easy if we have an id to refer to messages
+
+Note that all data is used to issue commands. Therefore all of these messages originate
+from some command, not from data. The controller therefore issues these if and only if
+there was a downstream adaptive rate control message.
 
 ### Responses
 
@@ -607,6 +636,24 @@ Note that Devices must send all Data in order for a given Data Packet.
 There can not be any out-of-order timestamps, but each Packet may advance this
 timestamp in its own context. For example a Data Packet for year-end summary data
 may only advance once a year and send the same Data for the whole year.
+
+The Controller must keep a queue of length 1 for each modality. This is for
+discarding obsolete messages quicker.
+
+#### INVOKE ADAPTIVE RATE CONTROL (04)
+
+Indicate the rate the given command can be invoked.
+
+Request content:
+* Command Id (variable length integer)
+* Rate Difference (2 byte number)
+
+The Command Id is the command to which this rate applies.
+
+The Rate Difference is similar to the Data Adaptive Rate Control message.
+
+Note that rate limiting messages always originate from invoking commands.
+All invoke requests will cause this message to be replied.
 
 #### IGNORE (255)
 
@@ -658,13 +705,13 @@ in case of a crash or restart.
 As a side-effect messages are also repeatable. Since a stream of two messages with
 the same content would also mean the same thing as one of those messages.
 
-### Backpressure
+### Network Backpressure
 
-Backpressure is the mechanism by which consumers of messages can tell producers to slow
+Network Backpressure is the mechanism by which consumers of messages can tell producers to slow
 down producing messages in the event that they can't consume them fast enough, or if
 the network is saturated and can't handle more traffic.
 
-In SCAN backpressure is done via the already built-in mechanisms of TCP. If a consumer
+If a consumer
 is not ready to process another message it will not empty the TCP receive buffer,
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
@@ -711,6 +758,51 @@ The second part of the guarantee is that the newest data will be delivered as fa
 as the network and the receiver allows, because if any of those is slow the device will drop obsolete messages
 in favor of new ones, which will both help solve the problem and reduce the time the most current data gets delivered to
 a minimum.
+
+### Adaptive Rate Limiting
+
+The goal of Adaptive Rate Limiting is twofold. One is to control the rate of messages, so
+network resources aren't wasted, but perhaps more importantly it is to provide a way to
+synchronize the producers with the consumers to guarantee the most recent measurements
+are available at the right time, when they are used.
+
+SCAN networks can form a complex graph of devices communicating, issuing data and commands to each other.
+Adaptive Rate Limiting is the way SCAN ensures that throughout all processing chains data and commands
+are generated at approximately the same rate as they are consumed throughout the whole chain.
+
+This is done because network backpressure alone does not lead
+to an ideal producer-consumer synchronization. Because the consumers are allowed to
+throw away obsolete messages the unlimited rate producers will likely end up using
+all the network resources, without it having any useful effect.
+
+Adaptive Rate Limiting is therefore a sort-of application level backpressure mechanism to
+tell producers to slow down or even to speed up.
+
+The basic mechanism is to actively reply to messages with an indicator about how well
+that message fits the consuming side. That is, how many milliseconds difference was
+there between the consumer ready to process and the message arriving and how many
+messages were thrown away.
+
+All consumers of both events and commands are required to have a 1 length queue, so
+that obsolete messages can be overwritten. One metric for the producers is therefore
+how many messages have been thrown away.
+
+Messages that are already sent and waiting in the queue would score
+a high negative difference, since they were much too early. Receiving such differences
+would tell the producer to slow down producing.
+
+Messages that are late, i.e. the consumer would have had time to process new messages,
+would score a high positive difference. This would tell the producer to speed up,
+if at all possible.
+
+While this mechanism is defined on a single communication, its effects would eventually
+equalize the whole network. This is because reacting to an Adaptive Rate Limiting message should
+cause a producer to translate that information into other upstream Adaptive Rate Limiting
+messages if the producer is actually also a consumer of some upstream flow of data or commands.
+
+Devices should generally not concern themselves with timing,
+resolution, measuring intervals or similar issues. Devices should define *how* and *what*
+to measure and then let the SCAN network take care of proper timing and intervals adaptively.
 
 ## Appendix A: Terminology
 
