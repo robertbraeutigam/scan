@@ -550,7 +550,12 @@ what Controls it has, what Data it can provide, what Wiring it has currently con
 
 Action will have at most one answer.
 
-This request has no content.
+Content:
+* Locale (string, IETF BCP-47 format)
+
+The locale specifies the name and description language the options should be described in.
+The Controlled Device should honor the locale if possible, but may fall back on a default
+language if it does not have translations for the requested language.
 
 #### STREAM DATA (02)
 
@@ -560,9 +565,14 @@ Action will have any number of responses.
 
 Request content:
 * Data Packet Id (variable length integer)
+* Locale (string, IETF BCP-47 format)
 * Maximum Rate (variable length integer)
 
 The Data Packet Id specifies the data to send.
+
+The locale applies to all potential text like names and descriptions that may be part of the data
+requested. This locale may be empty, in which case the Device should use a default translation
+for any data elements that are language dependent.
 
 The Maximum Rate specifies the rate at which the data should be sent in milliseconds. 0 milliseconds
 means as fast as possible, without any waiting. The Controlled Device must honor this rate
