@@ -527,10 +527,11 @@ must be considered "absolute", i.e. referenced from epoch.
 
 A Value structure is a single value to a type defined elsewhere. It's structure is:
 * Identifier (variable length integer)
+* Length of following Value (variable length integer) TODO: what about unlimited streams?
 * Value (byte array)
 
 The Identifier above refers to some definition specific for the context this
-Value structure is used in. The Value, specifically its size and meaning is
+Value structure is used in. The Value, specifically its meaning is
 also defined by the entity referenced by the Identifier.
 
 ### Requests
@@ -606,7 +607,53 @@ The Response Type and its content is described in the next sections.
 Send all the meta-information this device has, specifically
 data definitions, command definitions and wiring information.
 
-TODO
+Content:
+* Data Packet Definitions
+* Command Definitions
+* Wiring
+
+Data Packet Definitions consist of:
+* Length (variable length number)
+* Data Packet Definition records
+
+A single Data Packet Definition record consist of:
+* Name (localized string)
+* Description (localized markdown string)
+* Number of Tag Definitions (variable length number)
+* Tag Definition records
+* Number of Data Element Definitions (variable length number)
+* Element Definition records
+
+Note the Data Packet Id is the index of the definition, starting at 0. Similarly
+the Data Element Id and Tag Id are the indices of the definitions in this structure,
+starting from 0.
+
+Both the Tag and Data Element definitions follow the same structure, only
+the meaning of the codes is different, as they are defined separately. See
+appropriate Appendix.
+
+A Definition record consists of:
+* Name (localized string)
+* Description (localized markdown string)
+* Predefined Semantics Code (variable length number)
+* Predefined Type Code (variable length number)
+* Type Definition
+
+Note that even if the semantic is defined to have a given type, everything is defined in
+this definition redundantly. This is to allow devices to work with semantics that are not
+yet known and/or ignore them completely if they are not needed.
+
+All definitions must correspond to the definitions given in this document. Any errors
+however will be caught by the wiring, when data elements are wired to commands.
+
+A Type Definition consists of:
+* Type Code (variable length number)
+* Length of following description (variable length number)
+* Type specific description
+
+The type specific description is given in the appropriate Appendix.
+
+TODO: commands and wiring
 
 #### DATA (02)
 
@@ -794,7 +841,18 @@ consecutive data items (or commands) can be replaced with the latest one without
 the meaning of the stream.
 * **Operator**: A human user configuring the network and/or devices.
 
-## Appendix B: Predefined Types
+## Appendix B: Types
+
+Types are the basic building blocks of data and command parameters.
+
+| Name             | Code    | Definition  | Value Format   | Description                                      |
+|------------------|---------|------------|--------------------------------------------------|
+| Empty            |       0 | None       | N/A             | No content. Used for events with no additional payload. |
+| Media-Type       |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. |
+
+TODO: extend types
+
+## Appendix C: Predefined Types
 
 Predefined types describe how a data or command element looks like in a way
 that is common among all devices. It is *not necessary* for a device to use
@@ -803,11 +861,12 @@ predefined types, all types can be ad-hoc defined.
 Devices should however use predefined types wherever they can to make *wiring*
 easier for an operator.
 
-| Name             | Code    | Description                                      |
-|------------------|---------|--------------------------------------------------|
-| On-Off           |       1 | Indicates an operational status of either on or off. |
+| Name             | Code    | Type          |Description                                      |
+|------------------|---------|---------------|-------------------------------------------------|
+| Custom           |       0 | Any           | Custom type. Use if none of the other types apply. |
+| On-Off           |       1 |               | Indicates an operational status of either on or off. |
 
-## Appendix C: Predefined Semantics
+## Appendix D: Predefined Semantics
 
 The purpose of predefined semantics is for the device to express what a data element
 or a command element *means* in a way that other devices may understand. It
@@ -823,8 +882,9 @@ Devices should use predefined semantics wherever they can.
 The defined semantics can apply to either a data element, a command element or
 both. In all of the cases the meaning has to stand on its own.
 
-| Name             | Type        | Code    | Description                            |
-|------------------|-------------|---------|----------------------------------------|
-| Main Power       | On-Off      |       1 | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
-| Misc. Power      | On-Off      |       2 | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
+| Name             | Code    | Predefined Type | Description                            |
+|------------------|---------|-----------------|----------------------------------------|
+| Custom           |       0 | Any             | Data element has custom semantics, specific to this device. Use when no other predefined semantics apply. |
+| Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
+| Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
 
