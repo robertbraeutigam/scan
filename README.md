@@ -860,15 +860,22 @@ the meaning of the stream.
 
 Types are the basic building blocks of data and command parameters.
 
-| Name               | Code    | Definition  | Value Format   | Description                                      | Example Semantic  |
-|--------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
-| Empty              |       0 | Empty       | N/A            | No content. Used for events with no additional payload. | Alarm in the last 5 minutes. |
-| Media-Type         |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. | Video stream.
-| Defd. Number Enum  |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
-| Undef. Number Enum |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
-| Undef. String Enum |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
+| Name                | Code    | Definition  | Value Format   | Description                                      | Example Semantic  |
+|---------------------| ---------|-------------|----------------|--------------------------------------------------|-------------------|
+| Empty               |       0 | Empty       | N/A            | No content. Used for events with no additional payload. | Alarm in the last 5 minutes. |
+| Media-Type          |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. | Video stream.
+| Defd. Number Enum   |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
+| Undef. Number Enum  |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
+| Undef. String Enum  |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
+| Geo Point           |       5 | Empty       | Latitude, Longitude (both 4 byte numbers, multiplied by 10_000_000)    | Standard geographic coordinates. | Current position. Waypoint position. |
+| Measurement         |       6 | Unit (See Appendix.)  | Value (See Appendix.)          | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Min)   |       7 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Max)   |       8 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated maximum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Avg)   |       9 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated average of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Count) |      10 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated count of samples of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
 
-TODO: extend types
+Note, this table might be extended by subsequent iterations of this document. All devices
+must ignore entries they can not interpret.
 
 ## Appendix C: Predefined Types
 
@@ -883,6 +890,9 @@ easier for an operator.
 |------------------|---------|---------------|-------------------------------------------------|
 | Custom           |       0 | Any           | Custom type. Use if none of the other types apply. |
 | On-Off           |       1 |               | Indicates an operational status of either on or off. |
+
+Note, this table might be extended by subsequent iterations of this document. All devices
+must ignore entries they can not interpret.
 
 ## Appendix D: Predefined Semantics
 
@@ -906,5 +916,10 @@ both. In all of the cases the meaning has to stand on its own.
 | Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
 | Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
 
-## Appendix E: Wiring Language
+Note, this table might be extended by subsequent iterations of this document. All devices
+must ignore entries they can not interpret.
+
+## Appendix E: Unit System
+
+## Appendix F: Wiring Language
 
