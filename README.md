@@ -527,12 +527,22 @@ must be considered "absolute", i.e. referenced from epoch.
 
 A Value structure is a single value to a type defined elsewhere. It's structure is:
 * Identifier (variable length integer)
-* Length of following Value (variable length integer) TODO: what about unlimited streams?
+* Length of following Value (variable length integer)
 * Value (byte array)
 
 The Identifier above refers to some definition specific for the context this
 Value structure is used in. The Value, specifically its meaning is
 also defined by the entity referenced by the Identifier.
+
+Note that the length here is the maximum length of the value. If this structure is at the
+end of a message, the message may end before the given length is reached. This is explicitly
+allowed to support unlimited streams, which should use a maximum value length (2^57-1). 
+
+This also means that in every message, there may only be one value structure that has its
+length not given exactly.
+
+The length field exists for the explicit purpose to skip a value structure if the contents
+can not be interpreted.
 
 ### Requests
 
@@ -608,13 +618,11 @@ Send all the meta-information this device has, specifically
 data definitions, command definitions and wiring information.
 
 Content:
+* Number of Data Packet Definitions following (variable length number)
 * Data Packet Definitions
+* Number of Command Definitions following (variable length number)
 * Command Definitions
 * Wiring
-
-Data Packet Definitions consist of:
-* Length (variable length number)
-* Data Packet Definition records
 
 A single Data Packet Definition record consist of:
 * Name (localized string)
@@ -640,11 +648,11 @@ A Definition record consists of:
 * Type Definition
 
 Note that even if the semantic is defined to have a given type, everything is defined in
-this definition redundantly. This is to allow devices to work with semantics that are not
+this definition anyway. This is to allow devices to work with semantics that are not
 yet known and/or ignore them completely if they are not needed.
 
-All definitions must correspond to the definitions given in this document. Any errors
-however will be caught by the wiring, when data elements are wired to commands.
+All definitions must correspond to the definitions given in this document however. Any errors
+will be caught by the wiring, when data elements are wired to commands.
 
 A Type Definition consists of:
 * Type Code (variable length number)
@@ -653,7 +661,14 @@ A Type Definition consists of:
 
 The type specific description is given in the appropriate Appendix.
 
-TODO: commands and wiring
+Command definitions are similar in structure to Data definitions, only they don't contain
+Tags:
+* Name (localized string)
+* Description (localized markdown string)
+* Number of Data Element Definitions (variable length number)
+* Element Definition records
+
+The wiring is described as a small complied binary language. See appropriate Appendix.
 
 #### DATA (02)
 
@@ -845,10 +860,13 @@ the meaning of the stream.
 
 Types are the basic building blocks of data and command parameters.
 
-| Name             | Code    | Definition  | Value Format   | Description                                      |
-|------------------|---------|------------|--------------------------------------------------|
-| Empty            |       0 | None       | N/A             | No content. Used for events with no additional payload. |
-| Media-Type       |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. |
+| Name               | Code    | Definition  | Value Format   | Description                                      | Example Semantic  |
+|--------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
+| Empty              |       0 | Empty       | N/A            | No content. Used for events with no additional payload. | Alarm in the last 5 minutes. |
+| Media-Type         |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. | Video stream.
+| Defd. Number Enum  |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
+| Undef. Number Enum |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
+| Undef. String Enum |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
 
 TODO: extend types
 
@@ -887,4 +905,6 @@ both. In all of the cases the meaning has to stand on its own.
 | Custom           |       0 | Any             | Data element has custom semantics, specific to this device. Use when no other predefined semantics apply. |
 | Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
 | Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
+
+## Appendix E: Wiring Language
 
