@@ -536,7 +536,7 @@ also defined by the entity referenced by the Identifier.
 
 Note that the length here is the maximum length of the value. If this structure is at the
 end of a message, the message may end before the given length is reached. This is explicitly
-allowed to support unlimited streams, which should use a maximum value length (2^57-1). 
+allowed to support unlimited streams, which should use a maximum value length (2^58-1). 
 
 This also means that in every message, there may only be one value structure that has its
 length not given exactly.
@@ -863,7 +863,7 @@ Types are the basic building blocks of data and command parameters.
 | Name                | Code    | Definition  | Value Format   | Description                                      | Example Semantic  |
 |---------------------| ---------|-------------|----------------|--------------------------------------------------|-------------------|
 | Empty               |       0 | Empty       | N/A            | No content. Used for events with no additional payload. | Alarm in the last 5 minutes. |
-| Media-Type          |       1 | String (the Media-Type name) | Format described by Media-Type | A type where the value format is defined by the given Media-Type. | Video stream.
+| Media-Type          |       1 | String (the Media-Type name) | Format described by Media-Type | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
 | Defd. Number Enum   |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
 | Undef. Number Enum  |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
 | Undef. String Enum  |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
@@ -873,6 +873,9 @@ Types are the basic building blocks of data and command parameters.
 | Measurement (Max)   |       8 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated maximum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
 | Measurement (Avg)   |       9 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated average of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
 | Measurement (Count) |      10 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated count of samples of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Arbitrary String    |      11 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
+| Arbitrary Strings   |      12 | Empty       | Count (variable length number), String | Arbitrary, unlimited value set strings. | Current messages. |
+| Timestamp           |      13 | Empty       | Millis since Epoch (8 bytes)  | Single instance of time. | Effective date, Billing date. Last update time. |
 
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
@@ -921,5 +924,9 @@ must ignore entries they can not interpret.
 
 ## Appendix E: Unit System
 
+TODO
+
 ## Appendix F: Wiring Language
+
+TODO
 
