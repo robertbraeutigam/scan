@@ -924,9 +924,39 @@ must ignore entries they can not interpret.
 
 ## Appendix E: Unit System
 
+The Unit System of SCAN describes what Units (in the general sense, not strictly in the SI sense)
+can be used for measured values. Examples include: m³, kg, bit, m³/h, etc.
+
+The SCAN Unit System is not a complete SI-derived system. It is specifically designed to be easy
+to use, minimal as possible and customizable. Dimensions (such as Power, Current, etc.) are not defined
+at all. Instead each measurement must define the exact Unit its values are published in. Although
+defining the "dimension" of the value is theoretically sufficient, where the device could still choose
+a compatible unit for reporting a value, this would be more cumbersome and of questionable value.
+
+Whether the units are "compatible" is also not explicitly defined in this sepcification. It is left
+up to the wiring software or the human operator to figure out how to convert between compatible
+unit or indeed to determine whether two units are compatible in the first place. Devices do not have to
+include any of this knowledge, instead must execute the wiring as configured and should assume that the
+result of any calculation given there will match the unit defined by the receiver.
+
+TODO
+
+### Base units
+
+TODO
+
+### Unit description
+
+The unit description is a reverse polish notation format expression of units and constants. It is used
+to  ??? TODO: do I need this? The operator should be able to automatically read it!
+
 TODO
 
 ## Appendix F: Wiring Language
+
+The wiring of a SCAN device is an explict (compiled) description of how to process data and generate commands
+based on them. Wiring is an interpreted generic event-processing-alike language.
+All IDs, conversions and even access credentials (PSK) are included.
 
 TODO
 
