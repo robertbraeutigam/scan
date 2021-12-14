@@ -867,15 +867,14 @@ Types are the basic building blocks of data and command parameters.
 | Defd. Number Enum   |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
 | Undef. Number Enum  |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
 | Undef. String Enum  |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
-| Geo Point           |       5 | Empty       | Latitude, Longitude (both 4 byte numbers, multiplied by 10_000_000)    | Standard geographic coordinates. | Current position. Waypoint position. |
-| Measurement         |       6 | Unit (See Appendix.)  | Value (See Appendix.)          | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Min)   |       7 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Max)   |       8 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated maximum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Avg)   |       9 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated average of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Count) |      10 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated count of samples of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Arbitrary String    |      11 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Arbitrary Strings   |      12 | Empty       | Count (variable length number), String | Arbitrary, unlimited value set strings. | Current messages. |
-| Timestamp           |      13 | Empty       | Millis since Epoch (8 bytes)  | Single instance of time. | Effective date, Billing date. Last update time. |
+| Measurement         |       5 | Unit (See Appendix.)  | Value (See Appendix.)          | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Min)   |       6 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Max)   |       7 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated maximum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Avg)   |       8 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated average of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement (Count) |       9 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated count of samples of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Arbitrary String    |      10 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
+| Arbitrary Strings   |      11 | Empty       | Count (variable length number), String | Arbitrary, unlimited value set strings. | Current messages. |
+| Timestamp           |      12 | Empty       | Millis since Epoch (8 bytes)  | Single instance of time. | Effective date, Billing date. Last update time. |
 
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
@@ -925,32 +924,98 @@ must ignore entries they can not interpret.
 ## Appendix E: Unit System
 
 The Unit System of SCAN describes what Units (in the general sense, not strictly in the SI sense)
-can be used for measured values. Examples include: m³, kg, bit, m³/h, etc.
+can be used for measured values. Examples include: m³, kg, bit, m³/h, %, etc.
 
 The SCAN Unit System is not a complete SI-derived system. It is specifically designed to be easy
 to use, minimal as possible and customizable. Dimensions (such as Power, Current, etc.) are not defined
-at all. Instead each measurement must define the exact Unit its values are published in. Although
-defining the "dimension" of the value is theoretically sufficient, where the device could still choose
-a compatible unit for reporting a value, this would be more cumbersome and of questionable value.
+at all. Instead each measurement must define the exact Unit its values are published in, or for a command,
+define what unit the values are expected in. Possible conversion happens in the wiring, not in the device
+itself. The device itself does not have to convert, validate or calculate between units.
 
-Whether the units are "compatible" is also not explicitly defined in this sepcification. It is left
+Whether the units are "compatible" is also not explicitly defined in this specification. It is left
 up to the wiring software or the human operator to figure out how to convert between compatible
-unit or indeed to determine whether two units are compatible in the first place. Devices do not have to
+units or indeed to determine whether two units are compatible in the first place. Devices do not have to
 include any of this knowledge, instead must execute the wiring as configured and should assume that the
 result of any calculation given there will match the unit defined by the receiver.
 
-TODO
+Prefixes or prefix multipliers, like Kilo, Mega, Milli, KiBi, etc. are also not defined. Definitions
+can instead contain literal values matching the desired multiplier. Presenting devices may choose to
+interpret and show corresponding multiplier if needed.
+
+This specification defines Base Units only and a description language to arbitrarily combine Base Units
+and Scalar values.
+
+All values for all units are typed double (that is, 8 bytes).
 
 ### Base units
 
-TODO
+|   Code |   Symbol | Description                       |
+|--------|----------|-----------------------------------|
+|      1 |        m | meter                             |
+|      2 |        g | gram                              |
+|      3 |        s | second                            |
+|      4 |        A | ampere                            |
+|      5 |        K | kelvin                            |
+|      6 |        C | degrees Celsius                   |
+|      7 |       cd | candela                           |
+|      8 |      mol | mole                              |
+|      9 |       Hz | hertz                             |
+|     10 |      rad | radian                            |
+|     11 |      deg | degree (angle, also for geo point)    |
+|     12 |       sr | steradian                         |
+|     13 |        N | newton                            |
+|     14 |       Pa | pascal                            |
+|     15 |        J | joule                             |
+|     16 |        W | watt                              |
+|     17 |        C | coulomb                           |
+|     18 |        V | volt                              |
+|     19 |        F | farad                             |
+|     20 |      Ohm | ohm                               |
+|     21 |        S | siemens                           |
+|     22 |       Wb | weber                             |
+|     23 |        T | tesla                             |
+|     24 |        H | henry                             |
+|     25 |       lm | lumen                             |
+|     26 |       lx | lux                               |
+|     27 |       Bq | becquerel                         |
+|     28 |       Gy | gray                              |
+|     29 |       Sv | sievert                           |
+|     30 |      kat | katal                             |
+|     31 |        l | liter                             |
+|     32 |      bit | bit                               |
+|     33 |        B | Byte                              |
+|     34 |       pH | pH                                |
+|     35 |       dB | decibel                           |
+|     36 |      dBm | decibel relative to 1 milliWatt   |
+|     37 |    count | 1                                 |
+|     38 |    ratio | 1                                 |
+|     38 |       VA | volt-ampere                       |
+|     40 |      var | volt-ampere reactive              |
 
 ### Unit description
 
 The unit description is a reverse polish notation format expression of units and constants. It is used
-to  ??? TODO: do I need this? The operator should be able to automatically read it!
+to express the exact type of measurement or input in a machine readable format.
+It is capable of describing derived units that are multiplications or divisions
+of other units or constants. It can not describe offset or logarithmic relationships.
 
-TODO
+The format is:
+* Length of bytes following (variable length integer)
+* Description bytes
+
+Where description bytes are a sequence of the following possible phrases:
+* Base Unit Code (1 byte value less than 250)
+* Value 250, followed by a double value for a constant.
+* Value 251, meaning multiply the top 2 things on the stack
+* Value 252, meaning divide the top 2 things on the stack
+
+For example "g" (gram) would be written: 01 (length) 02 (base code for gram)
+
+"Kg" (kilogram) would be: 0B (length) 250 (constant follows) 1000d (1000 in double format) 02 (base code for gram) 251 (multiply)
+
+Derived units, both multipliers and the units themselves should be formulated in the order
+its most commonly used in for easier consumption. I.e. "Kg" should be 1000 * g,
+"kmh" should be (1000 * m) / (3600 * s).
 
 ## Appendix F: Wiring Language
 
