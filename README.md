@@ -858,23 +858,31 @@ the meaning of the stream.
 
 ## Appendix B: Types
 
-Types are the basic building blocks of data and command parameters.
+Types are the basic building blocks of data and command parameters. Types have a defined
+role and a value set they can have. The value sets are defined as:
 
-| Name                | Code    | Definition  | Value Format   | Description                                      | Example Semantic  |
-|---------------------| ---------|-------------|----------------|--------------------------------------------------|-------------------|
-| Empty               |       0 | Empty       | N/A            | No content. Used for events with no additional payload. | Alarm in the last 5 minutes. |
-| Media-Type          |       1 | String (the Media-Type name) | Format described by Media-Type | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
-| Defd. Number Enum   |       2 | Count, Values (all variable length numbers) | Variable Length Number            | A predefined set of number values. | Multi-state switch state. |
-| Undef. Number Enum  |       3 | Empty       | Variable Length Number            | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
-| Undef. String Enum  |       4 | Empty       | String         | A dynamic set of string values. | Window name. |
-| Measurement         |       5 | Unit (See Appendix.)  | Value (See Appendix.)          | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Min)   |       6 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Max)   |       7 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated maximum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Avg)   |       8 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated average of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement (Count) |       9 | Id of parent Measurement, Unit (See Appendix.)  | Value (See Appendix.)          | A measured or calculated count of samples of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Arbitrary String    |      10 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Arbitrary Strings   |      11 | Empty       | Count (variable length number), String | Arbitrary, unlimited value set strings. | Current messages. |
-| Timestamp           |      12 | Empty       | Millis since Epoch (8 bytes)  | Single instance of time. | Effective date, Billing date. Last update time. |
+| Name                | Value Format            | Comment                                          |
+|---------------------|-------------------------|--------------------------------------------------|
+| Boolean             | 00 (false) or 01 (true) |                                                  |
+| Byte Stream         | Bytes                   | Potentially unlimited stream of bytes.           |
+| Integer             | Variable Length Integer |                                                  |
+| String              | String                  |                                                  |
+| Double              | Double                  |                                                  |
+| Timestamp           | Millis since Epoch (8 bytes) |                                             |
+
+These are the currently supported Types in SCAN:
+
+| Name                | Code    | Definition  | Value Set   | Description                                      | Example Semantic  |
+|---------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
+| Presence            |       1 | Empty       | Boolean     | Presence of some underlying condition. | Alarm. Reverse Flow. Overtemperature condition. |
+| Media-Type          |       2 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
+| Defd. Number Enum   |       3 | Count, Values (all variable length numbers) | Integer (Index of value) | A predefined set of number values. | Multi-state switch state. |
+| Undef. Number Enum  |       4 | Empty       | Integer     | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
+| Undef. String Enum  |       5 | Empty       | String      | A dynamic set of string values. | Window name. |
+| Measurement         |       6 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement Aggregate |     7 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Arbitrary String    |       8 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
+| Timestamp           |       9 | Empty       | Timestamp | Single instance of time. | Effective date, Billing date. Last update time. |
 
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
@@ -1019,9 +1027,72 @@ its most commonly used in for easier consumption. I.e. "Kg" should be 1000 * g,
 
 ## Appendix F: Wiring Language
 
-The wiring of a SCAN device is an explict (compiled) description of how to process data and generate commands
-based on them. Wiring is an interpreted generic event-processing-alike language.
-All IDs, conversions and even access credentials (PSK) are included.
+Wiring is a description of how to transform current states of modalities into derived states and/or
+commands. While it might look like an event processing system or an information flow processing system,
+it is not. Wiring is a stateless process that does not have any notion of time nor flow.
+
+This is on purpose and a consequence to the Resolution Principle. Any sequence of events of the same
+modality can be represented by the newest event. Therefore there are no sequences. The network can optimize
+any sequence of events or flows to the most current item.
+
+In practice this means that wiring can't express anything that involves *how* and in what sequence
+a state came to be. For example: Wiring can't determine whether the temperature is rising or falling
+by looking at the current temperature, can't determine whether some state was present for a given period of time.
+
+Note however, that all those use-cases are actually possible if the required data is part of the current
+state of modality. For example including the change of temperature to the current temperature data packet.
+Or including/defining the timestamp when a state became current.
+
+### Structure
+
+The wiring language is a binary structure either generated directly or compiled from some textual
+description (language not defined here). Structure as follows;
+* 'S','W' (2 bytes for ASCII characters 'S' and 'W')
+* Version (byte)
+* Number of Access Table Entries (variable length integer)
+* Access Table Entries
+* Number of Data Packet Definition (variable length integer)
+* Data Packet Definition (same strucutre an in OPTIONS)
+* Number of Transformation Entries (variable length integer)
+* Transformation Entries
+
+The Version is 01 for this specification.
+
+The Wiring may emit additional derived Data Packets, those have to be declared
+in the Wiring structure. These definitions will be also returned in the OPTIONS
+reply from Device.
+
+An Access Table Entry is composed of:
+* Public Static Key of Controlled Device (32 bytes)
+* PSK for logical connection to that Device (32 bytes)
+
+Transformation Entries describe a single filter condition and the transformations
+that should happen in case the transformation is executed. Its contents are as follows:
+* Filter Expression (see below)
+* Number of Statements following (variable length integer)
+* Statement (see below)
+
+### Expression
+
+Expressions are typed according to the defined basic types.
 
 TODO
+
+### Statement
+
+TODO
+
+### Security Considerations
+
+Wiring contains access credentials, therefore should be stored at least as securely as the device's
+own credentials and keys.
+
+### Processing Model
+
+The processing model of Wiring is relatively simple. On any incoming events the guard
+conditions to each transformation is evaluated, those entries that evaluate to true are
+then executed.
+
+The runtime implementation is free to cache and simplify and optimize evaluations as
+long as the semantic doesn't change.
 
