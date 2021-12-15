@@ -858,21 +858,38 @@ the meaning of the stream.
 
 ## Appendix B: Types
 
-Types are the basic building blocks of data and command parameters. Types have a defined
-role and a value set they can have. The value sets are defined as:
+SCAN has a tiered type system. This means types are defined on multiple tiers (layers), where
+each tier is using the tier below to define itself. The lower tiers are more stable, but also
+more technical in nature, while upper tiers are richer in semantics, but more volatile.
+
+The purpose of this tiered system is for devices to define as much meaning as possible for each
+data element or command parameter. Even if the corresponding meaning is not found on a given
+level, there may be an appropriate lower level meaning to be found.
+
+### Tier 0: Value Types
+
+Value Types are the actual values in data messages or actual parameter values for invoking
+a command.
+
+These are as follows:
 
 | Name                | Value Format            | Comment                                          |
 |---------------------|-------------------------|--------------------------------------------------|
-| Boolean             | 00 (false) or 01 (true) |                                                  |
+| Boolean             | Byte: 00 (false) or 01 (true) |                                            |
 | Byte Stream         | Bytes                   | Potentially unlimited stream of bytes.           |
-| Integer             | Variable Length Integer |                                                  |
+| Integer             | Variable Length Integer | Unsigned                                         |
 | String              | String                  |                                                  |
 | Double              | Double                  |                                                  |
 | Timestamp           | Millis since Epoch (8 bytes) |                                             |
 
-These are the currently supported Types in SCAN:
+### Tier 1: Definition Types
 
-| Name                | Code    | Definition  | Value Set   | Description                                      | Example Semantic  |
+These are types that have enough meaning to be used in definitions. This is the minimal meaning
+all data packet elements and command parameter must carry.
+
+These are the currently supported Definition Types:
+
+| Name                | Code    | Definition  | Tier 0      | Description                                      | Example Semantic  |
 |---------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
 | Presence            |       1 | Empty       | Boolean     | Presence of some underlying condition. | Alarm. Reverse Flow. Overtemperature condition. |
 | Media-Type          |       2 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
@@ -884,30 +901,34 @@ These are the currently supported Types in SCAN:
 | Arbitrary String    |       8 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
 | Timestamp           |       9 | Empty       | Timestamp | Single instance of time. | Effective date, Billing date. Last update time. |
 
+The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
+
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
 
-## Appendix C: Predefined Types
+### Tier 2: Predefined Types
 
-Predefined types describe how a data or command element looks like in a way
-that is common among all devices. It is *not necessary* for a device to use
+Predefined types are some usages that are usually common among devices.
+It is *not necessary* for a device to use
 predefined types, all types can be ad-hoc defined.
 
 Devices should however use predefined types wherever they can to make *wiring*
 easier for an operator.
 
-| Name             | Code    | Type          |Description                                      |
-|------------------|---------|---------------|-------------------------------------------------|
-| Custom           |       0 | Any           | Custom type. Use if none of the other types apply. |
-| On-Off           |       1 |               | Indicates an operational status of either on or off. |
+| Name             | Code    | Tier 1           | Description                                      |
+|------------------|---------|------------------|-------------------------------------------------|
+| Custom           |       0 | Any              | Custom type. Use if none of the other types apply. |
+| On-Off           |       1 | Presence         | Indicates an operational status of either on or off. |
+| Latitude         |       2 | Measurement, deg | |
+| Longitude        |       3 | Measurement, deg | |
 
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
 
-## Appendix D: Predefined Semantics
+### Tier 3: Predefined Semantics
 
 The purpose of predefined semantics is for the device to express what a data element
-or a command element *means* in a way that other devices may understand. It
+or a command parameter *means in the current application*. It
 is *not necessary* for a device to use predefined semantics. Nor is it necessary for
 a device to know these.
 
@@ -915,12 +936,11 @@ Predefined semantics are merely a *convenience* to enable easy *wiring* of data 
 commands. Even without them operators are still perfectly capable
 of connecting data and commands based on their understanding.
 
-Devices should use predefined semantics wherever they can.
+Devices must use predefined semantics is any of them apply to the application at hand.
+Devices must also not misuse predefined semantics for meanings that are not implied. When
+in doubt, define Custom semantics.
 
-The defined semantics can apply to either a data element, a command element or
-both. In all of the cases the meaning has to stand on its own.
-
-| Name             | Code    | Predefined Type | Description                            |
+| Name             | Code    | Tier 2          | Description                            |
 |------------------|---------|-----------------|----------------------------------------|
 | Custom           |       0 | Any             | Data element has custom semantics, specific to this device. Use when no other predefined semantics apply. |
 | Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
@@ -929,7 +949,7 @@ both. In all of the cases the meaning has to stand on its own.
 Note, this table might be extended by subsequent iterations of this document. All devices
 must ignore entries they can not interpret.
 
-## Appendix E: Unit System
+## Appendix C: Unit System
 
 The Unit System of SCAN describes what Units (in the general sense, not strictly in the SI sense)
 can be used for measured values. Examples include: m³, kg, bit, m³/h, %, etc.
@@ -1025,7 +1045,7 @@ Derived units, both multipliers and the units themselves should be formulated in
 its most commonly used in for easier consumption. I.e. "Kg" should be 1000 * g,
 "kmh" should be (1000 * m) / (3600 * s).
 
-## Appendix F: Wiring Language
+## Appendix D: Wiring Language
 
 Wiring is a description of how to transform current states of modalities into derived states and/or
 commands. While it might look like an event processing system or an information flow processing system,
@@ -1066,19 +1086,22 @@ An Access Table Entry is composed of:
 * Public Static Key of Controlled Device (32 bytes)
 * PSK for logical connection to that Device (32 bytes)
 
-Transformation Entries describe a single filter condition and the transformations
-that should happen in case the transformation is executed. Its contents are as follows:
+Transformation Entries describe a single filter condition and the transformation
+that should happen in case it is executed. Its contents are as follows:
 * Filter Expression (see below)
-* Number of Statements following (variable length integer)
 * Statement (see below)
 
 ### Expression
 
-Expressions are typed according to the defined basic types.
+Expressions are typed according to Tier 0 types.
 
 TODO
 
 ### Statement
+
+A statement can be one of two things:
+* Emit a Data Packet corresponding to a definition in this Wiring
+* Invoke a Command
 
 TODO
 
@@ -1095,4 +1118,3 @@ then executed.
 
 The runtime implementation is free to cache and simplify and optimize evaluations as
 long as the semantic doesn't change.
-
