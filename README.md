@@ -1017,7 +1017,7 @@ All values for all units are typed double (that is, 8 bytes).
 |     36 |      dBm | decibel relative to 1 milliWatt   |
 |     37 |    count | 1                                 |
 |     38 |    ratio | 1                                 |
-|     38 |       VA | volt-ampere                       |
+|     39 |       VA | volt-ampere                       |
 |     40 |      var | volt-ampere reactive              |
 
 ### Unit description
