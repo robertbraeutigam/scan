@@ -1042,8 +1042,8 @@ For example "g" (gram) would be written: 01 (length) 02 (base code for gram)
 "Kg" (kilogram) would be: 0B (length) 250 (constant follows) 1000d (1000 in double format) 02 (base code for gram) 251 (multiply)
 
 Derived units, both multipliers and the units themselves should be formulated in the order
-its most commonly used in for easier consumption. I.e. "Kg" should be 1000 * g,
-"kmh" should be (1000 * m) / (3600 * s).
+its most commonly used in for easier consumption. I.e. "Kg" should be 1000 g * and
+"kmh" should be 1000 m * 3600 s * /.
 
 ## Appendix D: Wiring Language
 
@@ -1065,7 +1065,7 @@ Or including/defining the timestamp when a state became current.
 
 ### Structure
 
-The wiring language is a binary structure either generated directly or compiled from some textual
+The wiring language is a binary structure either generated directly or compiled from some textual or graphical
 description (language not defined here). Structure as follows;
 * 'S','W' (2 bytes for ASCII characters 'S' and 'W')
 * Version (byte)
@@ -1099,22 +1099,62 @@ TODO
 
 ### Statement
 
-A statement can be one of two things:
-* Emit a Data Packet corresponding to a definition in this Wiring
-* Invoke a Command
+A statement has the format:
+* Statement Code (Byte)
+* Content
 
-TODO
+Specific statements described below.
+
+#### Emit a Data Packet
+
+Format as follows:
+* 01 (Byte)
+* Data Packet Id (variable length number)
+* Tag Values (Value structures)
+* Data Element Values (Value structures)
+
+This format is the same as in Data Responses, with the difference that all Values contain
+Expressions instead of constant values directly.
+
+The Packet Id is the Index of the Data Packet definition in the Wiring.
+
+#### Invoke Command
+
+Format as follows:
+* 02 (Byte)
+* Device Id (variable length number)
+* Command Id (variable length number)
+* Parameter Values (Value structures)
+
+Device Id is the Index of the device in the Access Table Entries.
+
+Parameter Values all have Expressions instead of direct constant values.
 
 ### Security Considerations
 
-Wiring contains access credentials, therefore should be stored at least as securely as the device's
-own credentials and keys.
+Wiring contains access credentials, therefore should be stored with appropriate security.
+
+### Deployment of a Wiring
+
+A Wiring is not Device specific. Any piece of any Wiring can be located on any Device on the
+network, provided it has the necessary access to other Devices needed for the Wiring to work.
+A Wiring may be located on a Device that is neither the source of the Data
+nor the target of any Commands described in the Wiring.
+
+Wiring can be designed globally for the whole network, or per Device locally, depending on
+the use-case.
+
+Deploying a Wiring should involve planning network capabilities and usage. Each individual
+transformation should be located either at the source or the target to minimize network
+usage, where the source should be preferred.
 
 ### Processing Model
 
-The processing model of Wiring is relatively simple. On any incoming events the guard
-conditions to each transformation is evaluated, those entries that evaluate to true are
-then executed.
+When a Wiring is already deployed on a Device, that Device must establish logical connections
+to all Data sources, except when the source is the Device itself. When any data arrives, it must evaluate all the guard conditions
+to every transformation defined and those entries that evaluate to true must be then
+executed.
 
 The runtime implementation is free to cache and simplify and optimize evaluations as
-long as the semantic doesn't change.
+long as it results in the same values.
+
