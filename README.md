@@ -873,14 +873,12 @@ a command.
 
 These are as follows:
 
-| Name                | Value Format            | Comment                                          |
-|---------------------|-------------------------|--------------------------------------------------|
-| Boolean             | Byte: 00 (false) or 01 (true) |                                            |
-| Byte Stream         | Bytes                   | Potentially unlimited stream of bytes.           |
-| Integer             | Variable Length Integer | Unsigned                                         |
-| String              | String                  |                                                  |
-| Double              | Double                  |                                                  |
-| Timestamp           | Millis since Epoch (8 bytes) |                                             |
+| Name                | Code    |Value Format            | Comment                                          |
+|---------------------|---------|------------------------|--------------------------------------------------|
+| Byte Stream         |       1 |Bytes                   | Potentially unlimited stream of bytes.           |
+| Integer             |       2 |Variable Length Integer | Unsigned                                         |
+| Double              |       4 |Double                  |                                                  |
+| String              |       3 |String                  |                                                  |
 
 ### Tier 1: Definition Types
 
@@ -891,15 +889,13 @@ These are the currently supported Definition Types:
 
 | Name                | Code    | Definition  | Tier 0      | Description                                      | Example Semantic  |
 |---------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
-| Presence            |       1 | Empty       | Boolean     | Presence of some underlying condition. | Alarm. Reverse Flow. Overtemperature condition. |
-| Media-Type          |       2 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
-| Defd. Number Enum   |       3 | Count, Values (all variable length numbers) | Integer (Index of value) | A predefined set of number values. | Multi-state switch state. |
-| Undef. Number Enum  |       4 | Empty       | Integer     | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. |
-| Undef. String Enum  |       5 | Empty       | String      | A dynamic set of string values. | Window name. |
-| Measurement         |       6 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement Aggregate |     7 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Arbitrary String    |       8 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Timestamp           |       9 | Empty       | Timestamp | Single instance of time. | Effective date, Billing date. Last update time. |
+| Media-Type          |       1 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
+| Defd. Number Enum   |       2 | Tier 0 Code, Count (variable length numer), Values (Count number of values of specified Type) | Integer (Index of value) | A predefined set of number values. Can't be defined for Byte Streams. | Presence, Switch state, Multi-state switch state. |
+| Undef. Number Enum  |       3 | Tier 0 Code | (As specified)  | A dynamic or larger, but bound set of number values. Can't be defined for Byte Stream. | I2C Address. Or even IP address, if known to be bound for use-case. Window name (for String). |
+| Measurement         |       4 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
+| Measurement Aggregate |     5 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Arbitrary String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
+| Timestamp           |       7 | Empty       | Integer     | Single instance of time in milliseconds from Epoch | Effective date, Billing date. Last update time. |
 
 The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
 
@@ -1093,7 +1089,79 @@ that should happen in case it is executed. Its contents are as follows:
 
 ### Expression
 
-Expressions are typed according to Tier 0 types.
+Expressions are typed according to Tier 0 types. Expression are reverse polish notation
+sequence of operators and values. Following terms are possible:
+* Referenced Values. Values from Data Packets.
+* Referenced Tag Values. Values from Data Packet Tags.
+* Constants. Different representations for all types.
+* Internal Function Call. Call one of the predefined Functions on the values on the stack.
+* Operators.
+
+Referenced Values are:
+* 01 (Byte)
+* Device Id (variable length integer)
+* Data Packet Id (variable length integer)
+* Data Element Id (variable length integer)
+
+Referenced Tags are:
+* 02 (Byte)
+* Device Id (variable length integer)
+* Data Packet Id (variable length integer)
+* Data Tag Id (variable length integer)
+
+Constants are:
+* 03 (Byte)
+* Tier 0 Code (variable length integer)
+* Value based on Type Code
+
+See next chapters for Functions and Operators.
+
+#### Operators
+
+For all bounded Enum types that have exactly 2 values, Wiring assigns "false" to value 0
+and "true" to value 1. Using this interpretation, following logical operators are available:
+
+| Code     | Symbol  | Description                        |
+|----------|---------|------------------------------------|
+|       17 |      && | And                                |
+|       18 |      || | Or                                 |
+|       19 |       ^ | Xor                                |
+|       20 |       ! | Not                                |
+
+Following relational operators are available among Integer and Double types:
+
+| Code     | Symbol  | Comment                            |
+|----------|---------|------------------------------------|
+|       33 |      == |                                    |
+|       34 |      != |                                    |
+|       35 |       < |                                    |
+|       36 |       > |                                    |
+|       37 |      <= |                                    |
+|       38 |      >= |                                    |
+
+Following relational operators are available among Byte Streams and Strings:
+
+| Code     | Symbol  | Comment                            |
+|----------|---------|------------------------------------|
+|       49 |      == | Needs to wait until end of stream or string. This might take multiple frames, or even unlimited number of frames. |
+|       50 |      != | May also need unlimited number of frames to terminate. |
+
+For Integer and Double types following arithmetic operator are available:
+
+| Code     | Symbol  | Comment                            |
+|----------|---------|------------------------------------|
+|       65 |       + |                                    |
+|       66 |       - |                                    |
+|       67 |       * |                                    |
+|       68 |       / | Integer divisor results in Integer result. |
+|       69 |       - | Unary operator.                    |
+|       70 |       % | Modulo / remainder                 |
+
+Note that the resulting type will be Integer if both arguments of a binary operator
+are Integer. If at least one of the arguments is Double, the result will be Double unless
+otherwise specified.
+
+#### Functions
 
 TODO
 
