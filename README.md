@@ -1148,20 +1148,18 @@ Following relational operators are available among Byte Streams and Strings:
 
 For Integer and Double types following arithmetic operator are available:
 
-TODO: specify overflow / underflow 
-
 | Code     | Symbol  | Comment                            |
 |----------|---------|------------------------------------|
-|       65 |       + |                                    |
-|       66 |       - |                                    |
-|       67 |       * |                                    |
-|       68 |       / | Integer divisor results in Integer result. |
-|       69 |       - | Unary operator.                    |
-|       70 |       % | Modulo / remainder                 |
-
-Note that the resulting type will be Integer if both arguments of a binary operator
-are Integer. If at least one of the arguments is Double, the result will be Double unless
-otherwise specified.
+|       65 |       + | Exact add. For doubles this always works. For integers a wiring error is raised for overflow. |
+|       66 |       - | Exact subtract. For doubles this always works. For integers a wiring error is raised for underflow. |
+|       67 |       * | Exact multiple. For doubles this always works. For integers a wiring error is raised for overflow. |
+|       68 |       / | Exact divide. Dividing with zero raises error. For integers the result is a division without remainder. |
+|       69 |      +d | Double add. Convert both arguments to Double then do Exact variant. |
+|       70 |      -d | Double subtract. Convert both arguments to Double then do Exact variant. |
+|       71 |     \*d | Double multiple. Convert both arguments to Double then do Exact variant. |
+|       72 |      /d | Double divide. Convert both arguments to Double then do Exact variant. |
+|       73 |       - | Unary operator. Result is always a Double.                |
+|       74 |       % | Modulo / remainder. Result is always an Integer. |
 
 #### Functions
 
@@ -1172,12 +1170,12 @@ returning different types.
 |----------|----------------|----------------------------------|---------------------------------------------------|
 |       81 |      length(a) | Returns the length of a Byte Stream or String. For Byte Streams this must wait for the stream to terminate. |
 |       82 |         abs(n) | Absolute value for Double. Nop for Integer.
-|       83 |        ceil(n) | Ceiling for Double. Nop for Integer.
-|       84 |       floor(n) | Floor for Double. Nop for Integer.
+|       83 |        ceil(n) | Ceiling for Double, returns an Integer. Nop for Integer.
+|       84 |       floor(n) | Floor for Double, returns an Integer. Nop for Integer.
 |       85 |      max(n, m) | Maximum of two values of Double or Integer.
 |       86 |      min(n, m) | Minimum of two values of Double or Integer.
-|       87 |       round(n) | Round Double. Nop for Integer.
-|       88 |      signum(n) | Signum of Double or Integer.
+|       87 |       round(n) | Round Double, returns an Integer. Nop for Integer.
+|       88 |      signum(n) | Signum of Double or Integer. Result is always a Double.
 
 ### Statement
 
@@ -1239,4 +1237,7 @@ executed.
 
 The runtime implementation is free to cache and simplify and optimize evaluations as
 long as it results in the same values.
+
+If there are any errors while evaluating a wiring script an error must be raised with the predefined
+error data type.
 
