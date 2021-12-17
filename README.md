@@ -1167,15 +1167,15 @@ Following functions are available. These work similarly to operators except for 
 returning different types.
 
 | Code     | Name           | Description                                                                          | 
-|----------|----------------|----------------------------------|---------------------------------------------------|
+|----------|----------------|-------------------------------------------------------------------------------------|
 |       81 |      length(a) | Returns the length of a Byte Stream or String. For Byte Streams this must wait for the stream to terminate. |
-|       82 |         abs(n) | Absolute value for Double. Nop for Integer.
-|       83 |        ceil(n) | Ceiling for Double, returns an Integer. Nop for Integer.
-|       84 |       floor(n) | Floor for Double, returns an Integer. Nop for Integer.
-|       85 |      max(n, m) | Maximum of two values of Double or Integer.
-|       86 |      min(n, m) | Minimum of two values of Double or Integer.
-|       87 |       round(n) | Round Double, returns an Integer. Nop for Integer.
-|       88 |      signum(n) | Signum of Double or Integer. Result is always a Double.
+|       82 |         abs(n) | Absolute value for Double. Nop for Integer. |
+|       83 |        ceil(n) | Ceiling for Double, returns an Integer. Nop for Integer. |
+|       84 |       floor(n) | Floor for Double, returns an Integer. Nop for Integer. |
+|       85 |      max(n, m) | Maximum of two values of Double or Integer. |
+|       86 |      min(n, m) | Minimum of two values of Double or Integer. |
+|       87 |       round(n) | Round Double, returns an Integer. Nop for Integer. |
+|       88 |      signum(n) | Signum of Double or Integer. Result is always a Double. |
 
 ### Statement
 
