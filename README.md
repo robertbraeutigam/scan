@@ -875,10 +875,13 @@ These are as follows:
 
 | Name                | Code    |Value Format            | Comment                                          |
 |---------------------|---------|------------------------|--------------------------------------------------|
-| Byte Stream         |       1 |Bytes                   | Potentially unlimited stream of bytes.           |
+| Byte Stream         |       1 |Max Size (variable length integer), Bytes | Potentially "unlimited" stream of bytes. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
 | Integer             |       2 |Variable Length Integer | Unsigned                                         |
 | Double              |       4 |Double                  |                                                  |
 | String              |       3 |String                  |                                                  |
+
+All Tier 0 types must be known to an implementation in order to properly interpret definitions and values.
+This table will not be extended any further in this form.
 
 ### Tier 1: Definition Types
 
@@ -890,8 +893,8 @@ These are the currently supported Definition Types:
 | Name                | Code    | Definition  | Tier 0      | Description                                      | Example Semantic  |
 |---------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
 | Media-Type          |       1 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
-| Defd. Number Enum   |       2 | Tier 0 Code, Count (variable length numer), Values (Count number of values of specified Type) | Integer (Index of value) | A predefined set of number values. Can't be defined for Byte Streams. | Presence, Switch state, Multi-state switch state. |
-| Undef. Number Enum  |       3 | Tier 0 Code | (As specified)  | A dynamic or larger, but bound set of number values. Can't be defined for Byte Stream. | I2C Address. Or even IP address, if known to be bound for use-case. Window name (for String). |
+| Defd. Number Enum   |       2 | Tier 0 Code, Count (variable length numer), Values (Count number of values of specified Type) | Integer (Index of value) | A predefined set of number values. | Presence, Switch state, Multi-state switch state. |
+| Undef. Number Enum  |       3 | Tier 0 Code | (As specified)  | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. Window name (for String). |
 | Measurement         |       4 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
 | Measurement Aggregate |     5 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
 | Arbitrary String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
@@ -914,7 +917,7 @@ easier for an operator.
 | Name             | Code    | Tier 1           | Description                                      |
 |------------------|---------|------------------|-------------------------------------------------|
 | Custom           |       0 | Any              | Custom type. Use if none of the other types apply. |
-| On-Off           |       1 | Presence         | Indicates an operational status of either on or off. |
+| On-Off           |       1 | Enum 0=Off, 1=On | Indicates an operational status of either on or off. |
 | Latitude         |       2 | Measurement, deg | |
 | Longitude        |       3 | Measurement, deg | |
 
@@ -964,9 +967,10 @@ result of any calculation given there will match the unit defined by the receive
 
 Prefixes or prefix multipliers, like Kilo, Mega, Milli, KiBi, etc. are also not defined. Definitions
 can instead contain literal values matching the desired multiplier. Presenting devices may choose to
-interpret and show corresponding multiplier if needed.
+interpret and show corresponding multiplier symbol if needed.
 
-This specification defines Base Units only and a description language to arbitrarily combine Base Units
+This specification defines mostly Base Units only (some are actually derived units, but are included for convenience anyway)
+and a description language to arbitrarily combine Base Units
 and Scalar values.
 
 All values for all units are typed double (that is, 8 bytes).
@@ -985,7 +989,7 @@ All values for all units are typed double (that is, 8 bytes).
 |      8 |      mol | mole                              |
 |      9 |       Hz | hertz                             |
 |     10 |      rad | radian                            |
-|     11 |      deg | degree (angle, also for geo point)    |
+|     11 |      deg | degree                            |
 |     12 |       sr | steradian                         |
 |     13 |        N | newton                            |
 |     14 |       Pa | pascal                            |
@@ -1010,7 +1014,7 @@ All values for all units are typed double (that is, 8 bytes).
 |     33 |        B | Byte                              |
 |     34 |       pH | pH                                |
 |     35 |       dB | decibel                           |
-|     36 |      dBm | decibel relative to 1 milliWatt   |
+|     36 |      dBm | decibel relative to 1 mW          |
 |     37 |    count | 1                                 |
 |     38 |    ratio | 1                                 |
 |     39 |       VA | volt-ampere                       |
@@ -1028,10 +1032,10 @@ The format is:
 * Description bytes
 
 Where description bytes are a sequence of the following possible phrases:
-* Base Unit Code (1 byte value less than 250)
-* Value 250, followed by a double value for a constant.
-* Value 251, meaning multiply the top 2 things on the stack
-* Value 252, meaning divide the top 2 things on the stack
+* Put Base Unit Code (1 byte value less than 250) on the stack
+* Value 250, followed by a double value for putting a constant on the stack
+* Value 251, multiply the top 2 things on the stack
+* Value 252, divide the top 2 things on the stack
 
 For example "g" (gram) would be written: 01 (length) 02 (base code for gram)
 
@@ -1158,7 +1162,7 @@ For Integer and Double types following arithmetic operator are available:
 |       70 |      -d | Double subtract. Convert both arguments to Double then do Exact variant. |
 |       71 |     \*d | Double multiple. Convert both arguments to Double then do Exact variant. |
 |       72 |      /d | Double divide. Convert both arguments to Double then do Exact variant. |
-|       73 |       - | Unary operator. Result is always a Double.                |
+|       73 |       - | Unary operator "negate". Result is always a Double.                |
 |       74 |       % | Modulo / remainder. Result is always an Integer. |
 
 #### Functions
