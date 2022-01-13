@@ -7,12 +7,13 @@
 package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public interface Network {
    /**
     * Establish a logical connection to the given address with the gven PSK.
     */
-   LogicalConnection establish(byte[] address, byte[] psk, LogicalConnectionReceiver receiver);
+   LogicalConnection establish(byte[] address, byte[] psk, MessageReceiver receiver);
 
    /**
     * Query all devices on the network. Note that this device may not have
@@ -24,4 +25,21 @@ public interface Network {
     */
    void queryAll(WildcardQueryIssuer issuer);
 
+   public interface WildcardQueryIssuer extends Consumer<byte[]>, AutoCloseable {
+      /**
+       * Called to provide an address that has been detected. There is
+       * no guarantee whether this address was already detected previously
+       * or not.
+       */
+      @Override
+      void accept(byte[] address);
+
+      /**
+       * Called to indicate that no more addresses will be supplied. Issuer
+       * may free up resources at this point.
+       */
+      @Override
+      default void close() {
+      }
+   }
 }

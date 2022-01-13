@@ -11,26 +11,25 @@ import java.nio.ByteBuffer;
 
 public interface Message {
    /**
-    * Send the given bytes as part of this message.
-    * @return A future that completes when bytes are sent to network,
+    * Append the given bytes to this message.
+    * @return A future that completes when bytes are processed,
     * i.e. when the buffer is ready to be used again.
     */
-   CompletableFuture<Void> send(ByteBuffer buffer);
+   CompletableFuture<Void> append(ByteBuffer buffer);
 
    /**
     * Close this message with the last part supplied as argument.
     * @return A future that completes when all pending bytes are sent
     * to the network.
     */
-   CompletableFuture<Void> closeWith(ByteBuffer buffer);
+   CompletableFuture<Void> endWith(ByteBuffer buffer);
 
    /**
-    * Close this message, there will be no more parts of this message sent.
-    * @return A future that completes when all pending bytes are sent
-    * to the network.
+    * Close this message, there will be no more parts of this message.
+    * @return A future that completes when all pending bytes are processed.
     */
-   default CompletableFuture<Void> close() {
-      return closeWith(ByteBuffer.wrap(new byte[] {}));
+   default CompletableFuture<Void> end() {
+      return endWith(ByteBuffer.wrap(new byte[] {}));
    }
 }
 
