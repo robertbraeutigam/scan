@@ -13,7 +13,7 @@ public interface LogicalNetwork {
    /**
     * Establish a logical connection to the given address with the gven PSK.
     */
-   LogicalConnection establish(byte[] address, byte[] psk, MessageReceiver receiver);
+   LogicalConnection establish(byte[] address, byte[] psk, LogicalConnection receiver);
 
    /**
     * Query all devices on the network. Note that this device may not have
@@ -24,6 +24,13 @@ public interface LogicalNetwork {
     * each time a device answers.
     */
    void queryAll(WildcardQueryIssuer issuer);
+
+   /**
+    * Free up this network instance, including ports and other network resources 
+    * and close all logical connections.
+    * @return A future that completes when all resources are freed.
+    */
+   CompletableFuture<Void> close();
 
    interface WildcardQueryIssuer extends Consumer<byte[]>, AutoCloseable {
       /**

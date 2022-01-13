@@ -9,7 +9,21 @@ package com.vanillasource.scan.client.network;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 
-public interface LogicalConnection extends MessageReceiver {
+public interface LogicalConnection {
+   /**
+    * Called to create an message.
+    */
+   Message create();
+
+   /**
+    * Send a message through this logical connection.
+    * @return A future that completes when the message is sent to
+    * the network.
+    */
+   default CompletableFuture<Void> receive(ByteBuffer message) {
+      return create().endWith(message);
+   }
+
    /**
     *Close this logical connection.
     * @return A future that completes when all pending data is sent
