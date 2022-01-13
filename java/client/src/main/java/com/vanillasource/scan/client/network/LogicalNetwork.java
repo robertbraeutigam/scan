@@ -9,12 +9,7 @@ package com.vanillasource.scan.client.network;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-public interface LogicalNetwork {
-   /**
-    * Establish a logical connection to the given address with the gven PSK.
-    */
-   LogicalConnection establish(byte[] address, byte[] psk, LogicalConnection receiver);
-
+public interface LogicalNetwork extends LogicalConnectionReceiver {
    /**
     * Query all devices on the network. Note that this device may not have
     * access to all the devices listed. Only devices that are currently on the
