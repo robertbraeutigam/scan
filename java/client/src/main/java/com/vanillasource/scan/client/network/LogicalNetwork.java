@@ -9,7 +9,7 @@ package com.vanillasource.scan.client.network;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-public interface Network {
+public interface LogicalNetwork {
    /**
     * Establish a logical connection to the given address with the gven PSK.
     */
