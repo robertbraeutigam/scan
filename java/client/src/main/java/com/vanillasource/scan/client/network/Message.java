@@ -11,11 +11,11 @@ import java.nio.ByteBuffer;
 
 public interface Message {
    /**
-    * Append the given bytes to this message.
+    * Receive the given bytes to this message.
     * @return A future that completes when bytes are processed,
     * i.e. when the buffer is ready to be used again.
     */
-   CompletableFuture<Void> append(ByteBuffer buffer);
+   CompletableFuture<Void> recieve(ByteBuffer buffer);
 
    /**
     * Close this message with the last part supplied as argument.
