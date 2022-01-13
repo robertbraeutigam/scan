@@ -25,7 +25,7 @@ public interface LogicalNetwork {
     */
    void queryAll(WildcardQueryIssuer issuer);
 
-   public interface WildcardQueryIssuer extends Consumer<byte[]>, AutoCloseable {
+   interface WildcardQueryIssuer extends Consumer<byte[]>, AutoCloseable {
       /**
        * Called to provide an address that has been detected. There is
        * no guarantee whether this address was already detected previously
