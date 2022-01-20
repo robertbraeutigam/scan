@@ -9,7 +9,10 @@ package com.vanillasource.scan.client.network;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 
-public interface LogicalConnection {
+/**
+ * A peer that is connected through a logical connection.
+ */
+public interface Peer {
    /**
     * Called to create an message.
     */
@@ -25,7 +28,7 @@ public interface LogicalConnection {
    }
 
    /**
-    *Close this logical connection.
+    * Close this logical connection.
     * @return A future that completes when all pending data is sent
     * to the network.
     */
