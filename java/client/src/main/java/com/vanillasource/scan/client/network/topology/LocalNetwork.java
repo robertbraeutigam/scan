@@ -21,7 +21,7 @@ public final class LocalNetwork implements Network {
    }
 
    @Override
-   public void queryAll(WildcardQueryIssuer issuer) {
+   public void queryAll() {
       // TODO
    }
 

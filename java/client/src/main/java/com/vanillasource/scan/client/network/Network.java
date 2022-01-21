@@ -18,7 +18,7 @@ public interface Network extends Endpoint {
     * seconds to complete, but will immediately update the supplied listener
     * each time a device answers.
     */
-   void queryAll(WildcardQueryIssuer issuer);
+   void queryAll();
 
    /**
     * Free up this network instance, including ports and other network resources 
@@ -26,22 +26,4 @@ public interface Network extends Endpoint {
     * @return A future that completes when all resources are freed.
     */
    CompletableFuture<Void> close();
-
-   interface WildcardQueryIssuer extends Consumer<byte[]>, AutoCloseable {
-      /**
-       * Called to provide an address that has been detected. There is
-       * no guarantee whether this address was already detected previously
-       * or not.
-       */
-      @Override
-      void accept(byte[] address);
-
-      /**
-       * Called to indicate that no more addresses will be supplied. Issuer
-       * may free up resources at this point.
-       */
-      @Override
-      default void close() {
-      }
-   }
 }
