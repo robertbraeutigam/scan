@@ -643,7 +643,7 @@ appropriate Appendix.
 A Definition record consists of:
 * Name (localized string)
 * Description (localized markdown string)
-* Predefined Semantics Code (variable length number)
+* Application Type Code (variable length number)
 * Predefined Type Code (variable length number)
 * Type Definition
 
@@ -881,12 +881,12 @@ These are as follows:
 | String              |       3 |String                  |                                                  |
 
 All Tier 0 types must be known to an implementation in order to properly interpret definitions and values.
-This table will not be extended any further in this form.
+This table will not be extended any further.
 
 ### Tier 1: Definition Types
 
 These are types that have enough meaning to be used in definitions. This is the minimal meaning
-all data packet elements and command parameter must carry.
+all data packet elements and command parameters must carry.
 
 These are the currently supported Definition Types:
 
@@ -902,51 +902,49 @@ These are the currently supported Definition Types:
 
 The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
 
-Note, this table might be extended by subsequent iterations of this document. All devices
-must ignore entries they can not interpret.
+Note, this table might be extended by subsequent iterations of this document. Devices may may
+ignore types that they don't know. Note however that type codes can not change, therefore 
+type codes can be compared even if the exact definition is not known.
 
-### Tier 2: Predefined Types
+### Tier 2: Usage Types
 
-Predefined types are some usages that are usually common among devices.
-It is *not necessary* for a device to use
-predefined types, all types can be ad-hoc defined.
+Types that are usage specific. It is *not necessary* for a device to use
+usage types, all types can be ad-hoc defined.
 
-Devices should however use predefined types wherever they can to make *wiring*
+Devices should however use usage types wherever they can to make *wiring*
 easier for an operator.
 
 | Name             | Code    | Tier 1           | Description                                      |
 |------------------|---------|------------------|-------------------------------------------------|
-| Custom           |       0 | Any              | Custom type. Use if none of the other types apply. |
+| None             |       0 | Any              | No defined usage type applies to the data at hand. |
 | On-Off           |       1 | Enum 0=Off, 1=On | Indicates an operational status of either on or off. |
 | Latitude         |       2 | Measurement, deg | |
 | Longitude        |       3 | Measurement, deg | |
 
-Note, this table might be extended by subsequent iterations of this document. All devices
-must ignore entries they can not interpret.
+Note, this table might be extended by subsequent iterations of this document. Devices may may
+ignore types that they don't know. Note however that type codes can not change, therefore 
+type codes can be compared even if the exact definition is not known.
 
-### Tier 3: Predefined Semantics
+### Tier 3: Application Types
 
-The purpose of predefined semantics is for the device to express what a data element
-or a command parameter *means in the current application*. It
-is *not necessary* for a device to use predefined semantics. Nor is it necessary for
+The purpose of application types is for the device to express what a data element
+or a command parameter means *in the current application*. It
+is *not necessary* for a device to use application types. Nor is it necessary for
 a device to know these.
 
-Predefined semantics are merely a *convenience* to enable easy *wiring* of data and
+Application types are merely a *convenience* to enable easy *wiring* of data and
 commands. Even without them operators are still perfectly capable
 of connecting data and commands based on their understanding.
 
-Devices must use predefined semantics is any of them apply to the application at hand.
-Devices must also not misuse predefined semantics for meanings that are not implied. When
-in doubt, define Custom semantics.
-
 | Name             | Code    | Tier 2          | Description                            |
 |------------------|---------|-----------------|----------------------------------------|
-| Custom           |       0 | Any             | Data element has custom semantics, specific to this device. Use when no other predefined semantics apply. |
+| None             |       0 | Any             | Data element has no defined type specific to this application. Use when no application types apply. |
 | Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
 | Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
 
-Note, this table might be extended by subsequent iterations of this document. All devices
-must ignore entries they can not interpret.
+Note, this table might be extended by subsequent iterations of this document. Devices may may
+ignore types that they don't know. Note however that type codes can not change, therefore 
+type codes can be compared even if the exact definition is not known.
 
 ## Appendix C: Unit System
 
