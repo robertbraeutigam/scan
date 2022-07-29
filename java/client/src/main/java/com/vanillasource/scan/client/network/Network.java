@@ -7,7 +7,6 @@
 package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 public interface Network extends Endpoint {
    /**
@@ -17,8 +16,9 @@ public interface Network extends Endpoint {
     * due to network congestion or timeouts. This method may take several
     * seconds to complete, but will immediately update the supplied listener
     * each time a device answers.
+    * @return A future that completes when the query was successfully sent.
     */
-   void queryAll();
+   CompletableFuture<Void> queryAll();
 
    /**
     * Free up this network instance, including ports and other network resources 
