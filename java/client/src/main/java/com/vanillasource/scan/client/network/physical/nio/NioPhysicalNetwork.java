@@ -93,7 +93,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
             }
          }
          if (key.isWritable()) {
-            OutgoingPacket packet = sendQueue.poll();
+            OutgoingPacket packet = sendQueue.peek();
             if (packet!=null && packet.send()) {
                sendQueue.remove();
             }
