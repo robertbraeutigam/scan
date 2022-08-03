@@ -12,31 +12,48 @@ import java.util.concurrent.CompletableFuture;
 
 @Test
 public class NioPhysicalNetworkTests {
-   private PhysicalNetwork network1;
-   private PhysicalNetworkListener listener1;
-   private PhysicalNetwork network2;
-   private PhysicalNetworkListener listener2;
+   private PhysicalNetwork network;
+   private PhysicalNetworkListener listener;
 
    public void testMessageSentIsReceived() {
-      network1.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 })).join();
+      when(listener.receiveMulticast(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
-      verify(listener1, timeout(200)).receiveMulticast(any(), any());
-      verify(listener2, timeout(200)).receiveMulticast(any(), any());
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 })).join();
+
+      verify(listener, timeout(100)).receiveMulticast(any(), any());
+   }
+
+   public void testReceiverDoesNotGetCalledUntilFinished() {
+      when(listener.receiveMulticast(any(), any())).thenReturn(new CompletableFuture<>());
+
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+
+      verify(listener, timeout(100).times(1)).receiveMulticast(any(), any());
+   }
+
+   public void testCanReceiveMulticastInQuickSuccession() throws InterruptedException {
+      CompletableFuture<Void> receiveMessage1 = new CompletableFuture<>();
+      when(listener.receiveMulticast(any(), any()))
+         .thenReturn(receiveMessage1)
+         .thenReturn(new CompletableFuture<>());
+
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+      Thread.sleep(20);
+      receiveMessage1.completedFuture(null);
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+
+      verify(listener, timeout(100).times(2)).receiveMulticast(any(), any());
    }
 
    @BeforeMethod
    protected void setUp() throws IOException {
-      listener1 = mock(PhysicalNetworkListener.class);
-      when(listener1.receiveMulticast(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-      network1 = NioPhysicalNetwork.startWith(listener1);
-      listener2 = mock(PhysicalNetworkListener.class);
-      when(listener2.receiveMulticast(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-      network2 = NioPhysicalNetwork.startWith(listener2);
+      listener = mock(PhysicalNetworkListener.class);
+      network = NioPhysicalNetwork.startWith(listener);
    }
 
    @AfterMethod
    protected void tearDown() {
-      network1.close();
-      network2.close();
+      network.close();
    }
 }
