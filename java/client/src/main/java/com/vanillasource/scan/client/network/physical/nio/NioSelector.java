@@ -70,8 +70,15 @@ public final class NioSelector implements AutoCloseable {
             // Handle keys
             while (keysIterator.hasNext()) {
                SelectionKey key = keysIterator.next();
+               NioHandler handler = (NioHandler) key.attachment();
+               NioSelectorKey nioKey = new NioSelectorKey(this, key);
                LOGGER.trace("read ops {}, calling handler", key.readyOps());
-               ((NioHandler) key.attachment()).handle(new NioSelectorKey(this, key));
+               if (key.isReadable()) {
+                  handler.handleReadable(nioKey);
+               }
+               if (key.isWritable()) {
+                  handler.handleWritable(nioKey);
+               }
                keysIterator.remove();
             }
             // Execute jobs

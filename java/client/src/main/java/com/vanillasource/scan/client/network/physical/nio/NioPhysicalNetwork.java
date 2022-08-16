@@ -70,34 +70,34 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    }
 
    @Override
-   public void handle(NioSelectorKey key) throws IOException {
-      if (key.isReadable()) {
-         SocketAddress address = multicastChannel.receive(datagramIncomingBuffer);
-         if (address instanceof InetSocketAddress) {
-            LOGGER.trace("reading, disable read");
-            key.disableRead();
-            listener.receiveMulticast(((InetSocketAddress) address).getAddress(), datagramIncomingBuffer)
-               .whenComplete((result, exception) -> {
-                  LOGGER.trace("reading finished, enable read");
-                  key.enableRead();
-                  if (exception != null) {
-                     selector.closeExceptionally(exception);
-                  }
-               });
-         } else {
-            LOGGER.warn("address from multicast was not inet, but {}", address.getClass());
-         }
+   public void handleWritable(NioSelectorKey key) throws IOException {
+      OutgoingPacket packet = sendQueue.peek();
+      if (packet!=null && packet.send()) {
+         LOGGER.trace("data written");
+         sendQueue.remove();
       }
-      if (key.isWritable()) {
-         OutgoingPacket packet = sendQueue.peek();
-         if (packet!=null && packet.send()) {
-            LOGGER.trace("data written");
-            sendQueue.remove();
-         }
-         if (sendQueue.isEmpty()) {
-            LOGGER.trace("send queue empty, disable write");
-            key.disableWrite();
-         }
+      if (sendQueue.isEmpty()) {
+         LOGGER.trace("send queue empty, disable write");
+         key.disableWrite();
+      }
+   }
+
+   @Override
+   public void handleReadable(NioSelectorKey key) throws IOException {
+      SocketAddress address = multicastChannel.receive(datagramIncomingBuffer);
+      if (address instanceof InetSocketAddress) {
+         LOGGER.trace("reading, disable read");
+         key.disableRead();
+         listener.receiveMulticast(((InetSocketAddress) address).getAddress(), datagramIncomingBuffer)
+            .whenComplete((result, exception) -> {
+               LOGGER.trace("reading finished, enable read");
+               key.enableRead();
+               if (exception != null) {
+                  selector.closeExceptionally(exception);
+               }
+            });
+      } else {
+         LOGGER.warn("address from multicast was not inet, but {}", address.getClass());
       }
    }
 

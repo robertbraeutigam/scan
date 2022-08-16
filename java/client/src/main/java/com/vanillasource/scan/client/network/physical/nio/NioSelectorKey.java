@@ -11,14 +11,6 @@ public final class NioSelectorKey {
       this.selectionKey = selectionKey;
    }
 
-   public boolean isReadable() {
-      return selectionKey.isReadable();
-   }
-
-   public boolean isWritable() {
-      return selectionKey.isWritable();
-   }
-
    public void enableRead() {
       nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_READ));
    }
