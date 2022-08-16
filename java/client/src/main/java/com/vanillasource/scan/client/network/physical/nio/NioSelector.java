@@ -7,8 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import java.nio.channels.SelectionKey;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.Queue;
 import java.nio.channels.spi.AbstractSelectableChannel;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
@@ -17,7 +15,7 @@ public final class NioSelector implements AutoCloseable {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioSelector.class);
    private final Selector selector;
    private final CompletableFuture<Void> closed = new CompletableFuture<>();
-   private final Queue<QueueEntry<?>> selectorJobs = new ConcurrentLinkedQueue<>();
+   private final JobQueue queue = new JobQueue();
    private volatile boolean running = true;
 
    private NioSelector(Selector selector) {
@@ -42,8 +40,7 @@ public final class NioSelector implements AutoCloseable {
    }
 
    public <T> CompletableFuture<T> onSelectionThread(Supplier<T> supplier) {
-      CompletableFuture<T> future = new CompletableFuture<>();
-      selectorJobs.add(new QueueEntry<>(supplier, future));
+      CompletableFuture<T> future = queue.enqueue(supplier);
       selector.wakeup();
       return future;
    }
@@ -79,12 +76,7 @@ public final class NioSelector implements AutoCloseable {
             }
             // Execute jobs
             LOGGER.trace("executing all selector jobs...");
-            Iterator<QueueEntry<?>> selectorJobsIterator = selectorJobs.iterator();
-            while (selectorJobsIterator.hasNext()) {
-               QueueEntry<?> selectorJob = selectorJobsIterator.next();
-               selectorJob.run();
-               selectorJobsIterator.remove();
-            }
+            queue.executeAll();
          }
       } catch (Throwable e) {
          closeExceptionally(e);
@@ -113,17 +105,4 @@ public final class NioSelector implements AutoCloseable {
       .join();
    }
 
-   private static final class QueueEntry<T> {
-      private final Supplier<T> supplier;
-      private final CompletableFuture<T> future;
-
-      public QueueEntry(Supplier<T> supplier, CompletableFuture<T> future) {
-         this.supplier = supplier;
-         this.future = future;
-      }
-
-      public void run() {
-         future.complete(supplier.get());
-      }
-   }
 }
