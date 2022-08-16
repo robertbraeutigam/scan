@@ -9,9 +9,12 @@ import java.io.IOException;
 import org.testng.annotations.AfterMethod;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 @Test
 public class NioPhysicalNetworkTests {
+   private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetworkTests.class);
    private PhysicalNetwork network;
    private PhysicalNetworkListener listener;
 
@@ -26,14 +29,16 @@ public class NioPhysicalNetworkTests {
    public void testReceiverDoesNotGetCalledUntilFinished() {
       when(listener.receiveMulticast(any(), any())).thenReturn(new CompletableFuture<>());
 
+      LOGGER.debug("sending multicast messages...");
       network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
       network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
 
+      LOGGER.debug("verifying...");
       verify(listener, timeout(100).times(1)).receiveMulticast(any(), any());
    }
 
    public void testCanReceiveMulticastInQuickSuccession() throws InterruptedException {
-      CompletableFuture<Void> receiveMessage1 = new CompletableFuture<>();
+      CompletableFuture<Void> receiveMessage1 = CompletableFuture.completedFuture(null);
       when(listener.receiveMulticast(any(), any()))
          .thenReturn(receiveMessage1)
          .thenReturn(new CompletableFuture<>());
@@ -49,7 +54,9 @@ public class NioPhysicalNetworkTests {
    @BeforeMethod
    protected void setUp() throws IOException {
       listener = mock(PhysicalNetworkListener.class);
+      LOGGER.trace("starting nio physical network...");
       network = NioPhysicalNetwork.startWith(listener);
+      LOGGER.trace("started nio physical network...");
    }
 
    @AfterMethod

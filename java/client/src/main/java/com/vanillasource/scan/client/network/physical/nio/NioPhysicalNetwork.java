@@ -6,40 +6,35 @@ import com.vanillasource.scan.client.network.Peer;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 import java.net.InetAddress;
-import java.nio.channels.Selector;
 import java.io.IOException;
 import java.nio.channels.DatagramChannel;
 import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.StandardSocketOptions;
 import java.net.NetworkInterface;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.channels.SelectionKey;
-import java.util.Iterator;
 import java.net.SocketAddress;
 import java.util.Enumeration;
 import java.net.SocketException;
 import java.util.LinkedList;
 
-public final class NioPhysicalNetwork implements PhysicalNetwork {
+public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetwork.class);
    private static final InetSocketAddress MULTICAST_ADDRESS = new InetSocketAddress("239.255.255.244", 11372);
-   private final Selector selector;
+   private final NioSelector selector;
+   private final NioSelectorKey multicastKey;
    private final DatagramChannel multicastChannel;
    private final PhysicalNetworkListener listener;
    private final Queue<OutgoingPacket> sendQueue = new LinkedList<>();
-   private final Queue<Runnable> selectorJobs = new ConcurrentLinkedQueue<>();
-   private final CompletableFuture<Void> closed = new CompletableFuture<>();
    private final ByteBuffer datagramIncomingBuffer = ByteBuffer.allocateDirect(65535);
-   private final SelectionKey multicastKey;
-   private volatile boolean running = true;
 
-   private NioPhysicalNetwork(Selector selector, SelectionKey multicastKey, DatagramChannel multicastChannel, PhysicalNetworkListener listener) {
+   private NioPhysicalNetwork(NioSelector selector, DatagramChannel multicastChannel, PhysicalNetworkListener listener) {
       this.selector = selector;
-      this.multicastKey = multicastKey;
+      this.multicastKey = selector.register(multicastChannel, this);
+      this.multicastKey.enableRead();
       this.multicastChannel = multicastChannel;
       this.listener = listener;
    }
@@ -49,7 +44,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
     * joins appropriate multicast groups.
     */
    public static NioPhysicalNetwork startWith(PhysicalNetworkListener listener) throws IOException {
-      Selector selector = Selector.open();
+      NioSelector selector = NioSelector.create();
 
       InetAddress multicastGroup = MULTICAST_ADDRESS.getAddress();
       NetworkInterface networkInterface = findMulticastInterface();
@@ -59,19 +54,8 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
          .setOption(StandardSocketOptions.IP_MULTICAST_IF, networkInterface);
       multicastChannel.join(multicastGroup, networkInterface);
       multicastChannel.configureBlocking(false);
-      SelectionKey multicastKey = multicastChannel.register(selector, SelectionKey.OP_READ);
-      NioPhysicalNetwork network = new NioPhysicalNetwork(selector, multicastKey, multicastChannel, listener);
-      multicastKey.attach(new IOHandler() {
-         @Override
-         public void handle(SelectionKey key) throws IOException {
-            network.handleMulticastIO(key);
-         }
-      });
 
-      Thread thread = new Thread(network::select, "Scan Network Select");
-      thread.start();
-
-      return network;
+      return new NioPhysicalNetwork(selector, multicastChannel, listener);
    }
 
    private static NetworkInterface findMulticastInterface() throws SocketException {
@@ -85,20 +69,20 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
       return null;
    }
 
-   private void handleMulticastIO(SelectionKey key) throws IOException {
+   @Override
+   public void handle(NioSelectorKey key) throws IOException {
       if (key.isReadable()) {
          SocketAddress address = multicastChannel.receive(datagramIncomingBuffer);
          if (address instanceof InetSocketAddress) {
-            LOGGER.trace("reading, removing OP_READ");
-            key.interestOps(key.interestOps() & (~SelectionKey.OP_READ));
+            LOGGER.trace("reading, disable read");
+            key.disableRead();
             listener.receiveMulticast(((InetSocketAddress) address).getAddress(), datagramIncomingBuffer)
                .whenComplete((result, exception) -> {
-                  LOGGER.trace("reading finished, adding OP_READ");
-                  selectorJobs.add(() -> key.interestOps(key.interestOps() | SelectionKey.OP_READ));
+                  LOGGER.trace("reading finished, enable read");
+                  key.enableRead();
                   if (exception != null) {
-                     selectorJobs.add(() -> new IllegalStateException("i/o handler async exception", exception));
+                     selector.closeExceptionally(exception);
                   }
-                  selector.wakeup();
                });
          } else {
             LOGGER.warn("address from multicast was not inet, but {}", address.getClass());
@@ -107,11 +91,12 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
       if (key.isWritable()) {
          OutgoingPacket packet = sendQueue.peek();
          if (packet!=null && packet.send()) {
+            LOGGER.trace("data written");
             sendQueue.remove();
-            if (sendQueue.isEmpty()) {
-               LOGGER.trace("send queue empty, removing OP_WRITE");
-               key.interestOps(key.interestOps() & (~SelectionKey.OP_WRITE));
-            }
+         }
+         if (sendQueue.isEmpty()) {
+            LOGGER.trace("send queue empty, disable write");
+            key.disableWrite();
          }
       }
    }
@@ -119,11 +104,11 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
    @Override
    public CompletableFuture<Void> sendMulticast(ByteBuffer packet) {
       CompletableFuture<Void> completion = new CompletableFuture<>();
-      selectorJobs.add(() -> {
+      LOGGER.trace("adding packet to be written...");
+      selector.onSelectionThread(() -> {
          sendQueue.add(new OutgoingPacket(packet, completion));
-         multicastKey.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+         multicastKey.enableWrite();
       });
-      selector.wakeup();
       return completion;
    }
 
@@ -135,51 +120,11 @@ public final class NioPhysicalNetwork implements PhysicalNetwork {
 
    @Override
    public void close() {
-      running = false;
-      selector.wakeup();
-      closed
-         .whenComplete((result, exception) -> {
-            try {
-               selector.close();
-            } catch (IOException e) {
-               LOGGER.warn("selector couldn't be closed", e);
-            }
-            try {
-               multicastChannel.close();
-            } catch (IOException e) {
-               LOGGER.warn("multicast channel couldn't be closed", e);
-            }
-         })
-      .join();
-   }
-
-   private void select() {
+      selector.close();
       try {
-         while (running) {
-            LOGGER.trace("selecting...");
-            int changedKeys = selector.select(1000); // 1 sec
-            Iterator<SelectionKey> keysIterator = selector.selectedKeys().iterator();
-            // Handle keys
-            while (keysIterator.hasNext()) {
-               SelectionKey key = keysIterator.next();
-               LOGGER.trace("read ops {}, calling handler", key.readyOps());
-               ((IOHandler) key.attachment()).handle(key);
-               keysIterator.remove();
-            }
-            // Execute jobs
-            LOGGER.trace("executing all selector jobs...");
-            Iterator<Runnable> selectorJobsIterator = selectorJobs.iterator();
-            while (selectorJobsIterator.hasNext()) {
-               Runnable selectorJob = selectorJobsIterator.next();
-               selectorJob.run();
-               selectorJobsIterator.remove();
-            }
-         }
-      } catch (Throwable e) {
-         closed.completeExceptionally(e);
-         close();
-      } finally {
-         closed.complete(null);
+         multicastChannel.close();
+      } catch (IOException e) {
+         LOGGER.warn("multicast channel couldn't be closed", e);
       }
    }
 
