@@ -11,10 +11,13 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import java.net.InetAddress;
+import com.vanillasource.scan.client.network.Peer;
 
 @Test
 public class NioPhysicalNetworkTests {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetworkTests.class);
+   private Peer initiator;
    private PhysicalNetwork network;
    private PhysicalNetworkListener listener;
 
@@ -51,12 +54,21 @@ public class NioPhysicalNetworkTests {
       verify(listener, timeout(100).times(2)).receiveMulticast(any(), any());
    }
 
+   public void testOpenedPeersAreClosedWhenNetworkCloses() throws Exception {
+      network.openConnection(InetAddress.getLocalHost(), initiator);
+
+      network.close();
+
+      verify(initiator, atLeastOnce()).close();
+   }
+
    @BeforeMethod
    protected void setUp() throws IOException {
       listener = mock(PhysicalNetworkListener.class);
       LOGGER.trace("starting nio physical network...");
       network = NioPhysicalNetwork.startWith(listener);
       LOGGER.trace("started nio physical network...");
+      initiator = mock(Peer.class);
    }
 
    @AfterMethod

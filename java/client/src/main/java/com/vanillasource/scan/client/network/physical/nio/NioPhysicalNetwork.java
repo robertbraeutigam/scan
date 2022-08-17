@@ -20,14 +20,20 @@ import java.net.SocketAddress;
 import java.util.Enumeration;
 import java.net.SocketException;
 import java.util.LinkedList;
+import java.nio.channels.SocketChannel;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetwork.class);
-   private static final InetSocketAddress MULTICAST_ADDRESS = new InetSocketAddress("239.255.255.244", 11372);
+   private static final int SCAN_PORT = 11372;
+   private static final InetSocketAddress MULTICAST_ADDRESS = new InetSocketAddress("239.255.255.244", SCAN_PORT);
    private final NioSelector selector;
    private final NioSelectorKey multicastKey;
    private final DatagramChannel multicastChannel;
    private final PhysicalNetworkListener listener;
+   private final List<Peer> peers = new ArrayList<>();
    private final Queue<OutgoingPacket> sendQueue = new LinkedList<>();
    private final ByteBuffer datagramIncomingBuffer = ByteBuffer.allocateDirect(65535);
 
@@ -67,6 +73,11 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
          }
       }
       return null;
+   }
+
+   @Override
+   public void handleConnectable(NioSelectorKey key) throws IOException {
+      // Not used
    }
 
    @Override
@@ -113,13 +124,30 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    }
 
    @Override
-   public CompletableFuture<Peer> openConnection(InetAddress peer, Peer initiator) {
-      // TODO
-      return null;
+   public CompletableFuture<Peer> openConnection(InetAddress address, Peer initiator) {
+      try {
+         SocketChannel channel = SocketChannel.open();
+         channel.configureBlocking(false);
+         channel.connect(new InetSocketAddress(address, SCAN_PORT));
+         Peer peer = new NioPeer(selector, channel, initiator);
+         synchronized (peers) {
+            peers.add(peer);
+         }
+         return CompletableFuture.completedFuture(peer.afterClose(() -> {
+            synchronized (peers) {
+               peers.remove(peer);
+            }
+         }));
+      } catch (IOException e) {
+         throw new UncheckedIOException(e);
+      }
    }
 
    @Override
    public void close() {
+      synchronized (peers) {
+         peers.forEach(Peer::close);
+      }
       selector.close();
       try {
          multicastChannel.close();

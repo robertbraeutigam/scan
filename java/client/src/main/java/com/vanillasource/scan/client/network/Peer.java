@@ -32,6 +32,22 @@ public interface Peer {
     * @return A future that completes when all pending data is sent
     * to the network.
     */
-   CompletableFuture<Void> close();
+   void close();
+
+   default Peer afterClose(Runnable runnable) {
+      Peer self = this;
+      return new Peer() {
+         @Override
+         public Message create() {
+            return self.create();
+         }
+
+         @Override
+         public void close() {
+            self.close();
+            runnable.run();
+         }
+      };
+   }
 }
 

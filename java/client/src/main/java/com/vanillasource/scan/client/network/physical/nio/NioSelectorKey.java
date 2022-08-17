@@ -11,19 +11,39 @@ public final class NioSelectorKey {
       this.selectionKey = selectionKey;
    }
 
+   public void cancel() {
+      selectionKey.cancel();
+   }
+
+   public void enableConnect() {
+      enable(SelectionKey.OP_CONNECT);
+   }
+
+   public void disableConnect() {
+      disable(SelectionKey.OP_CONNECT);
+   }
+
    public void enableRead() {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_READ));
+      enable(SelectionKey.OP_READ);
    }
 
    public void disableRead() {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() & (~SelectionKey.OP_READ)));
+      disable(SelectionKey.OP_READ);
    }
 
    public void enableWrite() {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE));
+      enable(SelectionKey.OP_WRITE);
    }
 
    public void disableWrite() {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() & (~SelectionKey.OP_WRITE)));
+      disable(SelectionKey.OP_WRITE);
+   }
+
+   private void enable(int flag) {
+      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() | flag));
+   }
+
+   private void disable(int flag) {
+      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() & (~flag)));
    }
 }
