@@ -702,6 +702,13 @@ Same as the maximum rate specified in STREAM DATA message. The Controlled indica
 command can be invoked. The Controller must honor this rate and never invoke the command
 more frequently than given.
 
+Controlled devices must always send a response to the first invocation for each command.
+They are however not required to repeat the response in the same logical connection again.
+
+The Controller must wait with the second invocation of a command until the rate for a given
+command is known. In other words, the Controller should assume an infinite send interval until
+a more appropriate rate is known.
+
 #### IGNORE (255)
 
 Devices must answer an unknown request code with this response.
