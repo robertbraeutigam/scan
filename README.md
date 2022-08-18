@@ -520,10 +520,12 @@ a single request.
 
 ### Data Types
 
-Timestamp is an absolute or relative millisecond precision value stored as a variable
-length integer. Any value smaller than 1.000.000.000 must be considered a relative
-number of milliseconds from some reference value defined by context. Larger values
-must be considered "absolute", i.e. referenced from epoch.
+A relative timestamp is a strictly increasing, millisecond precision integer from a 
+context-given reference point. It is stored as a variable length integer.
+
+Note, that the relative timestamp is a true measure of time passed, so unix timestamps
+or any derived values are *not* usable, because they may act wierd around leap seconds.
+Prefer raw system clock counts or raw millis counted from system start.
 
 A Value structure is a single value to a type defined elsewhere. It's structure is:
 * Identifier (variable length integer)
@@ -676,18 +678,19 @@ Send data values.
 
 Response content:
 * Data Packet Id (variable length number)
-* Data Time (timestamp)
+* Data Time (Relative Timestamp)
 * Tag Values (Value structures for the defined Tags)
 * Data Element Values (Value structures for the defined Data Elements)
 
 The Data Packet Id identifies the Data Definition that describes the meaning of the
 values submitted here.
 
-The Timestamp, if it is relative, is given from the last data message for this data packet.
+The Data Time is measured from the last received data packet of same id. The first
+transmitted value must be 0.
 
 Note that Devices must send all Data in order for a given Data Packet.
-There can not be any out-of-order timestamps, but each Packet may advance this
-timestamp in its own context. For example a Data Packet for year-end summary data
+There can not be any out-of-order times, but each Packet may advance this
+time in its own context. For example a Data Packet for year-end summary data
 may only advance once a year and send the same Data for the whole year.
 
 #### INVOKE RESPONSE (03)
@@ -905,7 +908,7 @@ These are the currently supported Definition Types:
 | Measurement         |       4 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
 | Measurement Aggregate |     5 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
 | Arbitrary String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Timestamp           |       7 | Empty       | Integer     | Single instance of time in milliseconds from Epoch | Effective date, Billing date. Last update time. |
+| Unix Timestamp      |       7 | Empty       | Integer     | Unix timestamp with millisecond precision. | Effective date, Billing date. Last update time. |
 
 The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
 
