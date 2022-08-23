@@ -18,6 +18,7 @@ import com.vanillasource.scan.client.network.Peer;
 public class NioPhysicalNetworkTests {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetworkTests.class);
    private Peer initiator;
+   private Peer acceptingPeer;
    private PhysicalNetwork network;
    private PhysicalNetworkListener listener;
 
@@ -62,9 +63,17 @@ public class NioPhysicalNetworkTests {
       verify(initiator, atLeastOnce()).close();
    }
 
+   public void testOpenConnectionArrivesInListener() throws Exception {
+      network.openConnection(InetAddress.getLocalHost(), initiator);
+
+      verify(listener, timeout(100)).receiveConnection(any(), any());
+   }
+
    @BeforeMethod
    protected void setUp() throws IOException {
       listener = mock(PhysicalNetworkListener.class);
+      acceptingPeer = mock(Peer.class);
+      when(listener.receiveConnection(any(), any())).thenReturn(CompletableFuture.completedFuture(acceptingPeer));
       LOGGER.trace("starting nio physical network...");
       network = NioPhysicalNetwork.startWith(listener);
       LOGGER.trace("started nio physical network...");

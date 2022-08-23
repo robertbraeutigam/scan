@@ -8,6 +8,7 @@ package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 
 /**
  * A peer that is connected through a logical connection.
@@ -34,7 +35,7 @@ public interface Peer {
     */
    void close();
 
-   default Peer afterClose(Runnable runnable) {
+   default Peer afterClose(Consumer<Peer> action) {
       Peer self = this;
       return new Peer() {
          @Override
@@ -45,9 +46,20 @@ public interface Peer {
          @Override
          public void close() {
             self.close();
-            runnable.run();
+            action.accept(this);
          }
       };
    }
+
+   static Peer UNCONNECTED = new Peer() {
+      @Override
+      public Message create() {
+         throw new IllegalStateException("peer not connected");
+      }
+
+      @Override
+      public void close() {
+      }
+   };
 }
 

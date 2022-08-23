@@ -22,8 +22,9 @@ import java.net.SocketException;
 import java.util.LinkedList;
 import java.nio.channels.SocketChannel;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.channels.ServerSocketChannel;
+import java.util.Deque;
+import java.util.ArrayDeque;
 
 public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPhysicalNetwork.class);
@@ -32,16 +33,21 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    private final NioSelector selector;
    private final NioSelectorKey multicastKey;
    private final DatagramChannel multicastChannel;
+   private final ServerSocketChannel serverChannel;
+   private final NioSelectorKey serverChannelKey;
    private final PhysicalNetworkListener listener;
-   private final List<Peer> peers = new ArrayList<>();
+   private final Deque<Peer> peers = new ArrayDeque<>();
    private final Queue<OutgoingPacket> sendQueue = new LinkedList<>();
    private final ByteBuffer datagramIncomingBuffer = ByteBuffer.allocateDirect(65535);
 
-   private NioPhysicalNetwork(NioSelector selector, DatagramChannel multicastChannel, PhysicalNetworkListener listener) {
+   private NioPhysicalNetwork(NioSelector selector, ServerSocketChannel serverChannel, DatagramChannel multicastChannel, PhysicalNetworkListener listener) {
       this.selector = selector;
+      this.multicastChannel = multicastChannel;
       this.multicastKey = selector.register(multicastChannel, this);
       this.multicastKey.enableRead();
-      this.multicastChannel = multicastChannel;
+      this.serverChannel = serverChannel;
+      this.serverChannelKey = selector.register(serverChannel, this);
+      this.serverChannelKey.enableAccept();
       this.listener = listener;
    }
 
@@ -61,7 +67,11 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
       multicastChannel.join(multicastGroup, networkInterface);
       multicastChannel.configureBlocking(false);
 
-      return new NioPhysicalNetwork(selector, multicastChannel, listener);
+      ServerSocketChannel serverChannel = ServerSocketChannel.open();
+      serverChannel.configureBlocking(false);
+      serverChannel.bind(new InetSocketAddress((InetAddress)null, SCAN_PORT));
+
+      return new NioPhysicalNetwork(selector, serverChannel, multicastChannel, listener);
    }
 
    private static NetworkInterface findMulticastInterface() throws SocketException {
@@ -73,6 +83,40 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
          }
       }
       return null;
+   }
+
+   @Override
+   public void handleAccept(NioSelectorKey key) throws IOException {
+      LOGGER.trace("accepting connection...");
+      SocketChannel channel = serverChannel.accept();
+      channel.configureBlocking(false);
+      NioPeer nioPeer = new NioPeer(selector, channel);
+      Peer peer = nioPeer.afterClose(p -> {
+         synchronized (peers) {
+            peers.remove(p);
+         }
+      });
+      synchronized (peers) {
+         peers.add(peer);
+      }
+      try {
+         LOGGER.debug("accepted connection from {}", channel.getRemoteAddress());
+         listener
+            .receiveConnection(((InetSocketAddress)channel.getRemoteAddress()).getAddress(), peer)
+            .whenComplete((result, exception) -> {
+               if (result != null) {
+                  LOGGER.debug("installing other side to accepted connection");
+                  nioPeer.installPeer(result);
+               }
+               if (exception != null) {
+                  LOGGER.warn("accepting connection returned error", exception);
+               }
+            });
+         LOGGER.trace("accepted handled.");
+      } catch (IOException e) {
+         LOGGER.warn("could not accept the connection properly, ignoring", e);
+         peer.close();
+      }
    }
 
    @Override
@@ -104,7 +148,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
                LOGGER.trace("reading finished, enable read");
                key.enableRead();
                if (exception != null) {
-                  selector.closeExceptionally(exception);
+                  LOGGER.warn("handling multicast resulted in exception", exception);
                }
             });
       } else {
@@ -129,15 +173,17 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
          SocketChannel channel = SocketChannel.open();
          channel.configureBlocking(false);
          channel.connect(new InetSocketAddress(address, SCAN_PORT));
-         Peer peer = new NioPeer(selector, channel, initiator);
+         Peer peer = new NioPeer(selector, channel)
+            .installPeer(initiator)
+            .afterClose(p -> {
+               synchronized (peers) {
+                  peers.remove(p);
+               }
+         });
          synchronized (peers) {
             peers.add(peer);
          }
-         return CompletableFuture.completedFuture(peer.afterClose(() -> {
-            synchronized (peers) {
-               peers.remove(peer);
-            }
-         }));
+         return CompletableFuture.completedFuture(peer);
       } catch (IOException e) {
          throw new UncheckedIOException(e);
       }
@@ -146,13 +192,20 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    @Override
    public void close() {
       synchronized (peers) {
-         peers.forEach(Peer::close);
+         while (!peers.isEmpty()) {
+            peers.removeLast().close();
+         }
       }
       selector.close();
       try {
          multicastChannel.close();
       } catch (IOException e) {
          LOGGER.warn("multicast channel couldn't be closed", e);
+      }
+      try {
+         serverChannel.close();
+      } catch (IOException e) {
+         LOGGER.warn("server channel couldn't be closed", e);
       }
    }
 

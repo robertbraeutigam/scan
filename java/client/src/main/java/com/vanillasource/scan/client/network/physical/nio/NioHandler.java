@@ -8,4 +8,6 @@ public interface NioHandler {
    void handleReadable(NioSelectorKey key) throws IOException;
 
    void handleWritable(NioSelectorKey key) throws IOException;
+
+   void handleAccept(NioSelectorKey key) throws IOException;
 }

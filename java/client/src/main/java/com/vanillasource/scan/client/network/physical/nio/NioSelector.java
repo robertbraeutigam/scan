@@ -10,12 +10,14 @@ import java.util.Iterator;
 import java.nio.channels.spi.AbstractSelectableChannel;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class NioSelector implements AutoCloseable {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioSelector.class);
    private final Selector selector;
    private final CompletableFuture<Void> closed = new CompletableFuture<>();
    private final JobQueue queue = new JobQueue();
+   private final AtomicBoolean selecting = new AtomicBoolean(false);
    private volatile boolean running = true;
 
    private NioSelector(Selector selector) {
@@ -40,9 +42,13 @@ public final class NioSelector implements AutoCloseable {
    }
 
    public <T> CompletableFuture<T> onSelectionThread(Supplier<T> supplier) {
-      CompletableFuture<T> future = queue.enqueue(supplier);
-      selector.wakeup();
-      return future;
+      if (selecting.get()) {
+         CompletableFuture<T> future = queue.enqueue(supplier);
+         selector.wakeup();
+         return future;
+      } else {
+         return CompletableFuture.completedFuture(supplier.get());
+      }
    }
 
    /**
@@ -65,7 +71,9 @@ public final class NioSelector implements AutoCloseable {
       try {
          while (running) {
             LOGGER.trace("selecting...");
+            selecting.set(true);
             int changedKeys = selector.select(1000); // 1 sec
+            selecting.set(false);
             Iterator<SelectionKey> keysIterator = selector.selectedKeys().iterator();
             // Handle keys
             while (keysIterator.hasNext()) {
@@ -81,6 +89,9 @@ public final class NioSelector implements AutoCloseable {
                }
                if (key.isValid() && key.isWritable()) {
                   handler.handleWritable(nioKey);
+               }
+               if (key.isValid() && key.isAcceptable()) {
+                  handler.handleAccept(nioKey);
                }
                keysIterator.remove();
             }
@@ -106,6 +117,7 @@ public final class NioSelector implements AutoCloseable {
       selector.wakeup();
       closed
          .whenComplete((result, exception) -> {
+            LOGGER.debug("selector closed", exception);
             try {
                selector.close();
             } catch (IOException e) {

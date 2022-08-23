@@ -15,6 +15,14 @@ public final class NioSelectorKey {
       selectionKey.cancel();
    }
 
+   public void enableAccept() {
+      enable(SelectionKey.OP_ACCEPT);
+   }
+
+   public void disableAccept() {
+      disable(SelectionKey.OP_ACCEPT);
+   }
+
    public void enableConnect() {
       enable(SelectionKey.OP_CONNECT);
    }
