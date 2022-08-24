@@ -9,7 +9,6 @@ package com.vanillasource.scan.client.network.physical;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 import java.net.InetAddress;
-import com.vanillasource.scan.client.network.Peer;
 
 public interface PhysicalNetwork {
    /**
@@ -23,7 +22,7 @@ public interface PhysicalNetwork {
     * Open a connection to the given peer.
     * @return A future that completes with a channel iff it can be opened.
     */
-   CompletableFuture<Peer> openConnection(InetAddress peer, Peer initiator);
+   CompletableFuture<PhysicalPeer> openConnection(InetAddress peer, PhysicalPeer initiator);
 
    /**
     * Close the network, free up all resources.

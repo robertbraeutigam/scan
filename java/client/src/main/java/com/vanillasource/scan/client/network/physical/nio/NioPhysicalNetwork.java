@@ -2,7 +2,7 @@ package com.vanillasource.scan.client.network.physical.nio;
 
 import com.vanillasource.scan.client.network.physical.PhysicalNetwork;
 import com.vanillasource.scan.client.network.physical.PhysicalNetworkListener;
-import com.vanillasource.scan.client.network.Peer;
+import com.vanillasource.scan.client.network.physical.PhysicalPeer;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 import java.net.InetAddress;
@@ -15,7 +15,6 @@ import java.net.NetworkInterface;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.nio.channels.SelectionKey;
 import java.net.SocketAddress;
 import java.util.Enumeration;
 import java.net.SocketException;
@@ -36,7 +35,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    private final ServerSocketChannel serverChannel;
    private final NioSelectorKey serverChannelKey;
    private final PhysicalNetworkListener listener;
-   private final Deque<Peer> peers = new ArrayDeque<>();
+   private final Deque<PhysicalPeer> peers = new ArrayDeque<>();
    private final Queue<OutgoingPacket> sendQueue = new LinkedList<>();
    private final ByteBuffer datagramIncomingBuffer = ByteBuffer.allocateDirect(65535);
 
@@ -91,7 +90,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
       SocketChannel channel = serverChannel.accept();
       channel.configureBlocking(false);
       NioPeer nioPeer = new NioPeer(selector, channel);
-      Peer peer = nioPeer.afterClose(p -> {
+      PhysicalPeer peer = nioPeer.afterClose(p -> {
          synchronized (peers) {
             peers.remove(p);
          }
@@ -168,12 +167,12 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
    }
 
    @Override
-   public CompletableFuture<Peer> openConnection(InetAddress address, Peer initiator) {
+   public CompletableFuture<PhysicalPeer> openConnection(InetAddress address, PhysicalPeer initiator) {
       try {
          SocketChannel channel = SocketChannel.open();
          channel.configureBlocking(false);
          channel.connect(new InetSocketAddress(address, SCAN_PORT));
-         Peer peer = new NioPeer(selector, channel)
+         PhysicalPeer peer = new NioPeer(selector, channel)
             .installPeer(initiator)
             .afterClose(p -> {
                synchronized (peers) {

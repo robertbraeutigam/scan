@@ -1,22 +1,23 @@
 package com.vanillasource.scan.client.network.physical.nio;
 
-import com.vanillasource.scan.client.network.Peer;
+import com.vanillasource.scan.client.network.physical.PhysicalPeer;
 import java.nio.channels.SocketChannel;
 import java.io.IOException;
-import com.vanillasource.scan.client.network.Message;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import java.io.UncheckedIOException;
+import java.util.concurrent.CompletableFuture;
+import java.nio.ByteBuffer;
 
 /**
  * A peer that represents one side of a physical connection.
  */
-public final class NioPeer implements NioHandler, Peer {
+public final class NioPeer implements NioHandler, PhysicalPeer {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioPeer.class);
    private final NioSelector selector;
    private final NioSelectorKey key;
    private final SocketChannel channel;
-   private Peer otherPeer = Peer.UNCONNECTED;
+   private PhysicalPeer otherPeer = PhysicalPeer.UNCONNECTED;
 
    public NioPeer(NioSelector selector, SocketChannel channel) {
       this.selector = selector;
@@ -26,9 +27,9 @@ public final class NioPeer implements NioHandler, Peer {
       key.enableConnect();
    }
 
-   public NioPeer installPeer(Peer otherPeer) {
+   public NioPeer installPeer(PhysicalPeer otherPeer) {
       this.otherPeer = otherPeer;
-      // TODO
+      key.enableRead();
       return this;
    }
 
@@ -66,8 +67,9 @@ public final class NioPeer implements NioHandler, Peer {
    }
 
    @Override
-   public Message create() {
-      return null; // TODO
+   public CompletableFuture<Void> receive(ByteBuffer message) {
+      // TODO
+      return null;
    }
 
    @Override
