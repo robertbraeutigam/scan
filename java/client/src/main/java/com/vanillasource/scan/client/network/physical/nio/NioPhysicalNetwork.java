@@ -233,9 +233,5 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
          }
       }
    }
-
-   private interface IOHandler {
-      public void handle(SelectionKey key) throws IOException;
-   }
 }
 
