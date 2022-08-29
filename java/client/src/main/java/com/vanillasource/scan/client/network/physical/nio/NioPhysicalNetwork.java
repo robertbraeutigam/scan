@@ -50,6 +50,11 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
       this.listener = listener;
    }
 
+   @Override
+   public String toString() {
+      return "Network";
+   }
+
    /**
     * Constructs the physical network, connects all channels to appropriate ports,
     * joins appropriate multicast groups.

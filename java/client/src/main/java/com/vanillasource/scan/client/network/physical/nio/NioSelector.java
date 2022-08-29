@@ -11,6 +11,7 @@ import java.nio.channels.spi.AbstractSelectableChannel;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public final class NioSelector implements AutoCloseable {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioSelector.class);
@@ -70,10 +71,13 @@ public final class NioSelector implements AutoCloseable {
    private void select() {
       try {
          while (running) {
-            LOGGER.trace("selecting...");
+            if (LOGGER.isTraceEnabled()) {
+               LOGGER.trace("selecting on {}", selector.keys().stream().map(key -> key.attachment().toString()+":"+key.interestOps()).collect(Collectors.toList()));
+            }
             selecting.set(true);
             int changedKeys = selector.select(1000); // 1 sec
             selecting.set(false);
+            LOGGER.trace("selected {} keys", changedKeys);
             Iterator<SelectionKey> keysIterator = selector.selectedKeys().iterator();
             // Handle keys
             while (keysIterator.hasNext()) {
@@ -96,7 +100,6 @@ public final class NioSelector implements AutoCloseable {
                keysIterator.remove();
             }
             // Execute jobs
-            LOGGER.trace("executing all selector jobs...");
             queue.executeAll();
          }
       } catch (Throwable e) {

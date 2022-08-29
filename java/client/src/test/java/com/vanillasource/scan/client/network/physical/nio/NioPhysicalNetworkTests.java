@@ -5,6 +5,7 @@ import com.vanillasource.scan.client.network.physical.PhysicalNetwork;
 import com.vanillasource.scan.client.network.physical.PhysicalPeer;
 import org.testng.annotations.Test;
 import org.testng.annotations.BeforeMethod;
+import static org.testng.Assert.*;
 import static org.mockito.Mockito.*;
 import java.io.IOException;
 import org.testng.annotations.AfterMethod;
@@ -13,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import java.net.InetAddress;
+import org.mockito.ArgumentCaptor;
 
 @Test
 public class NioPhysicalNetworkTests {
@@ -67,6 +69,21 @@ public class NioPhysicalNetworkTests {
       network.openConnection(InetAddress.getLocalHost(), initiator);
 
       verify(listener, timeout(100)).receiveConnection(any(), any());
+   }
+
+   public void testInitiatorCanSendToResponder() throws Exception {
+      when(acceptingPeer.receive(any())).thenReturn(CompletableFuture.completedFuture(null));
+      PhysicalPeer initiatorsResponderView = network.openConnection(InetAddress.getLocalHost(), initiator).join();
+
+      initiatorsResponderView.receive(ByteBuffer.wrap(new byte[] { 1, 2 ,3 }));
+
+      ArgumentCaptor<ByteBuffer> bufferCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
+      verify(acceptingPeer, after(100).atLeast(1)).receive(bufferCaptor.capture());
+      ByteBuffer receivedBuffer = bufferCaptor.getValue();
+      LOGGER.debug("received buffer {}, received {} calls", receivedBuffer, bufferCaptor.getAllValues().size());
+      assertEquals(receivedBuffer.get(), 1);
+      assertEquals(receivedBuffer.get(), 2);
+      assertEquals(receivedBuffer.get(), 3);
    }
 
    @BeforeMethod

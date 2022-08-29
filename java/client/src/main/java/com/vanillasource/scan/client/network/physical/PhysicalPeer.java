@@ -16,8 +16,7 @@ import java.util.function.Consumer;
 public interface PhysicalPeer {
    /**
     * Send a message through this physical connection.
-    * @return A future that completes when some of the bytes
-    * in the buffer was sent.
+    * @return A future that completes when the buffer is fully sent.
     */
    CompletableFuture<Void> receive(ByteBuffer message);
 

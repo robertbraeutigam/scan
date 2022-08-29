@@ -5,8 +5,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Queue;
 import java.util.Iterator;
+import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 public final class JobQueue {
+   private static final Logger LOGGER = LoggerFactory.getLogger(JobQueue.class);
    private final Queue<Job<?>> jobs = new ConcurrentLinkedQueue<>();
 
    public void enqueue(Runnable runnable) {
@@ -23,6 +26,7 @@ public final class JobQueue {
    }
 
    public void executeAll() {
+      LOGGER.trace("executing {} selector jobs...", jobs.size());
       Iterator<Job<?>> jobsIterator = jobs.iterator();
       while (jobsIterator.hasNext()) {
          jobsIterator.next().run();

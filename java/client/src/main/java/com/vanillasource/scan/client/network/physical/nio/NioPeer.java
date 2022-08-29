@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import java.io.UncheckedIOException;
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * A peer that represents one side of a physical connection.
@@ -17,6 +19,8 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
    private final NioSelector selector;
    private final NioSelectorKey key;
    private final SocketChannel channel;
+   private final ByteBuffer incomingBuffer = ByteBuffer.allocateDirect(65535);
+   private final Queue<OutgoingPacket> sendQueue = new LinkedList<>();
    private PhysicalPeer otherPeer = PhysicalPeer.UNCONNECTED;
 
    public NioPeer(NioSelector selector, SocketChannel channel) {
@@ -34,16 +38,20 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
    }
 
    @Override
+   public String toString() {
+      return "Peer("+channel+")";
+   }
+
+   @Override
    public void handleConnectable(NioSelectorKey key) throws IOException {
       try {
          boolean connected = channel.finishConnect();
-         LOGGER.debug("connected incoming connection: {}", connected);
          if (!connected) {
             LOGGER.warn("channel reported not connectable");
             close();
          } else {
+            LOGGER.debug("connected incoming connection");
             key.disableConnect();
-            key.enableRead();
          }
       } catch (IOException e) {
          LOGGER.warn("channel could not be connected", e);
@@ -58,18 +66,42 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
 
    @Override
    public void handleReadable(NioSelectorKey key) throws IOException {
-      // TODO
+      LOGGER.trace("reading, disable read");
+      key.disableRead();
+      channel.read(incomingBuffer);
+      otherPeer.receive(incomingBuffer)
+         .whenComplete((result, exception) -> {
+            LOGGER.trace("reading finished, enable read");
+            key.enableRead();
+            if (exception != null) {
+               LOGGER.warn("handling reading resulted in exception", exception);
+               // TODO: should close the peer here
+            }
+         });
    }
 
    @Override
    public void handleWritable(NioSelectorKey key) throws IOException {
-      // TODO
+      OutgoingPacket packet = sendQueue.peek();
+      if (packet!=null && packet.send()) {
+         LOGGER.trace("data written");
+         sendQueue.remove();
+      }
+      if (sendQueue.isEmpty()) {
+         LOGGER.trace("send queue empty, disable write");
+         key.disableWrite();
+      }
    }
 
    @Override
    public CompletableFuture<Void> receive(ByteBuffer message) {
-      // TODO
-      return null;
+      CompletableFuture<Void> completion = new CompletableFuture<>();
+      LOGGER.trace("adding packet to be written...");
+      selector.onSelectionThread(() -> {
+         sendQueue.add(new OutgoingPacket(message, completion));
+         key.enableWrite();
+      });
+      return completion;
    }
 
    @Override
@@ -80,6 +112,31 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
          channel.close();
       } catch (IOException e) {
          throw new UncheckedIOException(e);
+      }
+   }
+
+   private final class OutgoingPacket {
+      private final ByteBuffer buffer;
+      private final CompletableFuture<Void> completion;
+
+      public OutgoingPacket(ByteBuffer buffer, CompletableFuture<Void> completion) {
+         this.buffer = buffer;
+         this.completion = completion;
+      }
+
+      public boolean send() {
+         try {
+            channel.write(buffer);
+            if (buffer.remaining() == 0) {
+               completion.complete(null);
+               return true;
+            } else {
+               return false;
+            }
+         } catch (IOException e) {
+            completion.completeExceptionally(e);
+            return true;
+         }
       }
    }
 }
