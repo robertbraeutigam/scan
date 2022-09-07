@@ -28,7 +28,9 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
       this.channel = channel;
 
       this.key = selector.register(channel, this);
-      key.enableConnect();
+      if (!channel.isConnected()) {
+         key.enableConnect();
+      }
    }
 
    public NioPeer installPeer(PhysicalPeer otherPeer) {
