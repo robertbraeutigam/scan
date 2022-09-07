@@ -84,18 +84,22 @@ public final class NioSelector implements AutoCloseable {
                SelectionKey key = keysIterator.next();
                NioHandler handler = (NioHandler) key.attachment();
                NioSelectorKey nioKey = new NioSelectorKey(this, key);
-               LOGGER.trace("read ops {}, calling handler", key.readyOps());
-               if (key.isValid() && key.isConnectable()) {
-                  handler.handleConnectable(nioKey);
-               }
-               if (key.isValid() && key.isReadable()) {
-                  handler.handleReadable(nioKey);
-               }
-               if (key.isValid() && key.isWritable()) {
-                  handler.handleWritable(nioKey);
-               }
-               if (key.isValid() && key.isAcceptable()) {
-                  handler.handleAccept(nioKey);
+               if (key.isValid()) {
+                   LOGGER.trace("read ops {}, calling handler", key.readyOps());
+                   if (key.isConnectable()) {
+                       handler.handleConnectable(nioKey);
+                   }
+                   if (key.isReadable()) {
+                       handler.handleReadable(nioKey);
+                   }
+                   if (key.isWritable()) {
+                       handler.handleWritable(nioKey);
+                   }
+                   if (key.isAcceptable()) {
+                       handler.handleAccept(nioKey);
+                   }
+               } else {
+                   LOGGER.trace("selected invalid key, skipping...");
                }
                keysIterator.remove();
             }
