@@ -72,24 +72,43 @@ public class NioPhysicalNetworkTests {
    }
 
    public void testInitiatorCanSendToResponder() throws Exception {
-      when(acceptingPeer.receive(any())).thenReturn(CompletableFuture.completedFuture(null));
       PhysicalPeer initiatorsResponderView = network.openConnection(InetAddress.getLocalHost(), initiator).join();
 
       initiatorsResponderView.receive(ByteBuffer.wrap(new byte[] { 1, 2 ,3 }));
 
-
       assertResponderReceive(new byte[] { 1, 2, 3 });
    }
 
+   public void testInitiatorCanSendTwiceToResponder() throws Exception {
+      PhysicalPeer initiatorsResponderView = network.openConnection(InetAddress.getLocalHost(), initiator).join();
+
+      // First send
+      initiatorsResponderView.receive(ByteBuffer.wrap(new byte[] { 1, 2 ,3 }));
+      assertResponderReceive(new byte[] { 1, 2, 3 });
+      
+      // Second send
+      initiatorsResponderView.receive(ByteBuffer.wrap(new byte[] { 4, 5 ,6, 7 }));
+      assertResponderReceive(new byte[] { 4, 5, 6, 7 });
+   }
+
    private void assertResponderReceive(byte[] data) {
+      reset(acceptingPeer);
+
+      CompletableFuture<Void> responderReadFuture = new CompletableFuture<>();
+      when(acceptingPeer.receive(any())).thenReturn(responderReadFuture);
+
       ArgumentCaptor<ByteBuffer> bufferCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
-      verify(acceptingPeer, after(100)).receive(bufferCaptor.capture());
+      verify(acceptingPeer, after(100).atLeastOnce()).receive(bufferCaptor.capture());
       ByteBuffer receivedBuffer = bufferCaptor.getValue();
       LOGGER.debug("received buffer {}", receivedBuffer);
+      assertEquals(receivedBuffer.remaining(), data.length);
       for (int i=0; i<data.length; i++) {
           assertEquals(receivedBuffer.get(), data[i]);
       }
+
+      responderReadFuture.complete(null);
    }
+
 
    @BeforeMethod
    protected void setUp() throws IOException {
