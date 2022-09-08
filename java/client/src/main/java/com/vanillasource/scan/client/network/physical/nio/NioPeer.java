@@ -71,6 +71,7 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
       LOGGER.trace("reading, disable read");
       key.disableRead();
       channel.read(incomingBuffer);
+      incomingBuffer.flip();
       otherPeer.receive(incomingBuffer)
          .whenComplete((result, exception) -> {
             LOGGER.trace("reading finished, enable read");
