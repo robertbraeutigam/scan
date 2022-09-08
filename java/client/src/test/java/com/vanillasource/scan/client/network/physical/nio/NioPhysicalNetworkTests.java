@@ -77,13 +77,18 @@ public class NioPhysicalNetworkTests {
 
       initiatorsResponderView.receive(ByteBuffer.wrap(new byte[] { 1, 2 ,3 }));
 
+
+      assertResponderReceive(new byte[] { 1, 2, 3 });
+   }
+
+   private void assertResponderReceive(byte[] data) {
       ArgumentCaptor<ByteBuffer> bufferCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
       verify(acceptingPeer, after(100)).receive(bufferCaptor.capture());
       ByteBuffer receivedBuffer = bufferCaptor.getValue();
-      LOGGER.debug("received buffer {}, received {} calls", receivedBuffer, bufferCaptor.getAllValues().size());
-      assertEquals(receivedBuffer.get(), 1);
-      assertEquals(receivedBuffer.get(), 2);
-      assertEquals(receivedBuffer.get(), 3);
+      LOGGER.debug("received buffer {}", receivedBuffer);
+      for (int i=0; i<data.length; i++) {
+          assertEquals(receivedBuffer.get(), data[i]);
+      }
    }
 
    @BeforeMethod
