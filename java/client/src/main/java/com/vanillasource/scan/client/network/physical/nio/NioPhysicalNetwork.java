@@ -151,6 +151,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
             .whenComplete((result, exception) -> {
                LOGGER.trace("reading finished, enable read");
                key.enableRead();
+               // TODO: test buffer clear() here
                if (exception != null) {
                   LOGGER.warn("handling multicast resulted in exception", exception);
                }
