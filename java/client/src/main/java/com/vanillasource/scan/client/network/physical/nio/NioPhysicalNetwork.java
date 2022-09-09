@@ -147,11 +147,12 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
       if (address instanceof InetSocketAddress) {
          LOGGER.trace("reading, disable read");
          key.disableRead();
+         datagramIncomingBuffer.flip();
          listener.receiveMulticast(((InetSocketAddress) address).getAddress(), datagramIncomingBuffer)
             .whenComplete((result, exception) -> {
                LOGGER.trace("reading finished, enable read");
+               datagramIncomingBuffer.clear();
                key.enableRead();
-               // TODO: test buffer clear() here
                if (exception != null) {
                   LOGGER.warn("handling multicast resulted in exception", exception);
                }

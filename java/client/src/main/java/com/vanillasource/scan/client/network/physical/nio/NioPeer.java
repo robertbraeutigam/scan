@@ -79,7 +79,6 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
             key.enableRead();
             if (exception != null) {
                LOGGER.warn("handling reading resulted in exception", exception);
-               // TODO: should close the peer here
             }
          });
    }

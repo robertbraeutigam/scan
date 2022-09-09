@@ -25,11 +25,9 @@ public class NioPhysicalNetworkTests {
    private PhysicalNetworkListener listener;
 
    public void testMessageSentIsReceived() {
-      when(listener.receiveMulticast(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-
       network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 })).join();
 
-      verify(listener, timeout(100)).receiveMulticast(any(), any());
+      assertMulticastReceive(new byte[] { 1, 2, 3 });
    }
 
    public void testReceiverDoesNotGetCalledUntilFinished() {
@@ -52,9 +50,17 @@ public class NioPhysicalNetworkTests {
       network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
       Thread.sleep(20);
       receiveMessage1.completedFuture(null);
-      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 4, 5, 6, 7 }));
 
       verify(listener, timeout(100).times(2)).receiveMulticast(any(), any());
+   }
+
+   public void testCanReceiveMultipleMulticastPackets() {
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 1, 2, 3 }));
+      assertMulticastReceive(new byte[] { 1, 2, 3 });
+
+      network.sendMulticast(ByteBuffer.wrap(new byte[] { 4, 5, 6, 7 }));
+      assertMulticastReceive(new byte[] { 4, 5, 6, 7 });
    }
 
    public void testOpenedPeersAreClosedWhenNetworkCloses() throws Exception {
@@ -98,7 +104,7 @@ public class NioPhysicalNetworkTests {
       when(acceptingPeer.receive(any())).thenReturn(responderReadFuture);
 
       ArgumentCaptor<ByteBuffer> bufferCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
-      verify(acceptingPeer, after(100).atLeastOnce()).receive(bufferCaptor.capture());
+      verify(acceptingPeer, timeout(100).atLeastOnce()).receive(bufferCaptor.capture());
       ByteBuffer receivedBuffer = bufferCaptor.getValue();
       LOGGER.debug("received buffer {}", receivedBuffer);
       assertEquals(receivedBuffer.remaining(), data.length);
@@ -109,6 +115,23 @@ public class NioPhysicalNetworkTests {
       responderReadFuture.complete(null);
    }
 
+   private void assertMulticastReceive(byte[] data) {
+      reset(listener);
+
+      CompletableFuture<Void> listenerFuture = new CompletableFuture<>();
+      when(listener.receiveMulticast(any(), any())).thenReturn(listenerFuture);
+
+      ArgumentCaptor<ByteBuffer> bufferCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
+      verify(listener, timeout(100).atLeastOnce()).receiveMulticast(any(), bufferCaptor.capture());
+      ByteBuffer receivedBuffer = bufferCaptor.getValue();
+      LOGGER.debug("received buffer {}", receivedBuffer);
+      assertEquals(receivedBuffer.remaining(), data.length);
+      for (int i=0; i<data.length; i++) {
+          assertEquals(receivedBuffer.get(), data[i]);
+      }
+
+      listenerFuture.complete(null);
+   }
 
    @BeforeMethod
    protected void setUp() throws IOException {
