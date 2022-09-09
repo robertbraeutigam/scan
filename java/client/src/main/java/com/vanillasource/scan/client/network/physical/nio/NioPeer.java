@@ -110,13 +110,15 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
 
    @Override
    public void close() {
-      try {
+      otherPeer.close();
+      selector.onSelectionThread(() -> {
          key.cancel();
-         otherPeer.close();
-         channel.close();
-      } catch (IOException e) {
-         throw new UncheckedIOException(e);
-      }
+         try {
+            channel.close();
+         } catch (IOException e) {
+            throw new UncheckedIOException(e);
+         }
+      });
    }
 
    private final class OutgoingPacket {
