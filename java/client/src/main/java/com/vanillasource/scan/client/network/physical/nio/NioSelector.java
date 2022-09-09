@@ -10,7 +10,6 @@ import java.util.Iterator;
 import java.nio.channels.spi.AbstractSelectableChannel;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 public final class NioSelector implements AutoCloseable {
@@ -18,7 +17,7 @@ public final class NioSelector implements AutoCloseable {
    private final Selector selector;
    private final CompletableFuture<Void> closed = new CompletableFuture<>();
    private final JobQueue queue = new JobQueue();
-   private final AtomicBoolean selecting = new AtomicBoolean(false);
+   private final ThreadLocal<Boolean> selectorThread = ThreadLocal.withInitial(() -> false);
    private volatile boolean running = true;
 
    private NioSelector(Selector selector) {
@@ -43,12 +42,14 @@ public final class NioSelector implements AutoCloseable {
    }
 
    public <T> CompletableFuture<T> onSelectionThread(Supplier<T> supplier) {
-      if (selecting.get()) {
+      if (selectorThread.get()) {
+         // If on selector thread, run synchronously
+         return CompletableFuture.completedFuture(supplier.get());
+      } else {
+         // If not, enqueue
          CompletableFuture<T> future = queue.enqueue(supplier);
          selector.wakeup();
          return future;
-      } else {
-         return CompletableFuture.completedFuture(supplier.get());
       }
    }
 
@@ -69,14 +70,13 @@ public final class NioSelector implements AutoCloseable {
     * Do the selection.
     */
    private void select() {
+      selectorThread.set(true);
       try {
          while (running) {
             if (LOGGER.isTraceEnabled()) {
-               LOGGER.trace("selecting on {}", selector.keys().stream().map(key -> key.attachment().toString()+":"+key.interestOps()).collect(Collectors.toList()));
+               LOGGER.trace("selecting on {}", selector.keys().stream().filter(SelectionKey::isValid).map(key -> key.attachment().toString()+":"+key.interestOps()).collect(Collectors.toList()));
             }
-            selecting.set(true);
             int changedKeys = selector.select(1000); // 1 sec
-            selecting.set(false);
             LOGGER.trace("selected {} keys", changedKeys);
             Iterator<SelectionKey> keysIterator = selector.selectedKeys().iterator();
             // Handle keys
@@ -86,20 +86,18 @@ public final class NioSelector implements AutoCloseable {
                NioSelectorKey nioKey = new NioSelectorKey(this, key);
                if (key.isValid()) {
                    LOGGER.trace("read ops {}, calling handler", key.readyOps());
-                   if (key.isConnectable()) {
-                       handler.handleConnectable(nioKey);
-                   }
-                   if (key.isReadable()) {
-                       handler.handleReadable(nioKey);
-                   }
-                   if (key.isWritable()) {
-                       handler.handleWritable(nioKey);
-                   }
-                   if (key.isAcceptable()) {
-                       handler.handleAccept(nioKey);
-                   }
-               } else {
-                   LOGGER.trace("selected invalid key, skipping...");
+               }
+               if (key.isValid() && key.isConnectable()) {
+                  handler.handleConnectable(nioKey);
+               }
+               if (key.isValid() && key.isReadable()) {
+                  handler.handleReadable(nioKey);
+               }
+               if (key.isValid() && key.isWritable()) {
+                  handler.handleWritable(nioKey);
+               }
+               if (key.isValid() && key.isAcceptable()) {
+                  handler.handleAccept(nioKey);
                }
                keysIterator.remove();
             }
@@ -107,31 +105,22 @@ public final class NioSelector implements AutoCloseable {
             queue.executeAll();
          }
       } catch (Throwable e) {
-         closeExceptionally(e);
+         closed.completeExceptionally(e);
       } finally {
          closed.complete(null);
       }
-   }
-
-   public void closeExceptionally(Throwable t) {
-      closed.completeExceptionally(t);
-      close();
+      try {
+         selector.close();
+      } catch (IOException e) {
+         LOGGER.warn("error closing selector", e);
+      }
    }
 
    @Override
    public void close() {
       running = false;
       selector.wakeup();
-      closed
-         .whenComplete((result, exception) -> {
-            LOGGER.debug("selector closed", exception);
-            try {
-               selector.close();
-            } catch (IOException e) {
-               LOGGER.warn("selector couldn't be closed", e);
-            }
-         })
-      .join();
+      closed.join();
    }
 
 }

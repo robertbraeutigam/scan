@@ -48,10 +48,18 @@ public final class NioSelectorKey {
    }
 
    private void enable(int flag) {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() | flag));
+      nioSelector.onSelectionThread(() -> {
+         if (selectionKey.isValid()) {
+            selectionKey.interestOps(selectionKey.interestOps() | flag);
+         }
+      });
    }
 
    private void disable(int flag) {
-      nioSelector.onSelectionThread(() -> selectionKey.interestOps(selectionKey.interestOps() & (~flag)));
+      nioSelector.onSelectionThread(() -> {
+         if (selectionKey.isValid()) {
+            selectionKey.interestOps(selectionKey.interestOps() & (~flag));
+         }
+      });
    }
 }
