@@ -11,6 +11,7 @@ import java.nio.channels.spi.AbstractSelectableChannel;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.nio.channels.CancelledKeyException;
 
 public final class NioSelector implements AutoCloseable {
    private static final Logger LOGGER = LoggerFactory.getLogger(NioSelector.class);
@@ -105,14 +106,19 @@ public final class NioSelector implements AutoCloseable {
             queue.executeAll();
          }
       } catch (Throwable e) {
+         try {
+            selector.close();
+         } catch (IOException e2) {
+            LOGGER.warn("error closing selector", e2);
+         }
          closed.completeExceptionally(e);
       } finally {
+         try {
+            selector.close();
+         } catch (IOException e2) {
+            LOGGER.warn("error closing selector", e2);
+         }
          closed.complete(null);
-      }
-      try {
-         selector.close();
-      } catch (IOException e) {
-         LOGGER.warn("error closing selector", e);
       }
    }
 
