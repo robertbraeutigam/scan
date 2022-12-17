@@ -242,10 +242,15 @@ privileges to certain PSKs, the PSK presented by the initiator categorizes
 it to have those privileges. PSKs can be potentially published to multiple devices,
 effectively creating a role or group of devices.
 
-Every device must come with a unique PSK already set up for administrative (full) access.
-It should be possible to reset the device to this "factory" PSK along with all other
-configuration to allow for lost or forgotten PSKs. This "factory PSK" should be
-changed before using in a production setting.
+Every device must come with a unique PSK already set up for its initial or following enrollments.
+This permanent factory PSK must not be allowed to be used for anything else than setting up a
+custom administrative (full access) PSK, when the device is being enrolled by the end-user.
+This is a command each device must support. During this process however, the device
+should reset all state to factory defaults and purge all information potentially
+stored on the device. This way the protocol guarantees, that the device will always
+generate a previously unknown PSK for usage, but still allow the user to recover / re-enroll
+the device in case that gets lost, or the device itself changes hands, without potentially
+leaking previous data.
 
 Note, that the handshake does not identify the PSK used explicitly. The responder
 might therefore need to try multiple PSKs to know which one the initiator is using.
