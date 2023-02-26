@@ -11,11 +11,11 @@ import java.nio.ByteBuffer;
 import java.util.function.Consumer;
 
 /**
- * A peer that is connected through a logical connection.
+ * A peer that is connected through a logical connection and can send any number of bytes.
  */
 public interface PhysicalPeer {
    /**
-    * Send a message through this physical connection.
+    * Send some bytes through this physical connection.
     * @return A future that completes when the buffer is fully sent.
     */
    CompletableFuture<Void> receive(ByteBuffer message);
