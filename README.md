@@ -51,6 +51,12 @@ The main considerations driving the design of this protocol:
 
 ## Solution Overview
 
+SCAN is fundamentally divided into 3 layers:
+
+- Network Layer (TCP/IP, BLE)
+- Logical Layer (Logical Connections, Messaging)
+- Application Layer (Data, Commands, Wiring)
+
 SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools 
 and devices, such as routers, repeaters, cables, WiFi or even VPNs,
 can be used to build the "physical" network.
@@ -615,7 +621,10 @@ frequently than specified. It may however send data less frequently.
 
 The Controller may repeat this message if the maximum rate changes for any reason.
 
-#### INVOKE (03)
+Note that because of the Resolution Principle the Controlled device must immediately
+send the newest data that is available upon receiving this request.
+
+### INVOKE (03)
 
 Request to invoke a command defined on the other party.
 
@@ -714,6 +723,10 @@ There can not be any out-of-order times, but each Packet may advance this
 time in its own context. For example a Data Packet for year-end summary data
 may only advance once a year and send the same Data for the whole year.
 
+Note also, that because of the Resolution Principle the Device must immediately
+send the newest data value upon receiving a Data Request. This may involve taking
+an immediate measurement, or may involve sending a cached value from memory.
+
 #### INVOKE RESPONSE (03)
 
 Indicate the rate the given command can be invoked.
@@ -770,7 +783,8 @@ and must be adhered to at all times.
 
 For the above to work the device must also make sure that the newest message does
 actually get delivered. So in the case of connection loss all devices must
-send all relevant newest data and/or commands immediately upon the connection is established.
+send all relevant newest data and/or commands immediately upon the connection is established
+and the data is requested again.
 
 This applies also to the case if the device itself crashes and gets restarted. The device
 must send the newest messages for all modalities, or measure/acquire it explicitly
