@@ -5,33 +5,49 @@
 SCAN is an open, free, easy-to-use, extensible, DIY-friendly
 way to collect data and control devices on a network.
 
-## Goals
+## Functional Goals
+
+The protocol is specifically created and tested to support a wide-range of possible use-cases:
+
+- *Home automation use-cases*. Having a wide array of sensors, devices and controls controlling each other,
+  possibly including everything from doors, windows, lights to audio or video feeds.
+- *Automotive*. Controlling actuators, servos with feedback in a closed system.
+- *Marine*. Controlling all functions, including gps, plotters, lights, engines, video surveillance in one
+  standardized yet extensible, 3rd party friendly way.
+- Scaling from low-energy devices to controlling multiple objects, even a mix of the above, over a wide geographic distribution
+  securely.
+
+*Problem statement*: All of these do have "standardized" protocols already, but these are not DIY friendly. They
+are not open, require codes or ids that need to be agreed upon by all parties, they are not secure, some require
+third parties such as central servers to be in the loop, they do not interact with each other and despite standardization
+even devices using the same protocol can't sometimes interact if they are from different vendors with no way to correct.
+
+## Non-Functional Goals
 
 The main considerations driving the design of this protocol:
 
-- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, no hardcoded defaults, per-device distributed authorization, etc.,
-  without complex certificate management, central authority nor third-party involvement.
+- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, no hardcoded defaults,
+  per-device distributed authorization, etc., without complex certificate management, central servers,
+  authority nor any third-party involvement.
 - **Minimal effort** implementations. The effort to implement compatible devices
   should be linear to the extent of features the device will support. I.e.
   simple devices (like a Light source or a Button) should be almost no effort to implement, while
   more complicated devices may require more thorough analysis and design.
 - **Driven by individuals**, not industry. I.e. does not have to support complicated
   use-cases which are almost never used, or used only because of historical reasons.
-- **DIY** friendly. No proprietary components, processes or certification requirements.
+- **DIY** friendly. No proprietary components, processes or certification requirements. No central registries.
   A private individual should be able to create a compatible device easily and completely
-  independently.
-- **Transparent**. It should be very easy to discover which devices need what inputs and react to-, or control
+  independently, which can interact or use _any_ other device to its full extent.
+- **Transparent**. It should be very easy to *discover* which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through the actual 
   protocol itself on the fly runtime.
 - Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
   some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
 - Prevent proprietary extensions and the need to debug devices, as far as possible, by using transparent **dynamic wiring**,
   instead of devices directly hardcoded for each other or for specific codes.
-
-These other design decisions were also used:
-
-- Minimal setup required, ideally plug-and-play in most cases.
-- Should work over the internet and in any network topology, trusted or not.
+- **Minimal setup** required by end-users, ideally plug-and-play in most cases to a *fully-secure* production installation.
+- Should work **over the internet** and in any network topology, trusted or not.
+- Should be compatible with **Bluetooth Low Energy**.
 
 ## Solution Overview
 
