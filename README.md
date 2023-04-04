@@ -12,15 +12,14 @@ The protocol is specifically created and tested to support a wide-range of possi
 - *Home automation use-cases*. Having a wide array of sensors, devices and controls controlling each other,
   possibly including everything from doors, windows, lights to audio or video feeds.
 - *Automotive*. Controlling actuators, servos with feedback in a closed system.
-- *Marine*. Controlling all functions, including gps, plotters, lights, engines, video surveillance in one
+- *Marine*. Controlling all functions of a boat, including gps, plotters, lights, engines, video surveillance in one
   standardized yet extensible, 3rd party friendly way.
-- Scaling from low-energy devices to controlling multiple objects, even a mix of the above, over a wide geographic distribution
-  securely.
 
 *Problem statement*: All of these do have "standardized" protocols already, but these are not DIY friendly. They
 are not open, require codes or ids that need to be agreed upon by all parties, they are not secure, some require
 third parties such as central servers to be in the loop, they do not interact with each other and despite standardization
-even devices using the same protocol can't sometimes interact if they are from different vendors with no way to correct.
+even devices using the same protocol can't sometimes interact if they are from different vendors with no way for the end-user
+to correct this.
 
 ## Non-Functional Goals
 
@@ -36,11 +35,12 @@ The main considerations driving the design of this protocol:
 - **Driven by individuals**, not industry. I.e. does not have to support complicated
   use-cases which are almost never used, or used only because of historical reasons.
 - **DIY** friendly. No proprietary components, processes or certification requirements. No central registries.
-  A private individual should be able to create a compatible device easily and completely
-  independently, which can interact or use _any_ other device to its full extent.
+  A private individual should be able to easily create a compatible device completely
+  independently, which can then be used by and end-user to its full extent and be combined with any
+  other device that has or needs similar enough features.
 - **Transparent**. It should be very easy to *discover* which devices need what inputs and react to-, or control
-  what other devices. Not out-of-band, for example through documentation, but through the actual 
-  protocol itself on the fly runtime.
+  what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
+  through the protocol itself.
 - Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
   some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
 - Prevent proprietary extensions and the need to debug devices, as far as possible, by using transparent **dynamic wiring**,
@@ -51,11 +51,22 @@ The main considerations driving the design of this protocol:
 
 ## Solution Overview
 
-SCAN is fundamentally divided into 3 layers:
+SCAN is divided into 4 layers:
 
-- Network Layer (TCP/IP, BLE)
+- Physical Layer (TCP/IP, BLE, etc.)
+- Network Layer (Security, Multiplexing, Fragmenting)
 - Logical Layer (Logical Connections, Messaging)
 - Application Layer (Data, Commands, Wiring)
+
+The Physical Layer is the actual transport infrastructure that facilitates the transport of single
+messages between devices. Since SCAN is defined as a peer-to-peer protocol, with devices communicating
+with each other directly, this Physical Layer may be any communications medium which allows at least
+two devices to exchange messages. Also, since SCAN defines its own message processing, both packet based
+and connection based technologies are supported, as long as messages can be reliably exchanged.
+
+The Network Layer is responsible for providing a secure, flat, multiplex and mixing capable layer
+for communications between devices. This layer defines a peer-to-peer and end-to-end encrypted network with automatically
+rotating keys.
 
 SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools 
 and devices, such as routers, repeaters, cables, WiFi or even VPNs,
@@ -63,10 +74,6 @@ can be used to build the "physical" network.
 There is no requirement on the physical network topology, nor on any particular
 network service to be available, as long as individual devices can communicate with each other at least
 in one direction.
-
-All communication is peer-to-peer and end-to-end encrypted with automatically
-rotating keys. There is no central component nor server, and all
-communication is secured against third parties even through untrusted infrastructure.
 
 All devices have a uniform interface, which mainly consist of these categories:
 
