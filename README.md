@@ -38,16 +38,18 @@ The main considerations driving the design of this protocol:
   A private individual should be able to easily create a compatible device completely
   independently, which can then be used by and end-user to its full extent and be combined with any
   other device that has or needs similar enough features.
-- **Transparent**. It should be very easy to *discover* which devices need what inputs and react to-, or control
+- **Discoverability**. It should be very easy to *discover* which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
   through the protocol itself.
 - Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
-  some semantic identifiers, nor a perfect usage on the part of the devices to be *fully* usable.
-- Prevent proprietary extensions and the need to debug devices, as far as possible, by using transparent **dynamic wiring**,
-  instead of devices directly hardcoded for each other or for specific codes.
+  some semantic identifiers, nor does it require everybody to agree on a single unified set of these,
+  nor a perfect usage on the part of the devices to be *fully* usable and for all devices to be
+  compatible with each other.
+- Prevent proprietary extensions and the need to debug or reverse-engineer devices, as far as possible,
+  by using transparent **dynamic wiring**, instead of devices directly hardcoded for each other or for specific codes.
 - **Minimal setup** required by end-users, ideally plug-and-play in most cases to a *fully-secure* production installation.
 - Should work **over the internet** and in any network topology, trusted or not.
-- Should be compatible with **Bluetooth Low Energy**.
+- Should be compatible with **Bluetooth Low Energy**, or low-energy devices in general.
 
 ## Solution Overview
 
@@ -59,7 +61,7 @@ SCAN is divided into 4 layers:
 - Application Layer (Data, Commands, Wiring)
 
 The Physical Layer is the actual transport infrastructure that facilitates the transport of single
-messages between devices. Since SCAN is defined as a peer-to-peer protocol, with devices communicating
+messages (packets) between devices. Since SCAN is defined as a peer-to-peer protocol, with devices communicating
 with each other directly, this Physical Layer may be any communications medium which allows at least
 two devices to exchange messages. Also, since SCAN defines its own message processing, both packet based
 and connection based technologies are supported, as long as messages can be reasonably reliably exchanged.
@@ -69,14 +71,14 @@ The Network Layer is responsible for providing a secure, flat, multiplexing and 
 for communications between devices. Devices are identified, addressed based on static cryptographic keys instead
 of hardware addresses and communicate point to point using a packet-based protocol. 
 
-The Logical Layer abstracts the packet-based protocol of the Network, which is limited in size,
-and replaces it with a simple messages based protocol, which supports unlimited length messages, even
+The Logical Layer abstracts the packet-based protocol of the Network,
+and replaces it with a simple, but powerful messages based protocol, which supports unlimited length messages, even
 multiple parallel unlimited length messages from or to the same device.
 
-All devices have a uniform interface, which mainly consist of these categories:
+The Application Layer adds a uniform quasi-request-response based interface, which mainly consist of these categories:
 
-* Data. Specification, generation or consumption of individual data points.
-* Controls. Specification and invocation of controls that may change the device's state.
+* Data emitted by devices. These are changes in state of the device.
+* Controls. Invocations of these can change the state of the device.
 * Wiring. Dynamic description of the relationships between data and controls.
 
 SCAN is designed to work in a distributed fashion. All devices are potentially
@@ -88,13 +90,13 @@ option is available if needed.
 All data is defined as a time-series. Each data point has an associated timestamp
 and all related data elements. Data elements do not
 just carry a technical format (such as how many bytes, etc.), but also meaning, whether it is an
-Identifiaction, Event or Measurement, etc.
+Identification, Event or Measurement, etc.
 
 Measurements carry unit information (like Liter, PSI, %, etc.) in addition to a name. This
 way data elements don't exclusively rely on their "standardized" semantics, and can be uniformly
 stored, visualized or processed even without the exact meaning they might carry.
 
-Controls are a way to influence the device in some way. That can range from toggling a switch
+Controls are a way to influence the device in some way. That can range from toggling a light
 to sending a remote firmware update. All the controls are listed through the uniform interface,
 so they are discoverable on the fly.
 
@@ -109,13 +111,13 @@ auto-connecting a Plotter to a GPS Receiver.
 
 ## Network Layer
 
-The network protocol is designed to be a "layer" on top of the IP. It is independent and
+The network protocol is designed to be a "layer" on top of the Physical one. It is independent and
 ignorant of the "application layer" protocol defined in the next chapters.
 
 The main purpose and design goals of this layer are the following:
 * Provide **security** features, such as authentication, authorization and anti-tempering features.
 * Logical **routing** capabilities, provide a virtual flat topology.
-* Enable **multiplexing**, so that multiple logical connections can be established through one TCP connection.
+* Enable **multiplexing**, so that multiple logical connections can be established through one physical connection (if exists).
 * Enable **message mixing**. Enable a device to interject messages even if another message is currently
   being sent or even streamed indefinitely.
 * Enable **message fragmenting** so each fragment can be validated on its own and
@@ -126,7 +128,7 @@ Devices get a peer-to-peer, secure, flat logical topology. That is,
 each device is free to directly communicate with any number of other devices. There is no
 "server", nor any central software or hardware components.
 
-To support every possible IP topology, frames may contain additional logical routing information and are designed
+To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
 The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
@@ -136,11 +138,11 @@ A logical connection is a connection between two devices identified by their pub
 devices have a static key pair, the public part of which identifies the device uniquely and securely
 on the network. There 
 can be at most two logical connection between any two devices, because the ordered pair of public static keys uniquely identifies
-a logical connection. Note however, that one TCP connection can tunnel more than one logical connection.
+a logical connection. Note however, that one physical (i.e. TCP) connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
 they must immediately close the logical connection. If the logical connection is the only one in
-the "physical" TCP connection, that needs to be closed instead. If not, a close message
+the physical connection, that needs to be closed instead. If not, a close message
 needs to be sent.
 
 The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
@@ -384,7 +386,7 @@ This frame is used to establish the IP addresses belonging to static identity ke
 or to find out what devices are on the network.
 
 Payload structure:
-* Query Id (4 bytes)
+* Query Id (4 bytes) // TODO: Why 4 bytes? 1 should be enough, since it only must be remembered for 10 seconds
 * Target query static keys... (32 bytes each)
 
 The query can contain any number of target addresses between 0 and 100, for which the
@@ -741,12 +743,12 @@ Same as the maximum rate specified in STREAM DATA message. The Controlled indica
 command can be invoked. The Controller must honor this rate and never invoke the command
 more frequently than given.
 
-Controlled devices must always send a response to the first invocation for each command.
-They are however not required to repeat the response in the same logical connection again.
+Controlled devices are not required to send this response, or they may send it multiple
+times. The Controller must honor the latest supplied maximum rate at all times.
 
-The Controller must wait with the second invocation of a command until the rate for a given
-command is known. In other words, the Controller should assume an infinite send interval until
-a more appropriate rate is known.
+The Controller may proceed to invoke the command at any rate until the Controlled
+explicitly answers with a given rate. The Controlled is also free to skip certain
+command invocations, if it can be immediately replaced with a newer one.
 
 #### IGNORE (255)
 
