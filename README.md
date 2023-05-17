@@ -62,18 +62,16 @@ The Physical Layer is the actual transport infrastructure that facilitates the t
 messages between devices. Since SCAN is defined as a peer-to-peer protocol, with devices communicating
 with each other directly, this Physical Layer may be any communications medium which allows at least
 two devices to exchange messages. Also, since SCAN defines its own message processing, both packet based
-and connection based technologies are supported, as long as messages can be reliably exchanged.
+and connection based technologies are supported, as long as messages can be reasonably reliably exchanged.
+TCP/IP and BLE are explicitly supported, but other technologies may be added.
 
-The Network Layer is responsible for providing a secure, flat, multiplex and mixing capable layer
-for communications between devices. This layer defines a peer-to-peer and end-to-end encrypted network with automatically
-rotating keys.
+The Network Layer is responsible for providing a secure, flat, multiplexing and mixing capable layer
+for communications between devices. Devices are identified, addressed based on static cryptographic keys instead
+of hardware addresses and communicate point to point using a packet-based protocol. 
 
-SCAN is defined on top of the Internet Protocol (IP), so off-the-shelf internet networking tools 
-and devices, such as routers, repeaters, cables, WiFi or even VPNs,
-can be used to build the "physical" network.
-There is no requirement on the physical network topology, nor on any particular
-network service to be available, as long as individual devices can communicate with each other at least
-in one direction.
+The Logical Layer abstracts the packet-based protocol of the Network, which is limited in size,
+and replaces it with a simple messages based protocol, which supports unlimited length messages, even
+multiple parallel unlimited length messages from or to the same device.
 
 All devices have a uniform interface, which mainly consist of these categories:
 
@@ -86,9 +84,6 @@ data acquisition or control devices or both, with only two devices already capab
 of working together without any dedicated control device or server. Introducing
 more components does not require any central component to exist either, although the
 option is available if needed.
-
-Additional transparent network elements, like proxies or gateways, to expand
-the network or connect networks on separate physical infrastructure is supported.
 
 All data is defined as a time-series. Each data point has an associated timestamp
 and all related data elements. Data elements do not
