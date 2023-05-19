@@ -228,27 +228,27 @@ The header describes what this frame means and certain format parameters. It is 
 
 The source is the sending peer's public identity key. The destination is the public identity key of the target device. 
 
-If both the source and destination are unique in a given TCP connection, meaning that the TCP
+If both the source and destination are unique in a given physical connection, meaning that the physical
 connection only carries this single logical connection, there is no need to
 continuously send peer identifications. In this case both identifiers can be omitted.
 
 This is also true for cases when either one of the identifications is superfluous. Devices need
-to track logical connections in TCP connections and know when this is the case. This information
+to track logical connections in physical connections and know when this is the case. This information
 is therefore essentially redundant, but may help some implementations.
 
 The receiving device of a frame may ignore superfluous identifiers without further validation.
 
-Since a single logical connection may traverse multiple TCP connections, when routed through
+Since a single logical connection may traverse multiple physical connections, when routed through
 proxies or gateways, the presence of peer identifications may be added or removed as needed
-by intermediaries.
+by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
 ### Frame types
 
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
 bytes in the stream.
 
-Frame types 0-31 may only be sent on TCP connections, while frames 32-63 may be sent
-and received on both a TCP connection and on the UDP broadcast port.
+Frame types 0-31 may only be sent in a connections, while frames 32-63 may be sent
+and received to / from all devices or through a connection.
 
 After the handshake is completed all frames between 0-31 must cause the sender and receiver
 to rotate the appropriate keys. That applies even if the frame did not contain
@@ -257,7 +257,7 @@ a payload and even if the frame is unknown and is being skipped.
 #### Frame type: 01 (Initiate Handshake)
 
 Sent from the initiator of the connection to establish a logical connection.
-If a TCP connection does not exist yet, the initiator must open one first.
+If a physical connection does not exist yet, the initiator must open one first.
 The frame transmits the first handshake message together with the
 Noise Protocol Name.
 
@@ -283,8 +283,9 @@ The handshake makes sure that both parties actually possess the secret
 private part of their static identity. In essence this makes sure that
 both devices are who they pretend to be. This takes care of authentication.
 
-Both devices should however also do *authorization*, that is, check
-what the other device is allowed to do. Devices are free to implement
+Both devices must however also do *authorization*, that is, check
+what the other device is allowed to do. Devices must implement the
+"role"-based authorization method below. Additionally devices are free to implement
 any allow-, or deny-listing based on the public static key, or implement
 other restrictions based on either the public static key, time of day
 or any other information gained during communications.
@@ -296,10 +297,14 @@ privileges to certain PSKs, the PSK presented by the initiator categorizes
 it to have those privileges. PSKs can be potentially published to multiple devices,
 effectively creating a role or group of devices.
 
+Security note: If PSKs are shared, those devices must be considered to be in the same security
+domain, i.e. they all are only as strong as the weakest device that has that key. I.e. they all
+"fall" together.
+
 Every device must come with a unique PSK already set up for its initial or following enrollments.
-This permanent factory PSK must not be allowed to be used for anything else than setting up a
-custom administrative (full access) PSK, when the device is being enrolled by the end-user.
-This is a command each device must support. During this process however, the device
+This permanent "factory PSK" must not be allowed to be used for anything else other than setting up a
+new administrative (full access) PSK, when the device is being enrolled by the end-user.
+This is a command each device must support (see relevant chapter). During this process however, the device
 should reset all state to factory defaults and purge all information potentially
 stored on the device. This way the protocol guarantees, that the device will always
 generate a previously unknown PSK for usage, but still allow the user to recover / re-enroll
