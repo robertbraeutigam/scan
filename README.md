@@ -329,16 +329,16 @@ Payload structure:
 
 #### Frame type: 03 (Close Connection)
 
-There can be more than one logical connection in a single TCP connection. In this case
+There can be more than one logical connection in a single physical connection. In this case
 the party trying to terminate a logical connection must use this message to indicate
 that the communication is considered terminated. 
 
-If the TCP connection has only this one logical connection, then
+If the physical connection has only this one logical connection, then
 that must be closed instead of sending this message.
 
 This message may be sent by intermediaries between the initiator and responder. For example
-a proxy might generate a Close Connection message if a TCP connection to one party is lost
-and the other one is still connected through a TCP connection that has other active
+a proxy might generate a Close Connection message if a physical connection to one party is lost
+and the other one is still connected through a physical connection that has other active
 connections.
 
 This message has no payload.
@@ -356,9 +356,10 @@ Payload structure:
 * Payload (encrypted)
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
-out of sync, messages were omitted or repeated for example, the connection must be closed.
+out of sync, messages were omitted or repeated, the connection must be closed.
 
-All encryption happens with "nonce" of all zero.
+All encryption happens with "nonce" of all zero. Note, that each message encryption will use a completely
+new key, so the nonce not important.
 
 If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
@@ -367,7 +368,7 @@ to get video frames that are already available quicker to the receiver.
 
 The Message Id identifies this message and all frames it consists of. Message Ids should
 be re-used to be able to keep the Id low and in one byte. All values for which
-a Last Frame has been sent should be considered re-usable.
+a Last Frame has been sent must be considered re-usable.
 
 #### Frame type: 05 (Application Message Last Frame)
 
@@ -381,7 +382,7 @@ Payload structure:
 
 Encryption and key management is the same as for intermediate frames.
 
-The Message Id used in this frame should be considered reusable after this frame is sent.
+The Message Id used in this frame must be considered reusable after this frame is sent.
 
 #### Frame type: 06 (Single Frame Application Message)
 
@@ -422,17 +423,17 @@ Payload structure:
 * Query Id (4 bytes) // TODO: Why 4 bytes? 1 should be enough, since it only must be remembered for 10 seconds
 * Target query static keys... (32 bytes each)
 
-The query can contain any number of target addresses between 0 and 100, for which the
+The query can contain any number of target addresses between 0 and 16, for which the
 IP address is to be returned. 
 
 The query Id is a strictly increasing number for each query. Devices should remember
 the last query Id for each host for 10 seconds and not respond if they already done so.
 
-This frame may get sent over UDP or TCP. In case the sender is set up to use a gateway,
+This frame may get sent over a logical connection or to all devices. In case the sender is set up to use a gateway,
 and presumably is not on the same administrative network as other devices, it may send
-the query through TCP directly to the gateway. Otherwise it is a broadcast UDP frame.
+the query through a connection directly to the gateway. Otherwise it is a broadcast frame.
 
-If the frame is sent as a broadcast UDP message, all
+If the frame is sent as a broadcast packet, all
 devices with the listed keys must respond to this query. If it is sent to a
 gateway, the gateway must respond.
 
@@ -455,16 +456,17 @@ the address this frame is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
-Devices must always announce themselves when they become available.
+Devices should announce themselves when they become available, unless
+some restrictions (like low energy device) would make it impractical.
 The announcement is sent according to network configuration either as
 a UDP broadcast or TCP connection to gateways.
 
-Devices must answer Identity Queries through a TCP connection. If there is already
-a TCP connection to the device requesting, then that connection must be used. Otherwise
-a TCP connection needs to be established first. This connection must be closed after
+Devices must answer Identity Queries through a logical connection. If there is already
+a connection to the device requesting, then that connection must be used. Otherwise
+a new connection needs to be established first. This connection must be closed after
 the reply is complete, if it is otherwise unused.
 
-Devices should remember the last query Id answered for 10 seconds, if received through either UDP or TCP. This is
+Devices should remember the last query Id answered for 10 seconds. This is
 because it is likely the query will be received multiple times, but should be answered only once.
 
 ### Message Choreography
