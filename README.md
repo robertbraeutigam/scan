@@ -36,7 +36,7 @@ The main considerations driving the design of this protocol:
   use-cases which are almost never used, or used only because of historical reasons.
 - **DIY** friendly. No proprietary components, processes or certification requirements. No central registries.
   A private individual should be able to easily create a compatible device completely
-  independently, which can then be used by and end-user to its full extent and be combined with any
+  independently, which can then be used by any end-user to its full extent and be combined with any
   other device that has or needs similar enough features.
 - **Discoverability**. It should be very easy to *discover* which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
@@ -49,31 +49,31 @@ The main considerations driving the design of this protocol:
   by using transparent **dynamic wiring**, instead of devices directly hardcoded for each other or for specific codes.
 - **Minimal setup** required by end-users, ideally plug-and-play in most cases to a *fully-secure* production installation.
 - Should work **over the internet** and in any network topology, trusted or not.
-- Should be compatible with **Bluetooth Low Energy**, or low-energy devices in general.
+
+## Out-of-scope
+
+This protocol does not replace radio-based protocols such as Bluetooth, Bluetooth Low Energy, LoRaWAN, etc.
+
+Although devices using these protocols may be connected through some gateway into a SCAN network, they can not
+directly participate as these protocol have their own definitions of security, data excmhange and semantics, which are
+incompatible with SCAN. Alternatively, embedding SCAN traffic in any of these would not be an optimal use of these
+protocols.
 
 ## Solution Overview
 
-SCAN is divided into 4 layers:
+SCAN is divided into three layers:
 
-- Physical Layer (TCP/IP, BLE, etc.)
-- Network Layer (Security, Multiplexing, Fragmenting)
-- Logical Layer (Logical Connections, Messaging)
+- Physical Layer (Packet Communication and Announcement)
+- Network Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
 - Application Layer (Data, Commands, Wiring)
 
-The Physical Layer is the actual transport infrastructure that facilitates the transport of single
-messages (packets) between devices. Since SCAN is defined as a peer-to-peer protocol, with devices communicating
-with each other directly, this Physical Layer may be any communications medium which allows at least
-two devices to exchange messages. Also, since SCAN defines its own message processing, both packet based
-and connection based technologies are supported, as long as messages can be reasonably reliably exchanged.
-TCP/IP and BLE are explicitly supported, but other technologies may be added.
+The Physical Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
+packets between devices and enables announcements. It supports different IP topologies, including
+local networks, connections over gateways, etc.
 
 The Network Layer is responsible for providing a secure, flat, multiplexing and mixing capable layer
 for communications between devices. Devices are identified, addressed based on static cryptographic keys instead
 of hardware addresses and communicate point to point using a packet-based protocol. 
-
-The Logical Layer abstracts the packet-based protocol of the Network,
-and replaces it with a simple, but powerful messages based protocol, which supports unlimited length messages, even
-multiple parallel unlimited length messages from or to the same device.
 
 The Application Layer adds a uniform quasi-request-response based interface, which mainly consist of these categories:
 
@@ -109,6 +109,57 @@ Auto-wiring, the process of automatically connecting data to controls,
 can be achieved using standardized semantics of data, if applicable. Such as 
 auto-connecting a Plotter to a GPS Receiver.
 
+## Physical Layer
+
+The physical layer supports basic network primitives based on IP-native means for the next layer.
+These functionalities are:
+
+* Open and receive a physical TCP/IP connection to/from a peer to send and receive data.
+* Send and receive data to / from all connected devices.
+
+This layer mimics IP closely. Meaning connections support streaming-based data exchange
+with no packet demarcations, while communication with the whole network supports stateless
+packet based communication.
+
+Addressing uses native IP addresses.
+
+There can be multiple ways of configuring the Physical Layer of a SCAN device. However
+this configuration should be completely transparent for the layers above.
+
+Devices must reuse TCP connections in each direction, therefore
+at most two TCP connection must be present between two given peers at all times, one for each
+direction.
+
+### Local Network Configuration
+
+Every device must be capable of operating in a local network, where other devices are directly
+addressable and all devices can be contacted by multicast packets. In this scenario:
+
+* Connections are made / received using TCP/IP on port 11372.
+* All devices are addressed over UDP, at the address 239.255.255.244:11372.
+
+Note, that this "local network" does not necessarily need to be a physically local network,
+it can be a virtually local network that connects multiple devices, possibly through VPNs.
+
+All UDP packets sent, regardless of content must be repeated 5 times with random intervals
+in order: 0-100ms, 0-400ms, 0-500ms, 1-2 seconds, 1-2 seconds, having a maximum total time of 5 seconds.
+If the device receives a complete answer for a packet earlier, such as a complete list of
+IP addresses for queried SCAN addresses, it may stop repeating the packet.
+
+### Gateway-based Configuration
+
+Devices may support connecting through "Gateways". A "Gateway" is a SCAN "Physical Layer" level software or hardware
+device that does not necessarily have an "Application Layer" presence, i.e. it may be invisible
+to the SCAN network, but can present all the devices that connect to it.
+
+In this scenario the software stack on the device that connects through a Gateway maps Physical Layer operations thusly:
+
+* Connections are always made with the Gateway on port 11372 (the same SCAN port as above).
+* All devices are addressed over TCP through the same connection as above.
+
+In this case all communication is directed at the Gateway, which in turn reflects all information 
+present on the "other side" of the Gateway.
+
 ## Network Layer
 
 The network protocol is designed to be a "layer" on top of the Physical one. It is independent and
@@ -138,7 +189,7 @@ A logical connection is a connection between two devices identified by their pub
 devices have a static key pair, the public part of which identifies the device uniquely and securely
 on the network. There 
 can be at most two logical connection between any two devices, because the ordered pair of public static keys uniquely identifies
-a logical connection. Note however, that one physical (i.e. TCP) connection can tunnel more than one logical connection.
+a logical connection. Note however, that one physical connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
 they must immediately close the logical connection. If the logical connection is the only one in
@@ -147,29 +198,6 @@ needs to be sent.
 
 The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
-
-### Connections
-
-SCAN uses two types of communication. Both must be supported by all devices.
-
-* The bulk of the protocol, the application layer, is defined over TCP on port 11372.
-* Additionally a query / announce feature is available over UDP, at the address 239.255.255.244:11372.
-
-While the application layer must always go through TCP, the query / announce part of the
-protocol may use both TCP and UDP and even mix the two if appropriate. See messages
-for further details.
-
-Devices must reuse TCP connections, therefore
-at most one TCP connection must be present between two given peers at all times.
-
-All UDP packets sent, regardless of content must be repeated 5 times with random intervals
-in order: 0-100ms, 0-400ms, 0-500ms, 1-2 seconds, 1-2 seconds, having a maximum total time of 5 seconds.
-If the device receives a complete answer for a packet earlier, such as a complete list of
-IP addresses for queried SCAN addresses, it may stop repeating the packet.
-This applies also to devices that come online
-just for sending one message. This means all devices must be available for at least a couple of
-seconds after an initial connect. This also serves the purpose of having a window to communicate
-with the device, such as sending software updates for example.
 
 ### Data Types
 
