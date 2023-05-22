@@ -447,6 +447,9 @@ request onto the "other" side of the gateway.
 Note that wildcard queries may or may not return all devices depending on 
 online/offline status, or network topology, timeouts or network congestion.
 
+If the device is interested in more than 16 addresses, it may make multiple queries simultaneously, provided
+it uses query Ids as described above.
+
 #### Frame type: 34 (Identity Announcement)
 
 Announces the identity or identities represented by a device.
@@ -461,16 +464,20 @@ multiple static keys may reside at the same IP address.
 
 Devices should announce themselves when they become available, unless
 some restrictions (like low energy device) would make it impractical.
-The announcement is sent according to network configuration either as
-a UDP broadcast or TCP connection to gateways.
 
-Devices must answer Identity Queries through a logical connection. If there is already
+This packet maybe sent unrequested to all devices on the network as a broadcast
+message.
+
+When answering an Identity Queries, it is sent through a logical connection. If there is already
 a connection to the device requesting, then that connection must be used. Otherwise
 a new connection needs to be established first. This connection must be closed after
 the reply is complete, if it is otherwise unused.
 
 Devices should remember the last query Id answered for 10 seconds. This is
 because it is likely the query will be received multiple times, but should be answered only once.
+
+If the device represents too many static keys so that it doesn't fit one packet, it may
+generate multiple packets.
 
 ### Message Choreography
 
