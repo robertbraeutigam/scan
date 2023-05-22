@@ -440,8 +440,9 @@ devices with the listed keys must respond to this query. If it is sent to a
 gateway, the gateway must respond.
 
 A query with 0 target keys is a wildcard query, which means *all* devices in the local network
-must respond if sent as a broadcast frame. If sent to a gateway, the gateway must respond with
-all the identity keys that are reachable through the gateway.
+must respond. If sent to a gateway, the gateway must respond with
+all the identity keys that are reachable through the gateway. The gateway itself may mirror this
+request onto the "other" side of the gateway.
 
 Note that wildcard queries may or may not return all devices depending on 
 online/offline status, or network topology, timeouts or network congestion.
