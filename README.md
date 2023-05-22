@@ -420,14 +420,16 @@ This frame is used to establish the IP addresses belonging to static identity ke
 or to find out what devices are on the network.
 
 Payload structure:
-* Query Id (4 bytes) // TODO: Why 4 bytes? 1 should be enough, since it only must be remembered for 10 seconds
+* Query Id (1 byte)
 * Target query static keys... (32 bytes each)
 
 The query can contain any number of target addresses between 0 and 16, for which the
-IP address is to be returned. 
+an answer is expected.
 
 The query Id is a strictly increasing number for each query. Devices should remember
-the last query Id for each host for 10 seconds and not respond if they already done so.
+the last query Id for each host for 10 seconds and not respond if they already done so. Devices may
+reset to a query Id of 0 if 20 seconds after the last sent query Id passed. Devices may reset the
+query id range without fully exhausting it, providing the timing as described.
 
 This frame may get sent over a logical connection or to all devices. In case the sender is set up to use a gateway,
 and presumably is not on the same administrative network as other devices, it may send
