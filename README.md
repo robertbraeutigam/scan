@@ -804,7 +804,8 @@ Request content:
 * Command Id (variable length integer)
 * Maximum Rate (variable length integer)
 
-Same as the maximum rate specified in STREAM DATA message. The Controlled indicates at which rate this
+Same as the maximum rate specified in STREAM DATA message, i.e. a millisecond value of time between subsequent
+requests. The Controlled indicates at which rate this
 command can be invoked. The Controller must honor this rate and never invoke the command
 more frequently than given.
 
