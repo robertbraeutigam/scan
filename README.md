@@ -993,8 +993,8 @@ These are as follows:
 |---------------------|---------|------------------------|--------------------------------------------------|
 | Byte Stream         |       1 |Max Size (variable length integer), Bytes | Potentially "unlimited" stream of bytes. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
 | Integer             |       2 |Variable Length Integer | Unsigned                                         |
-| Double              |       4 |Double                  |                                                  |
-| String              |       3 |String                  |                                                  |
+| Double              |       3 |Double                  |                                                  |
+| String              |       4 |String                  |                                                  |
 
 All Tier 0 types must be known to an implementation in order to properly interpret definitions and values.
 This table will not be extended any further.
