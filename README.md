@@ -160,6 +160,37 @@ In this scenario the software stack on the device that connects through a Gatewa
 In this case all communication is directed at the Gateway, which in turn reflects all information 
 present on the "other side" of the Gateway.
 
+### Network Configuration
+
+Devices are expected to be available through a variety of network topologies and configurations,
+including through static or non-static IP addresses, through WiFi, with or without DHCP, through VPN,
+or through multiple network segments each with its own network zones or firewalls.
+
+Devices therefore must support low level network configuration options to enable them to participate
+in the SCAN network. These must at least include the following options:
+* Direct connection to SCAN network. Discovery and address resolution through broadcast UDP.
+* Connection through a gateway or gateways. Discovery and address resolution through gateway directly.
+
+Gateways present a way to configure a static set of IP addresses to speak to.
+This may be necessary for devices that are not on any "local" network. Connected through
+untrusted networks, such as cellular networks or other host networks.
+
+In addition, the network must support at least one direction of communication between devices
+or devices and gateways.
+
+Devices should do anything and everything that can be securely done to not have to configure
+the network to use the device. This should include the following:
+* Support WPS to join a WiFi network without configuration.
+* Support, detect and use DHCP if available.
+* Support local-link IP address auto-selection when DHCP not available, to support ad-hoc
+wired networks.
+
+Devices may support other methods to connect to a SCAN network, like VPN, Proxies, or other custom tunnelling
+methods.
+
+At the end of the network configuration devices must be able to send and receive frames to and from
+the rest of the SCAN network.
+
 ## Network Layer
 
 The network protocol is designed to be a "layer" on top of the Physical one. It is independent and
@@ -481,10 +512,10 @@ generate multiple packets.
 
 ### Message Choreography
 
-There can be only at most two logical connection
+There can be only at most two logical connections
 between any two parties. If a logical connection already exists, that must be used.
-If not, a new logical connection needs to be established. If there is already a TCP
-connection between the source and the target, that TCP connection must be used. If not, a new TCP
+If not, a new logical connection needs to be established. If there is already a physical
+connection between the source and the target, that physical connection must be used. If not, a new physical
 connection must be established first.
 
 The *initiator* of the connection is the party that opens the logical connection.
@@ -518,37 +549,6 @@ with the Renegotiate frame.
 3. If Responder sent Renegotiate, Initiator removes it keys and closes the connection.
 4. Otherwise, logical connection established.
 
-### Network Configuration
-
-Devices are expected to be available through a variety of network topologies and configurations,
-including through static or non-static IP addresses, through WiFi, with or without DHCP, through VPN,
-or through multiple network segments each with its own network zones or firewalls.
-
-Devices therefore must support low level network configuration options to enable them to participate
-in the SCAN network. These must at least include the following options:
-* Direct connection to SCAN network. Discovery and address resolution through broadcast UDP.
-* Connection through a gateway or gateways. Discovery and address resolution through gateway directly.
-
-Gateways present a way to configure a static set of IP addresses to speak to.
-This may be necessary for devices that are not on any "local" network. Connected through
-untrusted networks, such as cellular networks or other host networks.
-
-In addition, the network must support at least one direction of communication between devices
-or devices and gateways.
-
-Devices should do anything and everything that can be securely done to not have to configure
-the network to use the device. This should include the following:
-* Support WPS to join a WiFi network without configuration.
-* Support, detect and use DHCP if available.
-* Support local-link IP address auto-selection when DHCP not available, to support ad-hoc
-wired networks.
-
-Devices may support other methods to connect to a SCAN network, like VPN, Proxies, or other custom tunnelling
-methods.
-
-At the end of the network configuration devices must be able to send and receive frames to and from
-the rest of the SCAN network.
-
 ### Address Resolution
 
 To be able to establish a "physical" TCP connection between parties having static keys,
@@ -561,9 +561,8 @@ establishing a TCP connection. The device may use cached values of already resol
 addresses, it must however fall back on a resolution process if connection can not be established
 with cached value.
 
-An Address Resolution is sending an Identity Query based on the configured network either through
-UDP broadcast or through TCP directly to a gateway and processing the Identity Announcement
-that comes back.
+An Address Resolution is sending an Identity Query based on the configured network, and waiting
+for responses for it.
 
 Devices may continue to monitor unsolicited Identity Announcements to build an internal cache
 of IP addresses.
@@ -599,9 +598,14 @@ a single request.
 A relative timestamp is a strictly increasing, millisecond precision integer from a 
 context-given reference point. It is stored as a variable length integer.
 
-Note, that the relative timestamp is a true measure of time passed, so unix timestamps
-or any derived values are *not* usable, because they may act wierd around leap seconds.
-Prefer raw system clock counts or raw millis counted from system start.
+Note, that timestamps have mixed semantics. They may in some circumstances represent
+a unix timestamp, which are milliseconds from epoch excluding leap seconds, and sometimes
+just millisecond counts from a reference point in time, which may include leap seconds.
+
+Adding relative time to unix timestamp does not technically result in a unix timestamp, since
+there would be a difference if a leap second happened in between the original and calculated time.
+Time sensitive, or real-time applications should not rely on adding these together at all, instead
+rely on "real" elapsed time.
 
 A Value structure is a single value to a type defined elsewhere. It's structure is:
 * Identifier (variable length integer)
@@ -764,17 +768,33 @@ Response content:
 The Data Packet Id identifies the Data Definition that describes the meaning of the
 values submitted here.
 
-The Data Time is measured from the last received data packet of same id. The first
-transmitted value must be 0.
+The Data Time is the effective date the values in the packet happened on, or apply to. This is not
+the same as the "creation time", when the data was created on, or "submission time", when the data
+was submitted over the network. For real-time applications (controlling a light or engine) these three
+may be normally pretty close to each other, but for data such as logs, events, year-end summaries of meters,
+it is important to keep them separate.
 
-Note that Devices must send all Data in order for a given Data Packet.
+In the first data packet on a logical connection of this given Packet Id the Data Time must be
+either a Unix Timestamp or 0. If a Unix Timestamp is available and relevant, that should be sent, else 0
+indicates that the absolute time for this data packet is not important.
+
+All following packets must include the time difference in milliseconds relative to the previous data
+values. Note again, this time is the time the data applies to, which may progress differently from "real" time.
+
+Note that Devices must send all Data "in order" for a given Data Packet.
 There can not be any out-of-order times, but each Packet may advance this
 time in its own context. For example a Data Packet for year-end summary data
-may only advance once a year and send the same Data for the whole year.
+may only advance once a year and send the same Data Time for the whole year.
 
 Note also, that because of the Resolution Principle the Device must immediately
 send the newest data value upon receiving a Data Request. This may involve taking
 an immediate measurement, or may involve sending a cached value from memory.
+
+Data Values must be immutable, or put it differently, timestamp is a unique key for data values of the same packet Id.
+Devices may send Data Values with 0 relative time, but that would also mean it has the same data values.
+
+This also means at least 1 millisecond needs to pass between potentially different data values for the same
+packet Id.
 
 #### INVOKE RESPONSE (03)
 
