@@ -822,6 +822,8 @@ Devices must answer an unknown request code with this response.
 Content:
 * Action (byte)
 
+Content is the action code that was ignored.
+
 ## Technical Discussions
 
 ### The Resolution Principle
