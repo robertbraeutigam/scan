@@ -8,7 +8,7 @@ package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface Network extends Endpoint {
+public interface Network {
    /**
     * Query all devices on the network. Note that this device may not have
     * access to all the devices listed. Only devices that are currently on the
@@ -26,4 +26,12 @@ public interface Network extends Endpoint {
     * @return A future that completes when all resources are freed.
     */
    CompletableFuture<Void> close();
+
+   /**
+    * Connect to a remote peer.
+    * @param initiator The initiator of the connection.
+    * @return The responder of the logical connection.
+    */
+   CompletableFuture<Peer> connect(PeerAddress address, Role role, Peer initiator);
 }
+
