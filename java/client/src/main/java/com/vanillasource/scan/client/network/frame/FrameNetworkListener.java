@@ -13,6 +13,6 @@ import com.vanillasource.scan.client.network.Role;
 public interface FrameNetworkListener {
    void receiveAnnouncement(PeerAddress address);
 
-   CompletableFuture<FramePeer> connect(PeerAddress address, Role role, FramePeer initiator);
+   CompletableFuture<FramePeer> receiveConnection(PeerAddress address, Role role, FramePeer initiator);
 }
 

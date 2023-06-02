@@ -137,11 +137,13 @@ public class NioPhysicalNetworkTests {
    protected void setUp() throws IOException {
       listener = mock(PhysicalNetworkListener.class);
       acceptingPeer = mock(PhysicalPeer.class);
+      when(acceptingPeer.close()).thenReturn(CompletableFuture.completedFuture(null));
       when(listener.receiveConnection(any(), any())).thenReturn(CompletableFuture.completedFuture(acceptingPeer));
       LOGGER.trace("starting nio physical network...");
       network = NioPhysicalNetwork.startWith(listener);
       LOGGER.trace("started nio physical network...");
       initiator = mock(PhysicalPeer.class);
+      when(initiator.close()).thenReturn(CompletableFuture.completedFuture(null));
    }
 
    @AfterMethod
