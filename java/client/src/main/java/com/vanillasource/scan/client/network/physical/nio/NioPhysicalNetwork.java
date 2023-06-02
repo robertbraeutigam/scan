@@ -99,6 +99,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
          synchronized (peers) {
             peers.remove(p);
          }
+         return CompletableFuture.completedFuture(null);
       });
       synchronized (peers) {
          peers.add(peer);
@@ -185,6 +186,7 @@ public final class NioPhysicalNetwork implements PhysicalNetwork, NioHandler {
                synchronized (peers) {
                   peers.remove(p);
                }
+               return CompletableFuture.completedFuture(null);
          });
          synchronized (peers) {
             peers.add(peer);

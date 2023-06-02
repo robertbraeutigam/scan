@@ -8,7 +8,7 @@ package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * A peer that is connected through a logical connection.
@@ -33,9 +33,9 @@ public interface Peer {
     * @return A future that completes when all pending data is sent
     * to the network.
     */
-   void close();
+   CompletableFuture<Void> close();
 
-   default Peer afterClose(Consumer<Peer> action) {
+   default Peer afterClose(Function<Peer, CompletableFuture<Void>> action) {
       Peer self = this;
       return new Peer() {
          @Override
@@ -44,9 +44,9 @@ public interface Peer {
          }
 
          @Override
-         public void close() {
-            self.close();
-            action.accept(this);
+         public CompletableFuture<Void> close() {
+            return self.close()
+               .thenCompose(ignore -> action.apply(this));
          }
       };
    }
@@ -58,7 +58,8 @@ public interface Peer {
       }
 
       @Override
-      public void close() {
+      public CompletableFuture<Void> close() {
+         return CompletableFuture.completedFuture(null);
       }
    };
 }

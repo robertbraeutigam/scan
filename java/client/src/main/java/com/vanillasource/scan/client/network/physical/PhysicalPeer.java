@@ -8,7 +8,7 @@ package com.vanillasource.scan.client.network.physical;
 
 import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * A peer that is connected through a logical connection and can send any number of bytes.
@@ -25,9 +25,9 @@ public interface PhysicalPeer {
     * @return A future that completes when all pending data is sent
     * to the network.
     */
-   void close();
+   CompletableFuture<Void> close();
 
-   default PhysicalPeer afterClose(Consumer<PhysicalPeer> action) {
+   default PhysicalPeer afterClose(Function<PhysicalPeer, CompletableFuture<Void>> action) {
       PhysicalPeer self = this;
       return new PhysicalPeer() {
          @Override
@@ -36,9 +36,9 @@ public interface PhysicalPeer {
          }
 
          @Override
-         public void close() {
-            self.close();
-            action.accept(this);
+         public CompletableFuture<Void> close() {
+            return self.close()
+               .thenCompose(ignore -> action.apply(this));
          }
       };
    }
@@ -50,7 +50,8 @@ public interface PhysicalPeer {
       }
 
       @Override
-      public void close() {
+      public CompletableFuture<Void> close() {
+         return CompletableFuture.completedFuture(null);
       }
    };
 }

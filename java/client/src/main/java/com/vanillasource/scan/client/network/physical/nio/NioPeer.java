@@ -50,14 +50,16 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
          boolean connected = channel.finishConnect();
          if (!connected) {
             LOGGER.warn("channel reported not connectable");
-            close();
+            close()
+               .whenComplete((ignore, exception) -> LOGGER.error("error while closing peer in background", exception));
          } else {
             LOGGER.debug("connected incoming connection");
             key.disableConnect();
          }
       } catch (IOException e) {
          LOGGER.warn("channel could not be connected", e);
-         close();
+         close()
+            .whenComplete((ignore, exception) -> LOGGER.error("error while closing peer in background", exception));
       }
    }
 
@@ -108,16 +110,17 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
    }
 
    @Override
-   public void close() {
-      otherPeer.close();
-      selector.onSelectionThread(() -> {
-         key.cancel();
-         try {
-            channel.close();
-         } catch (IOException e) {
-            throw new UncheckedIOException(e);
-         }
-      });
+   public CompletableFuture<Void> close() {
+      return otherPeer.close()
+         .thenCompose(ignore -> selector.onSelectionThread(() -> {
+            key.cancel();
+            try {
+               channel.close();
+            } catch (IOException e) {
+               throw new UncheckedIOException(e);
+            }
+            return null;
+         }));
    }
 
    private final class OutgoingPacket {
