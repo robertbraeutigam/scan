@@ -111,7 +111,9 @@ public final class NioPeer implements NioHandler, PhysicalPeer {
 
    @Override
    public CompletableFuture<Void> close() {
-      return otherPeer.close()
+      CompletableFuture<Void> closeFuture = otherPeer.close();
+      LOGGER.debug("other peer ("+otherPeer+") close returning: "+closeFuture);
+      return closeFuture
          .thenCompose(ignore -> selector.onSelectionThread(() -> {
             key.cancel();
             try {

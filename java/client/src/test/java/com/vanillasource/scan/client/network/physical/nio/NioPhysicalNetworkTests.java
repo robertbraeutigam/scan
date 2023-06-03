@@ -99,6 +99,7 @@ public class NioPhysicalNetworkTests {
 
    private void assertResponderReceive(byte[] data) {
       reset(acceptingPeer);
+      when(acceptingPeer.close()).thenReturn(CompletableFuture.completedFuture(null));
 
       CompletableFuture<Void> responderReadFuture = new CompletableFuture<>();
       when(acceptingPeer.receive(any())).thenReturn(responderReadFuture);
