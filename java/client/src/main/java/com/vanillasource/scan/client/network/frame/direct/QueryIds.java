@@ -23,7 +23,7 @@ public final class QueryIds {
    }
 
    public synchronized CompletableFuture<Integer> nextQueryId() {
-      int id = nextId++;
+      int id = ++nextId;
       if (id <= 255) {
          resetTimer.cancel(false);
          resetTimer = scheduler.schedule(this::resetAndNotify, 20, TimeUnit.SECONDS);
