@@ -19,7 +19,8 @@ import java.util.concurrent.CompletableFuture;
 import com.vanillasource.scan.client.network.frame.FramePeer;
 
 /**
- * A network that directly converts all messages into message frames.
+ * A network that directly converts all messages into message frames,
+ * without authentication, authorization, or any other protocol features.
  */
 public final class DirectNetwork implements Network, FrameNetworkListener {
    private final FrameNetwork delegate;
