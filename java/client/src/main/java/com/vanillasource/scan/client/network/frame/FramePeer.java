@@ -7,19 +7,20 @@
 package com.vanillasource.scan.client.network.frame;
 
 import java.util.concurrent.CompletableFuture;
+import java.nio.ByteBuffer;
 
 public interface FramePeer {
-   CompletableFuture<Void> initiateHandshake(String protocolName, byte[] handshake);
+   CompletableFuture<Void> initiateHandshake(String protocolName, ByteBuffer handshake);
 
-   CompletableFuture<Void> continueHandshake(byte[] handshake);
+   CompletableFuture<Void> continueHandshake(ByteBuffer handshake);
 
    CompletableFuture<Void> closeConnection();
 
-   CompletableFuture<Void> messageIntermediateFrame(int messageId, byte[] payload);
+   CompletableFuture<Void> messageIntermediateFrame(int messageId, ByteBuffer payload);
 
-   CompletableFuture<Void> messageLastFrame(int messageId, byte[] payload);
+   CompletableFuture<Void> messageLastFrame(int messageId, ByteBuffer payload);
 
-   CompletableFuture<Void> messageSingleFrame(byte[] payload);
+   CompletableFuture<Void> messageSingleFrame(ByteBuffer payload);
 
    CompletableFuture<Void> renegotiate();
 }
