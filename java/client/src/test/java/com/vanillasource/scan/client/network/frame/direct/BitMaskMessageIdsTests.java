@@ -10,6 +10,8 @@ import org.testng.annotations.Test;
 import static org.testng.Assert.*;
 import org.testng.annotations.BeforeMethod;
 import java.util.concurrent.CompletableFuture;
+import java.util.ArrayList;
+import java.util.List;
 
 @Test
 public final class BitMaskMessageIdsTests {
@@ -55,6 +57,17 @@ public final class BitMaskMessageIdsTests {
       CompletableFuture<Integer> id = ids.reserveId();
 
       assertFalse(id.isDone());
+   }
+
+   public void testHeavyOverreservationIsEventuallyResolved() {
+      List<CompletableFuture<Integer>> reservations = new ArrayList<>();
+      for (int i=0; i<100; i++) {
+         reservations.add(ids.reserveId());
+      }
+
+      reservations.forEach(reservation -> reservation.thenAccept(ids::releaseId));
+
+      assertTrue(CompletableFuture.allOf(reservations.toArray(CompletableFuture[]::new)).isDone());
    }
 
    @BeforeMethod

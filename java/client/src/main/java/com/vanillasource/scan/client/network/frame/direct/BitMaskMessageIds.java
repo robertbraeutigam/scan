@@ -28,7 +28,7 @@ public final class BitMaskMessageIds implements MessageIds {
    @Override
    public synchronized CompletableFuture<Integer> reserveId() {
       int nextId = bits.nextClearBit(0);
-      if (nextId >= 0) {
+      if (nextId >= 0 && nextId <= (endId-startId)) {
          bits.set(nextId);
          return CompletableFuture.completedFuture(nextId + startId);
       } else {
