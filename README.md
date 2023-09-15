@@ -330,7 +330,7 @@ effectively creating a role or group of devices.
 
 Security note: If PSKs are shared, those devices must be considered to be in the same security
 domain, i.e. they all are only as strong as the weakest device that has that key. I.e. they all
-"fall" together.
+"fall" together. 
 
 Every device must come with a unique PSK already set up for its initial or following enrollments.
 This permanent "factory PSK" must not be allowed to be used for anything else other than setting up a
@@ -346,6 +346,10 @@ Note, that the handshake does not identify the PSK used explicitly. The responde
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only. Still,
 this mechanism is designed with a limited set of possible PSKs in mind.
+
+Devices must implement some throttling mechanism for authenticating connecting devices, to
+prevent brute-forcing PSKs. Introducing delays when an unsuccessful connection was attempted,
+or use a temporary ban list, etc. Devices are not required to permanently store any of this information.
 
 Both the sender and destination identifier must be present in this frame.
 
@@ -777,6 +781,10 @@ it is important to keep them separate.
 In the first data packet on a logical connection of this given Packet Id the Data Time must be
 either a Unix Timestamp or 0. If a Unix Timestamp is available and relevant, that should be sent, else 0
 indicates that the absolute time for this data packet is not important.
+
+Note, that this protocol is explicitly designed so that devices do not have to know the current date / time,
+do not have to use NTP, or other means of synchronizing to all the other devices.
+TODO: how does the receiver know "when" the event was generated? I.e. is this current data??
 
 All following packets must include the time difference in milliseconds relative to the previous data
 values. Note again, this time is the time the data applies to, which may progress differently from "real" time.
