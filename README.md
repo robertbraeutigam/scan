@@ -779,15 +779,16 @@ may be normally pretty close to each other, but for data such as logs, events, y
 it is important to keep them separate.
 
 In the first data packet on a logical connection of this given Packet Id the Data Time must be
-either a Unix Timestamp or 0. If a Unix Timestamp is available and relevant, that should be sent, else 0
-indicates that the absolute time for this data packet is not important.
+either a Unix Timestamp or 0. If the Data Time is 0, this indicates that the data is supposed to be real-time data,
+that has the time it applies to, creation time and submission time very close to each other. In this case
+follow-up packets must use the elapsed time from the previous data packet as Data Time.
 
+All other cases must use a non-zero Unix Timestamp in milliseconds for Data Time for each packet. These are
+called "historical" packets.
+ 
 Note, that this protocol is explicitly designed so that devices do not have to know the current date / time,
-do not have to use NTP, or other means of synchronizing to all the other devices.
-TODO: how does the receiver know "when" the event was generated? I.e. is this current data??
-
-All following packets must include the time difference in milliseconds relative to the previous data
-values. Note again, this time is the time the data applies to, which may progress differently from "real" time.
+do not have to use NTP, or other means of synchronizing with other devices when participating in
+real-time data acquisition or controlling.
 
 Note that Devices must send all Data "in order" for a given Data Packet.
 There can not be any out-of-order times, but each Packet may advance this
