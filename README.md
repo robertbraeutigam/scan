@@ -87,10 +87,10 @@ of working together without any dedicated control device or server. Introducing
 more components does not require any central component to exist either, although the
 option is available if needed.
 
-All data is defined as a time-series. Each data point has an associated timestamp
-and all related data elements. Data elements do not
+Data elements do not
 just carry a technical format (such as how many bytes, etc.), but also meaning, whether it is an
-Identification, Event or Measurement, etc.
+Identification, Event or Measurement, etc. This meaning is defined in a layered way to give as much
+meaning to a piece of data as possible.
 
 Measurements carry unit information (like Liter, PSI, %, etc.) in addition to a name. This
 way data elements don't exclusively rely on their "standardized" semantics, and can be uniformly
@@ -606,18 +606,6 @@ responses to be sent in parallel, including many streaming responses or multiple
 a single request.
 
 ### Data Types
-
-A relative timestamp is a strictly increasing, millisecond precision integer from a 
-context-given reference point. It is stored as a variable length integer.
-
-Note, that timestamps have mixed semantics. They may in some circumstances represent
-a unix timestamp, which are milliseconds from epoch excluding leap seconds, and sometimes
-just millisecond counts from a reference point in time, which may include leap seconds.
-
-Adding relative time to unix timestamp does not technically result in a unix timestamp, since
-there would be a difference if a leap second happened in between the original and calculated time.
-Time sensitive, or real-time applications should not rely on adding these together at all, instead
-rely on "real" elapsed time.
 
 A Value structure is a single value to a type defined elsewhere. It's structure is:
 * Identifier (variable length integer)
@@ -1186,8 +1174,7 @@ a state came to be. For example: Wiring can't determine whether the temperature 
 by looking at the current temperature, can't determine whether some state was present for a given period of time.
 
 Note however, that all those use-cases are actually possible if the required data is part of the current
-state of modality. For example including the change of temperature to the current temperature data packet.
-Or including/defining the timestamp when a state became current.
+state of modality. For example including the change of temperature with the current temperature data packet.
 
 ### Structure
 
