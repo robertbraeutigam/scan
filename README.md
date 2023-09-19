@@ -778,45 +778,20 @@ Send data values.
 
 Response content:
 * Data Packet Id (variable length number)
-* Data Time (Relative Timestamp)
 * Tag Values (Value structures for the defined Tags)
 * Data Element Values (Value structures for the defined Data Elements)
 
 The Data Packet Id identifies the Data Definition that describes the meaning of the
 values submitted here.
 
-The Data Time is the effective date the values in the packet happened on, or apply to. This is not
-the same as the "creation time", when the data was created on, or "submission time", when the data
-was submitted over the network. For real-time applications (controlling a light or engine) these three
-may be normally pretty close to each other, but for data such as logs, events, year-end summaries of meters,
-it is important to keep them separate.
-
-In the first data packet on a logical connection of this given Packet Id the Data Time must be
-either a Unix Timestamp or 0. If the Data Time is 0, this indicates that the data is supposed to be real-time data,
-that has the time it applies to, creation time and submission time very close to each other. In this case
-follow-up packets must use the elapsed time from the previous data packet as Data Time.
-
-All other cases must use a non-zero Unix Timestamp in milliseconds for Data Time for each packet. These are
-called "historical" packets.
- 
-Note, that this protocol is explicitly designed so that devices do not have to know the current date / time,
-do not have to use NTP, or other means of synchronizing with other devices when participating in
-real-time data acquisition or controlling.
-
-Note that Devices must send all Data "in order" for a given Data Packet.
-There can not be any out-of-order times, but each Packet may advance this
-time in its own context. For example a Data Packet for year-end summary data
-may only advance once a year and send the same Data Time for the whole year.
-
-Note also, that because of the Resolution Principle the Device must immediately
+Note, that because of the Resolution Principle the Device must immediately
 send the newest data value upon receiving a Data Request. This may involve taking
-an immediate measurement, or may involve sending a cached value from memory.
+an immediate measurement, or may involve sending a cached value from memory, but
+the value must always be the most current one in the given semantics.
 
-Data Values must be immutable, or put it differently, timestamp is a unique key for data values of the same packet Id.
-Devices may send Data Values with 0 relative time, but that would also mean it has the same data values.
-
-This also means at least 1 millisecond needs to pass between potentially different data values for the same
-packet Id.
+Note also, that this semantic may include a month-end meter value for example. "Historical"
+values are allowed, as long as this does not mix with "current" values. I.e. it has to have its own
+data definition, which presumably includes a timestamp or interval.
 
 #### INVOKE RESPONSE (03)
 
