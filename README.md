@@ -278,12 +278,13 @@ by intermediaries. These are explicitly not included in the end-to-end encryptio
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
 bytes in the stream.
 
-Frame types 0-31 may only be sent in a connections, while frames 32-63 may be sent
-and received to / from all devices or through a connection.
+Frames a categorized into several intervals:
+* 0-15: Control messages. These are related to establishing or closing the connection.
+* 16-47: Payload messages, related to the actual payload of the communication.
+* 48-63: Messages that potentially are broadcasted.
 
-After the handshake is completed all frames between 0-31 must cause the sender and receiver
-to rotate the appropriate keys. That applies even if the frame did not contain
-a payload and even if the frame is unknown and is being skipped.
+All payload messages (frames 16-47) will cause the encryption keys to be rotated. Each message will
+be sent with a completely new key for absolute forward security.
 
 #### Frame type: 01 (Initiate Handshake)
 
@@ -342,6 +343,10 @@ generate a previously unknown PSK for usage, but still allow the user to recover
 the device in case that gets lost, or the device itself changes hands, without potentially
 leaking previous data.
 
+Devices must implement some form of control to guarantee that factory resets can not occur randomly. Devices should
+implement some measure to check whether the user doing the factory reset has physical access to the device. For example
+a device may offer factory reset only for 1 minute after power-on, or require a button to be pushed, etc.
+
 Note, that the handshake does not identify the PSK used explicitly. The responder
 might therefore need to try multiple PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only. Still,
@@ -378,7 +383,28 @@ connections.
 
 This message has no payload.
 
-#### Frame type: 04 (Application Message Intermediate Frame)
+#### Frame type: 04 (Renegotiate)
+
+The responder may send this message to instruct the initiator to reopen the connection with
+a new handshake.
+
+There is no payload in this message.
+
+When a connection is closed or lost, upon re-establishing the initiator may
+continue to send frames with the already established keys for the previously lost logical connection.
+That is, it may continue sending application messages instead of starting with a handshake again.
+
+Devices may support remembering already established keys, or may even persist them to survive
+restarts. Therefore an initiator may try to continue communication with previously established keys.
+
+If this assumption does not hold, the responder must send a Renegotiate frame to indicate that
+it can not in fact decrypt the received messages, either because it does not remember the necessary
+keys or it became out of sync with the initiator and a new handshaking process is needed.
+
+The initiator should assume that the messages it sent in the meantime were not received
+and must remove its old keys and close the connection.
+
+#### Frame type: 16 (Application Message Intermediate Frame)
 
 A part of an application message, including the initial frame, but not the last frame. This frame indicates
 that the message is not complete, additional frames will follow for this message.
@@ -405,7 +431,7 @@ The Message Id identifies this message and all frames it consists of. Message Id
 be re-used to be able to keep the Id low and in one byte. All values for which
 a Last Frame has been sent must be considered re-usable.
 
-#### Frame type: 05 (Application Message Last Frame)
+#### Frame type: 17 (Application Message Last Frame)
 
 The last frame of an application message. This frame may also be potentially the first and only
 frame the message has, although in this case the Single Frame Application Message should be preferred.
@@ -419,7 +445,7 @@ Encryption and key management is the same as for intermediate frames.
 
 The Message Id used in this frame must be considered reusable after this frame is sent.
 
-#### Frame type: 06 (Single Frame Application Message)
+#### Frame type: 18 (Single Frame Application Message)
 
 An application message that fits a single frame.
 
@@ -427,27 +453,6 @@ Payload structure:
 * Payload (encrypted)
 
 Encryption and key management is the same as for intermediate frames.
-
-#### Frame type: 07 (Renegotiate)
-
-The responder may send this message to instruct the initiator to reopen the connection with
-a new handshake.
-
-There is no payload in this message.
-
-When a connection is closed or lost, upon re-establishing the initiator may
-continue to send frames with the already established keys for the previously lost logical connection.
-That is, it may continue sending application messages instead of starting with a handshake again.
-
-Devices may support remembering already established keys, or may even persist them to survive
-restarts. Therefore an initiator may try to continue communication with previously established keys.
-
-If this assumption does not hold, the responder must send a Renegotiate frame to indicate that
-it can not in fact decrypt the received messages, either because it does not remember the necessary
-keys or it became out of sync with the initiator and a new handshaking process is needed.
-
-The initiator should assume that the messages it sent in the meantime were not received
-and must remove its old keys and close the connection.
 
 #### Frame type: 33 (Identity Query)
 
@@ -497,16 +502,19 @@ the address this frame is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
+The packet may contain up to 16 static keys.
+
 Devices should announce themselves when they become available, unless
 some restrictions (like low energy device) would make it impractical.
 
 This packet maybe sent unrequested to all devices on the network as a broadcast
 message.
 
-When answering an Identity Queries, it is sent through a logical connection. If there is already
+When answering Identity Queries, this frame must be sent through a physical connection. If there is already
 a connection to the device requesting, then that connection must be used. Otherwise
 a new connection needs to be established first. This connection must be closed after
-the reply is complete, if it is otherwise unused.
+the reply is complete, if it is otherwise unused. A logical connection does not have to be
+estalished for this frame.
 
 Devices should remember the last query Id answered for 10 seconds. This is
 because it is likely the query will be received multiple times, but should be answered only once.
