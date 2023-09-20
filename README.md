@@ -1358,3 +1358,28 @@ long as it results in the same values.
 If there are any errors while evaluating a wiring script an error must be raised with the predefined
 error data type.
 
+## Appendix E: Communication Examples
+
+This addendum shows "physical" TCP/IP payloads for certain selected / common use-cases.
+
+Note for all examples: Payload bytes (except for MIC) are always encrypted with symmetric cipher, even though they are shown here as clear text.
+
+### Data coming from a Light
+
+Full state information coming from a two-state light that is either on or off. We assume the logical connection is already established:
+
+Bytes:
+* 18 (1 Byte): This is the frame for single-frame application messages, since our message will fit in 64K. Also, we assume that no other logical connections are
+present, thus we don't have to include the sender or receiver address.
+* 21 (2 Bytes): The number of bytes following.
+* 02 (1 Byte): Indicate that his is the "Data" package presumably as a response to an earlier "Stream Data" request by the initiator.
+* 00 (1 Byte): Identifies the "Data Packet" this Light defined in the "Options" response.
+* 00 (1 Byte): Identifies the data element in the packet.
+* 01 (1 Byte): Length of data follows.
+* 00 (1 Byte): Enum value of 0, indicating "off"
+* MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with.
+
+Total number of bytes prior to MIC: 8.
+
+
+
