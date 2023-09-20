@@ -232,13 +232,8 @@ to distribute those reconnects inside the minute.
 
 ### Data Types
 
-All number types, if not stated otherwise, are network byte order (big-endian, most significant byte
-first) and are unsigned.
-
 A byte array is a concatenation of bytes. The length is not explicitly
 supplied but should be available from either the message overall length or by some other means.
-
-A string is a length (2 bytes) followed by a byte array that contains UTF-8 encoded bytes of characters.
 
 A variable length integer is a number stored as a variable number of bytes, at most 8, in big-endian
 ordering. On each byte except the last the highest bit indicates that a byte still follows. Note that
