@@ -417,6 +417,10 @@ therefore was ignored and skipped.
 Payload structure:
 - Frame type (byte)
 
+This message supports a backward-compatible upgrade path of the protocol. Future versions may
+decide to add new message types, and may fall back to an earlier version of the protocol, if
+this frame is received.
+
 #### Frame type: 16 (Application Message Intermediate Frame)
 
 A part of an application message, including the initial frame, but not the last frame. This frame indicates
