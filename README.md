@@ -251,7 +251,7 @@ All packets have the following header:
 * Header (1 byte) (clear-frame type is aad)
 * (optional) Source peer (32 bytes) (clear)
 * (optional) Destination peer (32 bytes) (clear)
-* Number of following bytes (2 byte VLI) (clear)
+* Number of following bytes, excluding MIC (2 byte VLI) (clear)
 
 The header describes what this frame means and certain format parameters. It is organized as follows:
 * Bit 0-5: Frame type (see next chapters)
@@ -282,10 +282,14 @@ bytes in the stream.
 Frames a categorized into several intervals:
 * 0-15: Control messages. These are related to establishing or closing the connection.
 * 16-47: Payload messages, related to the actual payload of the communication.
-* 48-63: Messages that potentially are broadcasted.
+* 48-63: Messages that potentially are broadcast.
 
 All payload messages (frames 16-47) will cause the encryption keys to be rotated. Each message will
 be sent with a completely new key for absolute forward security.
+
+All payload messages are encrypted and will include a MIC after the payload message. When skipping a frame,
+the appropriate MIC length of the established crypto need to be skipped as well. Note, this is not included
+in the length field.
 
 #### Frame type: 01 (Initiate Handshake)
 
@@ -1372,15 +1376,11 @@ Full state information coming from a two-state light that is either on or off. W
 Bytes:
 * 18 (1 Byte): This is the frame for single-frame application messages, since our message will fit in 64K. Also, we assume that no other logical connections are
 present, thus we don't have to include the sender or receiver address.
-* 21 (1 Byte): The number of bytes following.
+* 05 (1 Byte): The number of bytes following.
 * 02 (1 Byte): Indicate that his is the "Data" package presumably as a response to an earlier "Stream Data" request by the initiator.
 * 00 (1 Byte): Identifies the "Data Packet" this Light defined in the "Options" response.
 * 00 (1 Byte): Identifies the data element in the packet.
 * 01 (1 Byte): Length of data follows.
 * 00 (1 Byte): Enum value of 0, indicating "off"
-* MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with.
-
-Total number of bytes prior to MIC: 7.
-
-
+* MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with. We assume the default Noise Protocol.
 
