@@ -213,7 +213,7 @@ each device is free to directly communicate with any number of other devices. Th
 To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
-The network protocol is packet based, with each packet limited in size to a maximum of 65535 bytes
+The network protocol is packet based, with each packet limited in size to a maximum of 32767 bytes
 excluding the frame header.
 
 A logical connection is a connection between two devices identified by their public static keys. All
@@ -241,7 +241,8 @@ supplied but should be available from either the message overall length or by so
 A string is a length (2 bytes) followed by a byte array that contains UTF-8 encoded bytes of characters.
 
 A variable length integer is a number stored as a variable number of bytes, at most 8, in big-endian
-ordering. On each byte except the last (the 8th byte) the highest bit indicates that a byte still follows.
+ordering. On each byte except the last the highest bit indicates that a byte still follows. Note that
+the frame header contains a 2 byte VLI, while the rest of the specification has 8-bytes VLIs.
 
 ### Frame Header
 
@@ -250,7 +251,7 @@ All packets have the following header:
 * Header (1 byte) (clear-frame type is aad)
 * (optional) Source peer (32 bytes) (clear)
 * (optional) Destination peer (32 bytes) (clear)
-* Number of following bytes (2 bytes) (clear)
+* Number of following bytes (2 byte VLI) (clear)
 
 The header describes what this frame means and certain format parameters. It is organized as follows:
 * Bit 0-5: Frame type (see next chapters)
@@ -1371,7 +1372,7 @@ Full state information coming from a two-state light that is either on or off. W
 Bytes:
 * 18 (1 Byte): This is the frame for single-frame application messages, since our message will fit in 64K. Also, we assume that no other logical connections are
 present, thus we don't have to include the sender or receiver address.
-* 21 (2 Bytes): The number of bytes following.
+* 21 (1 Byte): The number of bytes following.
 * 02 (1 Byte): Indicate that his is the "Data" package presumably as a response to an earlier "Stream Data" request by the initiator.
 * 00 (1 Byte): Identifies the "Data Packet" this Light defined in the "Options" response.
 * 00 (1 Byte): Identifies the data element in the packet.
@@ -1379,7 +1380,7 @@ present, thus we don't have to include the sender or receiver address.
 * 00 (1 Byte): Enum value of 0, indicating "off"
 * MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with.
 
-Total number of bytes prior to MIC: 8.
+Total number of bytes prior to MIC: 7.
 
 
 
