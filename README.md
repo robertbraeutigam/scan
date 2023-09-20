@@ -277,7 +277,7 @@ by intermediaries. These are explicitly not included in the end-to-end encryptio
 ### Frame types
 
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
-bytes in the stream.
+bytes in the stream, and then sending back an "Ignored Frame" (05) message.
 
 Frames a categorized into several intervals:
 * 0-15: Control messages. These are related to establishing or closing the connection.
@@ -408,6 +408,14 @@ keys or it became out of sync with the initiator and a new handshaking process i
 
 The initiator should assume that the messages it sent in the meantime were not received
 and must remove its old keys and close the connection.
+
+#### Frame type: 05 (Ignored Frame)
+
+Both parties may send this message to indicate that the given frame type was not known,
+therefore was ignored and skipped.
+
+Payload structure:
+- Frame type (byte)
 
 #### Frame type: 16 (Application Message Intermediate Frame)
 
