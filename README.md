@@ -987,29 +987,58 @@ the meaning of the stream.
 ## Appendix B: Types
 
 SCAN has a tiered type system. This means types are defined on multiple tiers (layers), where
-each tier is using the tier below to define itself. The lower tiers are more stable, but also
-more technical in nature, while upper tiers are richer in semantics, but more volatile.
+each tier is using the tier below to define itself. The lower tiers are more technical and generic,
+while upper tiers are richer in semantics, but narrower in usage.
 
 The purpose of this tiered system is for devices to define as much meaning as possible for each
 data element or command parameter. Even if the corresponding meaning is not found on a given
 level, there may be an appropriate lower level meaning to be found.
 
+All of these types on all Tiers may be extended by later specifications. However, they are
+created in a way that devices may simply ignore or skip values they don't understand. 
+
 ### Tier 0: Value Types
 
 Value Types are the actual values in data messages or actual parameter values for invoking
-a command.
+a command. All following Tiers just add more meaning but don't change the actual format described
+here.
 
-These are as follows:
+All value types are defined in 1 byte, where the byte itself is organized as follows:
+- Bit 7-5: The size of the value
+- Bit 4-0: The value type _for this given size_. I.e. the actual type is defined by the whole byte, not just this part.
+
+The size of the value may be the following:
+* 0 = Value will start with an max 8-byte VLI that will define its size.
+* 1 = 1 Byte
+* 2 = 2 Byte
+* 3 = 4 Byte
+* 4 = 8 Byte
+* 5 = Reserved
+* 6 = Reserved
+* 7 = VLI
+
+These length definitions will not change, while the below table might be extended at a later time. This enables devices to skip a value if semantics are unknown.
+
+The actual types are as follows:
 
 | Name                | Code    |Value Format            | Comment                                          |
 |---------------------|---------|------------------------|--------------------------------------------------|
 | Byte Stream         |       1 |Max Size (variable length integer), Bytes | Potentially "unlimited" stream of bytes. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
-| Integer             |       2 |Variable Length Integer | Unsigned                                         |
-| Double              |       3 |Double                  |                                                  |
-| String              |       4 |String                  |                                                  |
-
-All Tier 0 types must be known to an implementation in order to properly interpret definitions and values.
-This table will not be extended any further.
+| String              |       2 |Max Size (variable length integer), UTF-8 bytes | Potentially "unlimited" length string. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
+| Unsigned byte                |     33  |1 byte big-endian. |                                                          |
+| Signed byte                  |     34  |1 byte big-endian. |                                                           |
+| Unsigned word                |     65  |2 bytes big-endian. |                                                          |
+| Signed word                  |     66  |2 bytes big-endian. |                                                           |
+| Unsigned int                |     97  |4 bytes big-endian. |                                                          |
+| Signed int                  |     98  |4 bytes big-endian. |                                                           |
+| Float                       |     99  |4 bytes float representation. |                                                           |
+| Unsigned int                |     97  |4 bytes big-endian. |                                                          |
+| Signed int                  |     98  |4 bytes big-endian. |                                                           |
+| Float                       |     99  |4 bytes float representation. |                                                           |
+| Unsigned long                |    129  |8 bytes big-endian. |                                                          |
+| Signed long                  |    130  |8 bytes big-endian. |                                                           |
+| Double                       |    131  |8 bytes double precision representation. |                                                           |
+| Integer             |     225 |Variable Length Integer | Unsigned.                                        |
 
 ### Tier 1: Definition Types
 
@@ -1030,10 +1059,6 @@ These are the currently supported Definition Types:
 
 The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
 
-Note, this table might be extended by subsequent iterations of this document. Devices may may
-ignore types that they don't know. Note however that type codes can not change, therefore 
-type codes can be compared even if the exact definition is not known.
-
 ### Tier 2: Usage Types
 
 Types that are usage specific. It is *not necessary* for a device to use
@@ -1048,10 +1073,6 @@ easier for an operator.
 | On-Off           |       1 | Enum 0=Off, 1=On | Indicates an operational status of either on or off. |
 | Latitude         |       2 | Measurement, deg | |
 | Longitude        |       3 | Measurement, deg | |
-
-Note, this table might be extended by subsequent iterations of this document. Devices may may
-ignore types that they don't know. Note however that type codes can not change, therefore 
-type codes can be compared even if the exact definition is not known.
 
 ### Tier 3: Application Types
 
@@ -1069,10 +1090,6 @@ of connecting data and commands based on their understanding.
 | None             |       0 | Any             | Data element has no defined type specific to this application. Use when no application types apply. |
 | Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
 | Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
-
-Note, this table might be extended by subsequent iterations of this document. Devices may may
-ignore types that they don't know. Note however that type codes can not change, therefore 
-type codes can be compared even if the exact definition is not known.
 
 ## Appendix C: Unit System
 
