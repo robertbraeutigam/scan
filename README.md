@@ -997,7 +997,20 @@ level, there may be an appropriate lower level meaning to be found.
 All of these types on all Tiers may be extended by later specifications. However, they are
 created in a way that devices may simply ignore or skip values they don't understand. 
 
-### Tier 0: Value Types
+A type is always defined with at least the primitive type that specifies the physical length
+of the value and some minimal semantics, whether it is a number of string, etc. All the layers
+above are optional and only add context and meaning to this one value, with the top layer
+actually defining the exact use for the specific application at hand.
+
+So to full define a type, the following structure is used (Type Definition):
+* VLI, the length of following bytes
+* Tier 0 code (1 byte), the actual primitive type of the value under definition.
+* Tier 1 code (1 byte), the format of the value or how to interpret it.
+* Tier 2 code (1 byte), the usage-specific semantics of the value.
+* Tier 1 definition of the Tier 2 type (length depending on Tier 1 code)
+* Tier 3 code (1 byte), the application specific semantics
+
+### Tier 0: Primitive Types
 
 Value Types are the actual values in data messages or actual parameter values for invoking
 a command. All following Tiers just add more meaning but don't change the actual format described
@@ -1005,7 +1018,7 @@ here.
 
 All value types are defined in 1 byte, where the byte itself is organized as follows:
 - Bit 7-5: The size of the value
-- Bit 4-0: The value type _for this given size_. I.e. the actual type is defined by the whole byte, not just this part.
+- Bit 4-0: How the bytes are to be interpreted.
 
 The size of the value may be the following:
 * 0 = Value will start with an max 8-byte VLI that will define its size.
@@ -1013,32 +1026,22 @@ The size of the value may be the following:
 * 2 = 2 Byte
 * 3 = 4 Byte
 * 4 = 8 Byte
-* 5 = Reserved
-* 6 = Reserved
+* 5 = Unused
+* 6 = Unused
 * 7 = VLI
 
-These length definitions will not change, while the below table might be extended at a later time. This enables devices to skip a value if semantics are unknown.
+Following interpretations are available for the above sizes:
+* 0 = Byte Array
+* 1 = String (UTF-8 characters)
+* 2 = Unsigned big-endian number
+* 3 = Signed big-endian number
+* 4 = Floating Point Number
+* 5 = Boolean (0=False, 1=True)
 
-The actual types are as follows:
-
-| Name                | Code    |Value Format            | Comment                                          |
-|---------------------|---------|------------------------|--------------------------------------------------|
-| Byte Stream         |       1 |Max Size (variable length integer), Bytes | Potentially "unlimited" stream of bytes. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
-| String              |       2 |Max Size (variable length integer), UTF-8 bytes | Potentially "unlimited" length string. The size given is the maximum size this value might be. It is not an error for the context to override this value, for example by ending the message. "Unlimited" streams, or streams where the size is not known may therefore safely use the maximum value for size. |
-| Unsigned byte                |     33  |1 byte big-endian. |                                                          |
-| Signed byte                  |     34  |1 byte big-endian. |                                                           |
-| Unsigned word                |     65  |2 bytes big-endian. |                                                          |
-| Signed word                  |     66  |2 bytes big-endian. |                                                           |
-| Unsigned int                |     97  |4 bytes big-endian. |                                                          |
-| Signed int                  |     98  |4 bytes big-endian. |                                                           |
-| Float                       |     99  |4 bytes float representation. |                                                           |
-| Unsigned int                |     97  |4 bytes big-endian. |                                                          |
-| Signed int                  |     98  |4 bytes big-endian. |                                                           |
-| Float                       |     99  |4 bytes float representation. |                                                           |
-| Unsigned long                |    129  |8 bytes big-endian. |                                                          |
-| Signed long                  |    130  |8 bytes big-endian. |                                                           |
-| Double                       |    131  |8 bytes double precision representation. |                                                           |
-| Integer             |     225 |Variable Length Integer | Unsigned.                                        |
+Note, that there are some combinations that are not defined and must produce an error when encountered:
+* Boolean is only defined for 1 byte.
+* Floating point is only defined for 4-byte (single) or 8-byte (double) precision.
+* Numbers are only defined for 1 to 8 bytes.
 
 ### Tier 1: Definition Types
 
@@ -1054,6 +1057,8 @@ These are the currently supported Definition Types:
 | Undef. Number Enum  |       3 | Tier 0 Code | (As specified)  | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. Window name (for String). |
 | Measurement         |       4 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
 | Measurement Aggregate |     5 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
+| Localized String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
+| Markdown             |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
 | Arbitrary String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
 | Unix Timestamp      |       7 | Empty       | Integer     | Unix timestamp with millisecond precision. | Effective date, Billing date. Last update time. |
 
@@ -1061,7 +1066,7 @@ The "Definition" column specifies what parameters this type requires for the def
 
 ### Tier 2: Usage Types
 
-Types that are usage specific. It is *not necessary* for a device to use
+Types that are usage specific, but are generic enough to be not application specific. It is *not necessary* for a device to use
 usage types, all types can be ad-hoc defined.
 
 Devices should however use usage types wherever they can to make *wiring*
@@ -1073,6 +1078,9 @@ easier for an operator.
 | On-Off           |       1 | Enum 0=Off, 1=On | Indicates an operational status of either on or off. |
 | Latitude         |       2 | Measurement, deg | |
 | Longitude        |       3 | Measurement, deg | |
+
+TODO: Manufacturer Name
+TODO: Add constraints to Lat/Long ? And other stuff.
 
 ### Tier 3: Application Types
 
