@@ -1,11 +1,8 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
-import com.vanillasource.scan.client.network.frame.FramePeer;
-
-import java.util.concurrent.CompletableFuture;
-
-import com.vanillasource.scan.client.network.Peer;
 import com.vanillasource.scan.client.network.Message;
+import com.vanillasource.scan.client.network.Peer;
+import com.vanillasource.scan.client.network.frame.FramePeer;
 
 import java.nio.ByteBuffer;
 

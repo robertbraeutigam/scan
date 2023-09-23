@@ -1,6 +1,5 @@
 package com.vanillasource.scan.client.network.frame;
 
-import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
 
 public interface FramePeer {

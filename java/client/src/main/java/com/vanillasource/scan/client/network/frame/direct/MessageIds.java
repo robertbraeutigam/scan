@@ -1,7 +1,5 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
-import java.util.concurrent.CompletableFuture;
-
 /**
  * Tracked used / available message ids and try to always return an optimal one.
  * Since message ids are included in the messages as variable length integers,

@@ -1,7 +1,5 @@
 package com.vanillasource.scan.client.network;
 
-import java.util.concurrent.CompletableFuture;
-
 public interface Network extends AutoCloseable {
    /**
     * Query all devices on the network. Note that this device may not have

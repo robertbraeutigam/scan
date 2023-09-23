@@ -1,6 +1,5 @@
 package com.vanillasource.scan.client.network.frame;
 
-import java.util.concurrent.CompletableFuture;
 import com.vanillasource.scan.client.network.PeerAddress;
 import com.vanillasource.scan.client.network.Role;
 
