@@ -5,7 +5,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class VariableLengthInteger {
-   public static VariableLengthInteger ZERO = createLong(0);
+   private static final BigInteger LONG_MAX_INTEGER = BigInteger.TWO.pow(7*7+8).subtract(BigInteger.ONE);
+   public static final VariableLengthInteger ZERO = createLong(0);
+   public static final VariableLengthInteger LONG_MAX = createBigInteger(LONG_MAX_INTEGER);
 
    private final BigInteger maxValue;
    private final BigInteger value;
@@ -16,7 +18,11 @@ public class VariableLengthInteger {
    }
 
    public static VariableLengthInteger createLong(long value) {
-      return new VariableLengthInteger(BigInteger.TWO.pow(7*7+8).subtract(BigInteger.ONE), BigInteger.valueOf(value));
+      return createBigInteger(BigInteger.valueOf(value));
+   }
+
+   public static VariableLengthInteger createBigInteger(BigInteger value) {
+      return new VariableLengthInteger(LONG_MAX_INTEGER, value);
    }
 
    public Optional<VariableLengthInteger> increase() {
