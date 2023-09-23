@@ -8,6 +8,6 @@ public interface NetworkListener {
    /**
     * Receive a connection from the given initiator.
     */
-   CompletableFuture<Peer> receiveConnection(PeerAddress address, Role role, Peer initiator);
+   Peer receiveConnection(PeerAddress address, Role role, Peer initiator);
 }
 

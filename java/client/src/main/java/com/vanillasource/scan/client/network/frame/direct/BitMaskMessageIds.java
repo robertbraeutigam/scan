@@ -1,12 +1,7 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame.direct;
 
-import java.util.concurrent.CompletableFuture;
+import com.vanillasource.util.Synchronized;
+
 import java.util.BitSet;
 
 /**
@@ -16,32 +11,27 @@ public final class BitMaskMessageIds implements MessageIds {
    private final BitSet bits;
    private final int startId;
    private final int endId;
-   private CompletableFuture<Void> clearNotify;
 
    public BitMaskMessageIds(int startId, int endId) {
       this.startId = startId;
       this.endId = endId;
-      this.bits = new BitSet(endId-startId+1);
-      this.clearNotify = new CompletableFuture<>();
+      this.bits = new BitSet(endId - startId + 1);
    }
 
    @Override
-   public synchronized CompletableFuture<Integer> reserveId() {
-      int nextId = bits.nextClearBit(0);
-      if (nextId >= 0 && nextId <= (endId-startId)) {
-         bits.set(nextId);
-         return CompletableFuture.completedFuture(nextId + startId);
-      } else {
-         return clearNotify.thenCompose(ignore -> reserveId());
-      }
+   public synchronized int reserveId() {
+      int nextId = new Synchronized(this)
+              .waitForCondition(
+                      id -> id >= 0 && id <= (endId - startId),
+                      () -> bits.nextClearBit(0));
+      bits.set(nextId);
+      return nextId + startId;
    }
 
    @Override
    public synchronized void releaseId(int id) {
       bits.clear(id - startId);
-      CompletableFuture<Void> oldClearNotify = clearNotify;
-      clearNotify = new CompletableFuture<>();
-      oldClearNotify.complete(null);
+      notify();
    }
 }
 

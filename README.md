@@ -472,16 +472,18 @@ This frame is used to establish the IP addresses belonging to static identity ke
 or to find out what devices are on the network.
 
 Payload structure:
-* Query Id (1 byte)
+* Query Id (variable length integer)
 * Target query static keys... (32 bytes each)
 
 The query can contain any number of target addresses between 0 and 16, for which the
 an answer is expected.
 
 The query Id is a strictly increasing number for each query. Devices should remember
-the last query Id for each host for 10 seconds and not respond if they already done so. Devices may
-reset to a query Id of 0 if 20 seconds after the last sent query Id passed. Devices may reset the
-query id range without fully exhausting it, providing the timing as described.
+the last query Id for each host for 10 seconds and not respond if they already done so. Note however, that devices
+must purge the rememebered id after 10 seconds as the sending device may reset its ids. Devices should
+reset to a query Id to 0 if 20 seconds after the last sent query Id passed.
+
+Note, that if the full variable length integer range is exhausted, the device must reset the ids to be able to send queries.
 
 This frame may get sent over a logical connection or to all devices. In case the sender is set up to use a gateway,
 and presumably is not on the same administrative network as other devices, it may send

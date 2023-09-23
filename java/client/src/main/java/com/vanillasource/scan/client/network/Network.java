@@ -2,7 +2,7 @@ package com.vanillasource.scan.client.network;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface Network {
+public interface Network extends AutoCloseable {
    /**
     * Query all devices on the network. Note that this device may not have
     * access to all the devices listed. Only devices that are currently on the
@@ -10,22 +10,19 @@ public interface Network {
     * due to network congestion or timeouts. This method may take several
     * seconds to complete, but will immediately update the supplied listener
     * each time a device answers.
-    * @return A future that completes when the query was successfully sent.
     */
-   CompletableFuture<Void> queryAll();
+   void queryAll();
 
    /**
     * Free up this network instance, including ports and other network resources 
     * and close all logical connections.
-    * @return A future that completes when all resources are freed.
     */
-   CompletableFuture<Void> close();
+   void close();
 
    /**
     * Connect to a remote peer.
     * @param initiator The initiator of the connection.
-    * @return The responder of the logical connection.
     */
-   CompletableFuture<Peer> connect(PeerAddress address, Role role, Peer initiator);
+   Peer connect(PeerAddress address, Role role, Peer initiator);
 }
 

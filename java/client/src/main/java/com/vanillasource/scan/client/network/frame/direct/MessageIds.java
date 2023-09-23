@@ -1,9 +1,3 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame.direct;
 
 import java.util.concurrent.CompletableFuture;
@@ -15,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
  * it is 1 byte (if the id is less than 128), at most this is 8 bytes.
  */
 public interface MessageIds {
-   CompletableFuture<Integer> reserveId();
+   int reserveId();
 
    void releaseId(int id);
 }

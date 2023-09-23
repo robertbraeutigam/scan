@@ -1,15 +1,12 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame.direct;
 
 import com.vanillasource.scan.client.network.frame.FramePeer;
+
 import java.util.concurrent.CompletableFuture;
+
 import com.vanillasource.scan.client.network.Peer;
 import com.vanillasource.scan.client.network.Message;
+
 import java.nio.ByteBuffer;
 
 public final class FramePeerToPeer implements Peer {
@@ -20,40 +17,35 @@ public final class FramePeerToPeer implements Peer {
       this.messageIds = messageIds;
       this.framePeer = framePeer;
    }
- 
+
    @Override
    public Message create() {
       return new Message() {
-         private CompletableFuture<Integer> idFuture = CompletableFuture.completedFuture(-1);
+         private int messageId = -1;
 
          @Override
-         public synchronized CompletableFuture<Void> recieve(ByteBuffer buffer) {
-            return idFuture.thenCompose(id -> {
-               if (id == -1) {
-                  idFuture = messageIds.reserveId();
-                  return recieve(buffer);
-               } else {
-                  return framePeer.messageIntermediateFrame(id, buffer);
-               }
-            });
+         public synchronized void recieve(ByteBuffer buffer) {
+            if (messageId == -1) {
+               messageId = messageIds.reserveId();
+            }
+            framePeer.messageIntermediateFrame(messageId, buffer);
          }
 
          @Override
-         public synchronized CompletableFuture<Void> endWith(ByteBuffer buffer) {
-            return idFuture.thenCompose(id -> {
-               if (id == -1) {
-                  return framePeer.messageSingleFrame(buffer);
-               } else {
-                  return framePeer.messageLastFrame(id, buffer);
-               }
-            });
+         public synchronized void endWith(ByteBuffer buffer) {
+            if (messageId != -1) {
+               framePeer.messageLastFrame(messageId, buffer);
+               messageIds.releaseId(messageId);
+            } else {
+               framePeer.messageSingleFrame(buffer);
+            }
          }
       };
    }
 
    @Override
-   public CompletableFuture<Void> close() {
-      return framePeer.closeConnection();
+   public void close() {
+      framePeer.closeConnection();
    }
 }
 

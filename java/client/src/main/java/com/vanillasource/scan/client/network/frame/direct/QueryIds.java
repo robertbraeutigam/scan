@@ -1,50 +1,28 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame.direct;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
+import com.vanillasource.util.TimeSource;
 
 public final class QueryIds {
-   private final ScheduledExecutorService scheduler;
-   private CompletableFuture<Void> resetNotify;
-   private Future<Void> resetTimer;
-   private int nextId;
+   private static final long RESET_TIME_MILLIS = 20L*1000L;
+   private final TimeSource timeSource;
+   private VariableLengthInteger nextId = VariableLengthInteger.createLong(0);
+   private long lastIdTime = 0;
 
-   public QueryIds(ScheduledExecutorService scheduler) {
-      this.scheduler = scheduler;
-      reset();
+   public QueryIds(TimeSource timeSource) {
+      this.timeSource = timeSource;
    }
 
-   public synchronized CompletableFuture<Integer> nextQueryId() {
-      int id = ++nextId;
-      if (id <= 255) {
-         resetTimer.cancel(false);
-         resetTimer = scheduler.schedule(this::resetAndNotify, 20, TimeUnit.SECONDS);
-         return CompletableFuture.completedFuture(id);
+   public synchronized VariableLengthInteger nextQueryId() {
+      if (lastIdTime + RESET_TIME_MILLIS <= timeSource.currentTimeMillis()) {
+         nextId = VariableLengthInteger.createLong(1);
       } else {
-         return resetNotify.thenCompose(ignore -> nextQueryId());
+         nextId = nextId.increase().orElseGet(() -> {
+            timeSource.sleep(RESET_TIME_MILLIS);
+            return VariableLengthInteger.createLong(1);
+         });
       }
-   }
-
-   private synchronized Void resetAndNotify() {
-      CompletableFuture<Void> oldResetNotify = resetNotify;
-      reset();
-      // Do  this after the system reset, because this will already trigger nextQueryId() calls
-      // on this thread.
-      oldResetNotify.complete(null);
-      return null;
-   }
-
-   private synchronized void reset() {
-      nextId = 0;
-      resetNotify = new CompletableFuture<>();
-      resetTimer = CompletableFuture.completedFuture(null);
+      lastIdTime = timeSource.currentTimeMillis();
+      return nextId.decrease().orElse(VariableLengthInteger.createLong(0));
    }
 }

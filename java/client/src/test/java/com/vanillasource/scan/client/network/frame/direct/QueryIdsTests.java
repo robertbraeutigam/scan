@@ -1,76 +1,46 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
-import org.testng.annotations.Test;
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
+import com.vanillasource.util.TimeSource;
 import org.testng.annotations.BeforeMethod;
-import static org.testng.Assert.*;
-import java.util.concurrent.ScheduledExecutorService;
+import org.testng.annotations.Test;
+
 import static org.mockito.Mockito.*;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.Callable;
-import org.mockito.Mockito;
-import org.mockito.ArgumentCaptor;
-import java.util.concurrent.CompletableFuture;
+import static org.testng.Assert.assertEquals;
 
 @Test
 public final class QueryIdsTests {
-   private ScheduledExecutorService scheduler;
+   private TimeSource timeSource;
    private QueryIds ids;
 
    public void testNewIdsReturns1Immediately() {
-      int id = ids.nextQueryId().join();
+      VariableLengthInteger id = ids.nextQueryId();
 
-      assertEquals(id, 1);
+      assertEquals(id, VariableLengthInteger.ZERO);
    }
 
-   public void testNewIdsReturns255IdsImmediately() {
+   public void testNewIdsReturns255IdsWithoutWaiting() {
       for (int i=0; i<255; i++) {
-         int id = ids.nextQueryId().join();
+         VariableLengthInteger id = ids.nextQueryId();
 
-         assertEquals(id, i+1);
-      }
-   }
-
-   public void test256thIdBlocks() {
-      for (int i=0; i<255; i++) {
-         ids.nextQueryId().join();
+         assertEquals(id, VariableLengthInteger.createLong(i));
       }
 
-      assertFalse(ids.nextQueryId().isDone());
+      verify(timeSource, never()).sleep(anyLong());
    }
 
-   public void testResetIdsReturns1Again() throws Exception {
-      ids.nextQueryId().join();
+   public void testResetsAfter20Seconds() throws Exception {
+      ids.nextQueryId();
 
-      callScheduledTask();
-      int id = ids.nextQueryId().join();
+      when(timeSource.currentTimeMillis()).thenReturn(20000L);
+      VariableLengthInteger id = ids.nextQueryId();
 
-      assertEquals(id, 1);
-   }
-
-   public void test256thIdIsAvailableAfterReset() throws Exception {
-      for (int i=0; i<255; i++) {
-         ids.nextQueryId().join();
-      }
-      CompletableFuture<Integer> nextId = ids.nextQueryId();
-
-      callScheduledTask();
-
-      assertTrue(nextId.isDone());
-      assertEquals(nextId.join().intValue(), 1);
+      assertEquals(id, VariableLengthInteger.ZERO);
    }
 
    @BeforeMethod
-   @SuppressWarnings("unchecked")
    private void setUp() {
-      scheduler = mock(ScheduledExecutorService.class);
-      when(scheduler.schedule(Mockito.<Callable<Void>>any(), anyLong(), any())).thenReturn(mock(ScheduledFuture.class));
-      ids = new QueryIds(scheduler);
-   }
-
-   @SuppressWarnings("unchecked")
-   private void callScheduledTask() throws Exception {
-      ArgumentCaptor<Callable<Void>> captor = ArgumentCaptor.forClass((Class) Callable.class);
-      verify(scheduler, atLeastOnce()).schedule(captor.capture(), anyLong(), any());
-      captor.getValue().call();
+      timeSource = mock(TimeSource.class);
+      ids = new QueryIds(timeSource);
    }
 }

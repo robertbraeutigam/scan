@@ -1,21 +1,17 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame;
 
 import com.vanillasource.scan.client.network.PeerAddress;
 import com.vanillasource.scan.client.network.Role;
-import java.util.concurrent.CompletableFuture;
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
+
+import java.util.Collection;
 
 public interface FrameNetwork {
-   CompletableFuture<Void> identityQuery(int queryId, PeerAddress[] addresses);
+   void identityQuery(VariableLengthInteger queryId, Collection<PeerAddress> addresses);
 
-   CompletableFuture<Void> identityAnnouncement(PeerAddress[] addresses);
+   void identityAnnouncement(PeerAddress[] addresses);
 
-   CompletableFuture<Void> close();
+   void close();
 
-   CompletableFuture<FramePeer> connect(PeerAddress address, Role role, FramePeer initiator);
+   FramePeer connect(PeerAddress address, Role role, FramePeer initiator);
 }

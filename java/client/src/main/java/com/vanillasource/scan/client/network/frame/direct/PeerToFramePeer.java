@@ -1,9 +1,3 @@
-/**
- * Copyright (C) 2023 Robert Braeutigam.
- *
- * All rights reserved.
- */
-
 package com.vanillasource.scan.client.network.frame.direct;
 
 import com.vanillasource.scan.client.network.frame.FramePeer;
@@ -19,37 +13,42 @@ public final class PeerToFramePeer implements FramePeer {
    }
 
    @Override
-   public CompletableFuture<Void> initiateHandshake(String protocolName, ByteBuffer handshake) {
-      return null; // TODO
+   public void initiateHandshake(String protocolName, ByteBuffer handshake) {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> continueHandshake(ByteBuffer handshake) {
-      return null; // TODO
+   public void continueHandshake(ByteBuffer handshake) {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> closeConnection() {
-      return null; // TODO
+   public void closeConnection() {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> messageIntermediateFrame(int messageId, ByteBuffer payload) {
-      return null; // TODO
+   public void renegotiate() {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> messageLastFrame(int messageId, ByteBuffer payload) {
-      return null; // TODO
+   public void ignoredFrame(int frameCode) {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> messageSingleFrame(ByteBuffer payload) {
-      return null; // TODO
+   public void messageIntermediateFrame(int messageId, ByteBuffer payload) {
+      // TODO
    }
 
    @Override
-   public CompletableFuture<Void> renegotiate() {
-      return null; // TODO
+   public void messageLastFrame(int messageId, ByteBuffer payload) {
+      // TODO
+   }
+
+   @Override
+   public void messageSingleFrame(ByteBuffer payload) {
+      // TODO
    }
 }

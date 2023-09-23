@@ -1,15 +1,14 @@
 package com.vanillasource.scan.client.network;
 
-import java.util.concurrent.CompletableFuture;
 import java.nio.ByteBuffer;
-import java.util.function.Function;
+import java.util.function.Consumer;
 
 /**
  * A peer that is connected through a logical connection.
  */
-public interface Peer {
+public interface Peer extends AutoCloseable {
    /**
-    * Called to create an message.
+    * Called to create a message.
     */
    Message create();
 
@@ -18,18 +17,16 @@ public interface Peer {
     * @return A future that completes when the message is sent to
     * the network.
     */
-   default CompletableFuture<Void> receive(ByteBuffer message) {
-      return create().endWith(message);
+   default void receive(ByteBuffer message) {
+      create().endWith(message);
    }
 
    /**
     * Close this logical connection.
-    * @return A future that completes when all pending data is sent
-    * to the network.
     */
-   CompletableFuture<Void> close();
+   void close();
 
-   default Peer afterClose(Function<Peer, CompletableFuture<Void>> action) {
+   default Peer afterClose(Consumer<Peer> action) {
       Peer self = this;
       return new Peer() {
          @Override
@@ -38,23 +35,21 @@ public interface Peer {
          }
 
          @Override
-         public CompletableFuture<Void> close() {
-            return self.close()
-               .thenCompose(ignore -> action.apply(this));
+         public void close() {
+            self.close();
+            action.accept(this);
          }
       };
    }
 
-   static Peer UNCONNECTED = new Peer() {
+   Peer UNCONNECTED = new Peer() {
       @Override
       public Message create() {
          throw new IllegalStateException("peer not connected");
       }
 
       @Override
-      public CompletableFuture<Void> close() {
-         return CompletableFuture.completedFuture(null);
-      }
+      public void close() {}
    };
 }
 
