@@ -1,13 +1,17 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
+import com.vanillasource.scan.client.network.Message;
 import com.vanillasource.scan.client.network.Peer;
 import com.vanillasource.scan.client.network.data.VariableLengthInteger;
 import com.vanillasource.scan.client.network.frame.FramePeer;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class PeerToFramePeer implements FramePeer {
    private final Peer peer;
+   private final Map<VariableLengthInteger, Message> messages = new HashMap<>();
 
    public PeerToFramePeer(Peer peer) {
       this.peer = peer;
@@ -15,41 +19,50 @@ public final class PeerToFramePeer implements FramePeer {
 
    @Override
    public void initiateHandshake(String protocolName, ByteBuffer handshake) {
-      // TODO
+      // Not handling this
    }
 
    @Override
    public void continueHandshake(ByteBuffer handshake) {
-      // TODO
+      // Not handling this
    }
 
    @Override
    public void closeConnection() {
-      // TODO
+      // Not handling this
    }
 
    @Override
    public void renegotiate() {
-      // TODO
+      // Not handling this
    }
 
    @Override
    public void ignoredFrame(int frameCode) {
-      // TODO
+      // Not handling this
    }
 
    @Override
    public void messageIntermediateFrame(VariableLengthInteger messageId, ByteBuffer payload) {
-      // TODO
+      messages
+              .computeIfAbsent(messageId, id -> peer.create())
+              .recieve(payload);
    }
 
    @Override
    public void messageLastFrame(VariableLengthInteger messageId, ByteBuffer payload) {
-      // TODO
+      messages.compute(messageId, (id, message) -> {
+         if (message == null) {
+            peer.receive(payload);
+         } else {
+            message.endWith(payload);
+         }
+         return null;
+      });
    }
 
    @Override
    public void messageSingleFrame(ByteBuffer payload) {
-      // TODO
+      peer.receive(payload);
    }
 }
