@@ -41,6 +41,22 @@ public class VariableLengthInteger {
       }
    }
 
+   public Optional<VariableLengthInteger> subtract(VariableLengthInteger other) {
+      if (this.value.compareTo(other.value) < 0) {
+         return Optional.empty();
+      } else {
+         return Optional.of(new VariableLengthInteger(maxValue, this.value.subtract(other.value)));
+      }
+   }
+
+   public Optional<Integer> intValue() {
+      if (this.value.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0) {
+         return Optional.empty();
+      } else {
+         return Optional.of(this.value.intValue());
+      }
+   }
+
    @Override
    public boolean equals(Object o) {
       if (this == o) return true;
@@ -52,5 +68,14 @@ public class VariableLengthInteger {
    @Override
    public int hashCode() {
       return Objects.hash(value);
+   }
+
+   public Optional<VariableLengthInteger> add(VariableLengthInteger other) {
+      BigInteger newValue = value.add(other.value);
+      if (newValue.compareTo(LONG_MAX_INTEGER) > 0) {
+         return Optional.empty();
+      } else {
+         return Optional.of(new VariableLengthInteger(maxValue, newValue));
+      }
    }
 }

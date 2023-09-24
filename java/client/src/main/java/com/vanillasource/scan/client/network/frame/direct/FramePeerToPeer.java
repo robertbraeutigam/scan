@@ -2,6 +2,7 @@ package com.vanillasource.scan.client.network.frame.direct;
 
 import com.vanillasource.scan.client.network.Message;
 import com.vanillasource.scan.client.network.Peer;
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
 import com.vanillasource.scan.client.network.frame.FramePeer;
 
 import java.nio.ByteBuffer;
@@ -18,11 +19,11 @@ public final class FramePeerToPeer implements Peer {
    @Override
    public Message create() {
       return new Message() {
-         private int messageId = -1;
+         private VariableLengthInteger messageId = null;
 
          @Override
          public synchronized void recieve(ByteBuffer buffer) {
-            if (messageId == -1) {
+            if (messageId == null) {
                messageId = messageIds.reserveId();
             }
             framePeer.messageIntermediateFrame(messageId, buffer);
@@ -30,11 +31,11 @@ public final class FramePeerToPeer implements Peer {
 
          @Override
          public synchronized void endWith(ByteBuffer buffer) {
-            if (messageId != -1) {
+            if (messageId == null) {
+               framePeer.messageSingleFrame(buffer);
+            } else {
                framePeer.messageLastFrame(messageId, buffer);
                messageIds.releaseId(messageId);
-            } else {
-               framePeer.messageSingleFrame(buffer);
             }
          }
       };

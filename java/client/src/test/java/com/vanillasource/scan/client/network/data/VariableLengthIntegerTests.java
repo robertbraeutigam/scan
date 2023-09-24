@@ -35,4 +35,20 @@ public final class VariableLengthIntegerTests {
    public void testZeroCanNotBeDecreased() {
       assertEquals(VariableLengthInteger.ZERO.decrease(), Optional.empty());
    }
+
+   public void testSubtractWorksIfResultPositive() {
+      assertEquals(VariableLengthInteger.createLong(123).subtract(VariableLengthInteger.createLong(123)), Optional.of(VariableLengthInteger.ZERO));
+   }
+
+   public void testSubtractIsNoneIfResultIsNegative() {
+      assertEquals(VariableLengthInteger.createLong(123).subtract(VariableLengthInteger.createLong(124)), Optional.empty());
+   }
+
+   public void testIntConversionWorksForSmallNumbers() {
+      assertEquals(VariableLengthInteger.createLong(123456L).intValue(), Optional.of(123456));
+   }
+
+   public void testIntConversionFailsForLargeNumbers() {
+      assertEquals(VariableLengthInteger.createLong(Integer.MAX_VALUE).increase().map(VariableLengthInteger::increase), Optional.empty());
+   }
 }

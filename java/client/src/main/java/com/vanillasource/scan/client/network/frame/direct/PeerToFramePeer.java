@@ -1,6 +1,7 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
 import com.vanillasource.scan.client.network.Peer;
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
 import com.vanillasource.scan.client.network.frame.FramePeer;
 
 import java.nio.ByteBuffer;
@@ -38,12 +39,12 @@ public final class PeerToFramePeer implements FramePeer {
    }
 
    @Override
-   public void messageIntermediateFrame(int messageId, ByteBuffer payload) {
+   public void messageIntermediateFrame(VariableLengthInteger messageId, ByteBuffer payload) {
       // TODO
    }
 
    @Override
-   public void messageLastFrame(int messageId, ByteBuffer payload) {
+   public void messageLastFrame(VariableLengthInteger messageId, ByteBuffer payload) {
       // TODO
    }
 

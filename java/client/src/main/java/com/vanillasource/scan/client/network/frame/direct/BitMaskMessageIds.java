@@ -1,5 +1,6 @@
 package com.vanillasource.scan.client.network.frame.direct;
 
+import com.vanillasource.scan.client.network.data.VariableLengthInteger;
 import com.vanillasource.util.Synchronized;
 
 import java.util.BitSet;
@@ -9,28 +10,30 @@ import java.util.BitSet;
  */
 public final class BitMaskMessageIds implements MessageIds {
    private final BitSet bits;
-   private final int startId;
-   private final int endId;
+   private final VariableLengthInteger startId;
+   private final int range;
 
-   public BitMaskMessageIds(int startId, int endId) {
+   public BitMaskMessageIds(VariableLengthInteger startId, VariableLengthInteger endId) {
       this.startId = startId;
-      this.endId = endId;
-      this.bits = new BitSet(endId - startId + 1);
+      this.range = endId.subtract(startId)
+              .flatMap(VariableLengthInteger::intValue)
+              .orElseThrow(() -> new IllegalArgumentException("Not a valid message id range for a bitmask: "+startId+" - "+endId));
+      this.bits = new BitSet(range + 1);
    }
 
    @Override
-   public synchronized int reserveId() {
+   public synchronized VariableLengthInteger reserveId() {
       int nextId = new Synchronized(this)
               .waitForCondition(
-                      id -> id >= 0 && id <= (endId - startId),
+                      id -> id >= 0 && id <= range,
                       () -> bits.nextClearBit(0));
       bits.set(nextId);
-      return nextId + startId;
+      return startId.add(VariableLengthInteger.createLong(nextId)).orElseThrow();
    }
 
    @Override
-   public synchronized void releaseId(int id) {
-      bits.clear(id - startId);
+   public synchronized void releaseId(VariableLengthInteger id) {
+      bits.clear(id.subtract(startId).flatMap(VariableLengthInteger::intValue).orElseThrow());
       notify();
    }
 }
