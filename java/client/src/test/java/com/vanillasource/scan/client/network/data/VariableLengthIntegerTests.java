@@ -49,6 +49,6 @@ public final class VariableLengthIntegerTests {
    }
 
    public void testIntConversionFailsForLargeNumbers() {
-      assertEquals(VariableLengthInteger.createLong(Integer.MAX_VALUE).increase().map(VariableLengthInteger::increase), Optional.empty());
+      assertEquals(VariableLengthInteger.createLong(Integer.MAX_VALUE).increase().flatMap(VariableLengthInteger::intValue), Optional.empty());
    }
 }
