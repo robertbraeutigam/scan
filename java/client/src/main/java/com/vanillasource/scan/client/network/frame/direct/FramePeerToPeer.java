@@ -22,7 +22,7 @@ public final class FramePeerToPeer implements Peer {
          private VariableLengthInteger messageId = null;
 
          @Override
-         public synchronized void recieve(ByteBuffer buffer) {
+         public void recieve(ByteBuffer buffer) {
             if (messageId == null) {
                messageId = messageIds.reserveId();
             }
@@ -30,7 +30,7 @@ public final class FramePeerToPeer implements Peer {
          }
 
          @Override
-         public synchronized void endWith(ByteBuffer buffer) {
+         public void endWith(ByteBuffer buffer) {
             if (messageId == null) {
                framePeer.messageSingleFrame(buffer);
             } else {
