@@ -227,7 +227,7 @@ they must immediately close the logical connection. If the logical connection is
 the physical connection, that needs to be closed instead. If not, a close message
 needs to be sent.
 
-The initiating party must not retry opening connections more often than 60 times / minute, but may implement any heuristics
+The initiating party must not retry opening connections more often than 10 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
 ### Data Types
@@ -415,6 +415,21 @@ Payload structure:
 This message supports a backward-compatible upgrade path of the protocol. Future versions may
 decide to add new message types, and may fall back to an earlier version of the protocol, if
 this frame is received.
+
+### Frame type: 06 (Keep-Alive)
+
+The initiator may send this message to make sure that the logical (and physical) connection
+to the responder is open.
+
+There is no payload in the message.
+
+In case of network failures the initiator would not necessarily be aware that a responder is no
+longer connected. It may wait for events to be delivered that never arrive. Although there is no
+explicit answer to this message, the underlying physical connection must eventually indicate an
+issue, if the message can not be delivered. Thus either this message gets eventually delivered, or the logical
+connection gets eventually closed.
+
+Intermediates must repeate this message and propagate failures back in an appropriate manner.
 
 #### Frame type: 16 (Application Message Intermediate Frame)
 
