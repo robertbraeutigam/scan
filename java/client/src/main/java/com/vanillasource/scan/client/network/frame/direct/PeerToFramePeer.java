@@ -43,6 +43,11 @@ public final class PeerToFramePeer implements FramePeer {
    }
 
    @Override
+   public void keepAlive() {
+      // Not handling this
+   }
+
+   @Override
    public void messageIntermediateFrame(VariableLengthInteger messageId, ByteBuffer payload) {
       messages
               .computeIfAbsent(messageId, id -> peer.create())

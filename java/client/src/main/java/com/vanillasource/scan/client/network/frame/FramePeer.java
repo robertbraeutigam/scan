@@ -15,6 +15,8 @@ public interface FramePeer {
 
    void ignoredFrame(int frameCode);
 
+   void keepAlive();
+
    void messageIntermediateFrame(VariableLengthInteger messageId, ByteBuffer payload);
 
    void messageLastFrame(VariableLengthInteger messageId, ByteBuffer payload);

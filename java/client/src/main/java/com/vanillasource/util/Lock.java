@@ -27,7 +27,7 @@ public class Lock {
    public <T> BlockingSupplier<T> blockingSupplier(Supplier<Optional<T>> blockingSupplier) {
       return new BlockingSupplier<T>() {
          private final Condition itemMaybeAvailable = lock.newCondition();
-
+         
          @Override
          public void notifyTry() {
             synchronize(itemMaybeAvailable::signalAll);

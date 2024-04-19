@@ -14,8 +14,6 @@ public interface Peer extends AutoCloseable {
 
    /**
     * Send a message through this logical connection.
-    * @return A future that completes when the message is sent to
-    * the network.
     */
    default void receive(ByteBuffer message) {
       create().endWith(message);
