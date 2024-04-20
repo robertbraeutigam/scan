@@ -1,4 +1,4 @@
-package com.vanillasource.scan.client.network.network.direct;
+package com.vanillasource.scan.client.network.network;
 
 import com.vanillasource.scan.client.network.Message;
 import com.vanillasource.scan.client.network.Peer;
@@ -19,32 +19,32 @@ public final class PeerToFramePeer implements FramePeer {
 
    @Override
    public void initiateHandshake(String protocolName, ByteBuffer handshake) {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override
    public void continueHandshake(ByteBuffer handshake) {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override
    public void closeConnection() {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override
    public void renegotiate() {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override
    public void ignoredFrame(int frameCode) {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override
    public void keepAlive() {
-      // Not handling this
+      // User is not interested in this callback
    }
 
    @Override

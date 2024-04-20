@@ -1,4 +1,4 @@
-package com.vanillasource.scan.client.network.network.direct;
+package com.vanillasource.scan.client.network.network;
 
 import com.vanillasource.scan.client.network.data.VariableLengthInteger;
 
