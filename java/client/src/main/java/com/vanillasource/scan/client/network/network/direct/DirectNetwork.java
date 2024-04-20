@@ -1,4 +1,4 @@
-package com.vanillasource.scan.client.network.frame.direct;
+package com.vanillasource.scan.client.network.network.direct;
 
 import com.vanillasource.scan.client.network.*;
 import com.vanillasource.scan.client.network.frame.FrameNetwork;
