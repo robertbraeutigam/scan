@@ -416,7 +416,7 @@ This message supports a backward-compatible upgrade path of the protocol. Future
 decide to add new message types, and may fall back to an earlier version of the protocol, if
 this frame is received.
 
-### Frame type: 06 (Keep-Alive)
+#### Frame type: 06 (Keep-Alive)
 
 The initiator may send this message to make sure that the logical (and physical) connection
 to the responder is open.
@@ -429,7 +429,7 @@ explicit answer to this message, the underlying physical connection must eventua
 issue, if the message can not be delivered. Thus either this message gets eventually delivered, or the logical
 connection gets eventually closed.
 
-Intermediates must repeate this message and propagate failures back in an appropriate manner.
+Intermediates must repeat this message and propagate failures back in an appropriate manner.
 
 #### Frame type: 16 (Application Message Intermediate Frame)
 
