@@ -7,33 +7,22 @@ way to collect data and control devices on a network.
 
 ## Functional Goals
 
-The protocol is specifically created and tested to support a wide-range of possible use-cases:
+The protocol is specifically created to support a wide-range of possible use-cases:
 
 - *Home automation use-cases*. Having a wide array of sensors, devices and controls controlling each other,
   possibly including everything from doors, windows, lights to audio or video feeds.
+- *Building control*. Controlling access, security cameras, doors, windows, AC, etc.
 - *Automotive*. Controlling actuators, servos with feedback in a closed system.
 - *Marine*. Controlling all functions of a boat, including gps, plotters, lights, engines, video surveillance in one
   standardized yet extensible, 3rd party friendly way.
-
-*Problem statement*: All of these do have "standardized" protocols already, but these are not DIY friendly. They
-are not open, require codes or ids that need to be agreed upon by all parties, they are not secure, some require
-third parties such as central servers to be in the loop, they do not interact with each other and despite standardization
-even devices using the same protocol can't sometimes interact if they are from different vendors with no way for the end-user
-to correct this.
 
 ## Non-Functional Goals
 
 The main considerations driving the design of this protocol:
 
-- **Security first**! State-of-the-art end-to-end encryption, perfect forward secrecy, no hardcoded defaults,
+- **Security first**! State-of-the-art end-to-end peer-to-peer encryption, perfect forward secrecy, no hardcoded defaults,
   per-device distributed authorization, etc., without complex certificate management, central servers,
   authority nor any third-party involvement.
-- **Minimal effort** implementations. The effort to implement compatible devices
-  should be linear to the extent of features the device will support. I.e.
-  simple devices (like a Light source or a Button) should be almost no effort to implement, while
-  more complicated devices may require more thorough analysis and design.
-- **Driven by individuals**, not industry. I.e. does not have to support complicated
-  use-cases which are almost never used, or used only because of historical reasons.
 - **DIY** friendly. No proprietary components, processes or certification requirements. No central registries.
   A private individual should be able to easily create a compatible device completely
   independently, which can then be used by any end-user to its full extent and be combined with any
@@ -41,80 +30,88 @@ The main considerations driving the design of this protocol:
 - **Discoverability**. It should be very easy to *discover* which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
   through the protocol itself.
-- Does **not require** a complete and **perfect list of codes** nor a **complete dictionary** of
-  some semantic identifiers, nor does it require everybody to agree on a single unified set of these,
-  nor a perfect usage on the part of the devices to be *fully* usable and for all devices to be
-  compatible with each other.
-- Prevent proprietary extensions and the need to debug or reverse-engineer devices, as far as possible,
+- Enable **interoperability** **without a perfect list of codes** of
+  semantic identifiers, and without everybody needing to agree on a single unified set of messages
+  for devices to be interoperable.
+- Prevent proprietary extensions and the need to debug or reverse-engineer devices,
   by using transparent **dynamic wiring**, instead of devices directly hardcoded for each other or for specific codes.
+- **Failure tolerance** build into the protocol. The whole system system should be **eventually consistent** after errors are resolved.
+- **Optimal network usage**. Enable optimal usage of network resources by default.
+- **Minimal effort** implementations. The effort to implement compatible devices
+  should be linear to the extent of features the device will support. I.e.
+  simple devices (like a Light source or a Button) should be almost no effort to implement, while
+  more complicated devices may require more thorough analysis and design.
 - **Minimal setup** required by end-users, ideally plug-and-play in most cases to a *fully-secure* production installation.
 - Should work **over the internet** and in any network topology, trusted or not.
+- **Driven by individuals**, not industry. I.e. does not have to support complicated
+  use-cases which are almost never used, or used only because of historical reasons.
 
 ## Out-of-scope
 
 This protocol does not replace radio-based protocols such as Bluetooth, Bluetooth Low Energy, LoRaWAN, etc.
 
 Although devices using these protocols may be connected through some gateway into a SCAN network, they can not
-directly participate as these protocol have their own definitions of security, data excmhange and semantics, which are
+directly participate as these protocol have their own definitions of security, data exchange and semantics, which are
 incompatible with SCAN. Alternatively, embedding SCAN traffic in any of these would not be an optimal use of these
 protocols.
 
 ## Solution Overview
 
-SCAN is divided into three layers:
+### The Protocol
 
-- Physical Layer (Packet Communication and Announcement)
-- Network Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
-- Application Layer (Data, Commands, Wiring)
+The SCAN protocol is divided into four layers:
 
-The Physical Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
+- Internet Layer (Packet Communication and Announcement over IP)
+- Logical Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
+- Data/Command Layer (Subscribing to Data and issuing Commands)
+- Application Layer (Required and common Data and Command definitions)
+
+The Internet Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
 packets between devices and enables announcements. It supports different IP topologies, including
 local networks, connections over gateways, etc.
 
-The Network Layer is responsible for providing a secure, flat, multiplexing and mixing capable layer
+The Logical Layer is responsible for providing a secure, flat, multiplexing and mixing capable layer
 for communications between devices. Devices are identified, addressed based on static cryptographic keys instead
-of hardware addresses and communicate point to point using a packet-based protocol. 
+of hardware addresses and communicate point to point using a packet-based protocol that supports easy
+multiplexing as well as unlimited length streaming messages.
 
-The Application Layer adds a uniform quasi-request-response based interface, which mainly consist of these categories:
+The Data/Command Layer adds minimal quasi-request-response based interface that enables:
 
-* Data emitted by devices. These are changes in state of the device.
-* Controls. Invocations of these can change the state of the device.
-* Wiring. Dynamic description of the relationships between data and controls.
+* Subscribing to *data* emitted by devices, which are a stream of changes in the state of the device.
+* Invoking *commands*, which may change the state of the device.
 
-SCAN is designed to work in a distributed fashion. All devices are potentially
-data acquisition or control devices or both, with only two devices already capable
+The application layer defines common data elements and commands that are either optional
+or required for every device, such as setting up roles, resetting, unified software update command,
+debugging and logging commands and data, and most notably wiring.
+
+Wiring is an application layer tool that describes how devices interoperate. It describes which
+data from which devices invokes which commands at what other devices and it can also describe
+how to transform data to be compatible with the required command.
+
+### Operational Summary
+
+SCAN is a peer-to-peer, distributed protocol, where all devices are potentially
+data acquisition or control devices or both. Therefore two devices are already capable
 of working together without any dedicated control device or server. Introducing
 more components does not require any central component to exist either, although the
 option is available if needed.
 
-Data elements do not
-just carry a technical format (such as how many bytes, etc.), but also meaning, whether it is an
-Identification, Event or Measurement, etc. This meaning is defined in a layered way to give as much
-meaning to a piece of data as possible.
+SCAN devices from the "factory" need to be provisioned first, which means that they need
+to generate a new key for the administrator (the end-user) to use. After they are provisioned,
+they can be *wired* to get data from, or send commands to another device or multiple other
+devices.
 
-Measurements carry unit information (like Liter, PSI, %, etc.) in addition to a name. This
-way data elements don't exclusively rely on their "standardized" semantics, and can be uniformly
-stored, visualized or processed even without the exact meaning they might carry.
+The SCAN protocol goes well beyond being just a transport protocol to deliver messages among
+devices. It has semantic rules, which constrains what messages may mean, in order to give
+stability guarantees, such as guaranteed recovery from error states, recovery from network
+congestion, restarts, and other failure modes.
 
-Controls are a way to influence the device in some way. That can range from toggling a light
-to sending a remote firmware update. All the controls are listed through the uniform interface,
-so they are discoverable on the fly.
+## Internet Layer
 
-Wiring in SCAN is the process of connecting data to controls. 
-For example connecting the data from a switch to the on/off
-control of a light source. Because the *kind* of both the data and control are known, the connection
-can be made even if the exact semantics of either side is unknown or not defined.
-
-Auto-wiring, the process of automatically connecting data to controls,
-can be achieved using standardized semantics of data, if applicable. Such as 
-auto-connecting a Plotter to a GPS Receiver.
-
-## Physical Layer
-
-The physical layer supports basic network primitives based on IP-native means for the next layer.
+The internet layer supports basic network primitives based on IP-native means for the next layer.
 These functionalities are:
 
-* Open and receive a physical TCP/IP connection to/from a peer to send and receive data.
+* Open and receive a "physical" TCP/IP connection to/from a peer to send and receive data.
 * Send and receive data to / from all connected devices.
 
 This layer mimics IP closely. Meaning connections support streaming-based data exchange
@@ -123,7 +120,7 @@ packet based communication.
 
 Addressing uses native IP addresses.
 
-There can be multiple ways of configuring the Physical Layer of a SCAN device. However
+There can be multiple ways of configuring the SCAN device. However
 this configuration should be completely transparent for the layers above.
 
 Devices must reuse TCP connections in each direction, therefore
@@ -138,8 +135,8 @@ addressable and all devices can be contacted by multicast packets. In this scena
 * Connections are made / received using TCP/IP on port 11372.
 * All devices are addressed over UDP, at the address 239.255.255.244:11372.
 
-Note, that this "local network" does not necessarily need to be a physically local network,
-it can be a virtually local network that connects multiple devices, possibly through VPNs.
+Note, that this "local network" does not necessarily need to be "physically" local network,
+it can be a virtual local network that connects multiple devices, possibly through VPNs or other means.
 
 All UDP packets sent, regardless of content must be repeated 5 times with random intervals
 in order: 0-100ms, 0-400ms, 0-500ms, 1-2 seconds, 1-2 seconds, having a maximum total time of 5 seconds.
@@ -148,11 +145,11 @@ IP addresses for queried SCAN addresses, it may stop repeating the packet.
 
 ### Gateway-based Configuration
 
-Devices may support connecting through "Gateways". A "Gateway" is a SCAN "Physical Layer" level software or hardware
+Devices may support connecting through "Gateways". A "Gateway" is a SCAN "" level software or hardware
 device that does not necessarily have an "Application Layer" presence, i.e. it may be invisible
 to the SCAN network, but can present all the devices that connect to it.
 
-In this scenario the software stack on the device that connects through a Gateway maps Physical Layer operations thusly:
+In this scenario the software stack on the device that connects through a Gateway maps  operations thusly:
 
 * Connections are always made with the Gateway on port 11372 (the same SCAN port as above).
 * All devices are addressed over TCP through the same connection as above.
@@ -171,7 +168,8 @@ in the SCAN network. These must at least include the following options:
 * Direct connection to SCAN network. Discovery and address resolution through broadcast UDP.
 * Connection through a gateway or gateways. Discovery and address resolution through gateway directly.
 
-Gateways present a way to configure a static set of IP addresses to speak to.
+Gateways present a way to configure a static set of IP addresses to speak to, where the gateway is
+essentially a stand-in for all devices that are behind it.
 This may be necessary for devices that are not on any "local" network. Connected through
 untrusted networks, such as cellular networks or other host networks.
 
@@ -184,6 +182,7 @@ the network to use the device. This should include the following:
 * Support, detect and use DHCP if available.
 * Support local-link IP address auto-selection when DHCP not available, to support ad-hoc
 wired networks.
+* Potentially cycle through multiple strategies if one is not available.
 
 Devices may support other methods to connect to a SCAN network, like VPN, Proxies, or other custom tunnelling
 methods.
@@ -191,13 +190,19 @@ methods.
 At the end of the network configuration devices must be able to send and receive frames to and from
 the rest of the SCAN network.
 
+Note that joining a network is not a security sensitive operation. The layers above are designed to handle
+communication through unsecure networks just fine. The point of this layer is to make the device
+available to talk to, in the most convenient way possible for the user.
+
 ## Network Layer
 
-The network protocol is designed to be a "layer" on top of the Physical one. It is independent and
+TODO: change name to "logical" layer
+
+The network protocol is designed to be a "layer" on top of the Internet one. It is independent and
 ignorant of the "application layer" protocol defined in the next chapters.
 
 The main purpose and design goals of this layer are the following:
-* Provide **security** features, such as authentication, authorization and anti-tempering features.
+* Provide **security** features, such as authentication, authorization and anti-tampering features.
 * Logical **routing** capabilities, provide a virtual flat topology.
 * Enable **multiplexing**, so that multiple logical connections can be established through one physical connection (if exists).
 * Enable **message mixing**. Enable a device to interject messages even if another message is currently
@@ -274,7 +279,7 @@ by intermediaries. These are explicitly not included in the end-to-end encryptio
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
 bytes in the stream, and then sending back an "Ignored Frame" (05) message.
 
-Frames a categorized into several intervals:
+Frames are categorized into several intervals:
 * 0-15: Control messages. These are related to establishing or closing the connection.
 * 16-47: Payload messages, related to the actual payload of the communication.
 * 48-63: Messages that potentially are broadcast.
@@ -362,7 +367,8 @@ Both the sender and destination identifier must be present in this frame.
 
 Sent potentially by both parties. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
-and continue in turn until the connection is established.
+and continue in turn until the connection is established based on the initially selected
+protocol variant.
 
 Payload structure:
 * Handshake (byte array)
@@ -429,7 +435,9 @@ explicit answer to this message, the underlying physical connection must eventua
 issue, if the message can not be delivered. Thus either this message gets eventually delivered, or the logical
 connection gets eventually closed.
 
-Intermediates must repeat this message and propagate failures back in an appropriate manner.
+Intermediates must repeat this message and propagate failures back in an appropriate manner. Intermediates
+may batch keep-alive message, if multiple devices send keep-alive to a given device, not all of them
+need to be actually delivered, since the connection is already tested with one keep-alive.
 
 #### Frame type: 16 (Application Message Intermediate Frame)
 
@@ -447,12 +455,12 @@ If any decryption errors occur, meaning that for some reason the sender and rece
 out of sync, messages were omitted or repeated, the connection must be closed.
 
 All encryption happens with "nonce" of all zero. Note, that each message encryption will use a completely
-new key, so the nonce not important.
+new key, so the nonce is superfluous.
 
 If a message is too large to fit
 into one Application Message frame, it must be fragmented, with each fragment having the
 same Message Id. A sender may also choose to fragment messages for other reasons, for example
-to get video frames that are already available quicker to the receiver.
+to get video frames that are already available quicker to the receiver to reduce lag.
 
 The Message Id identifies this message and all frames it consists of. Message Ids should
 be re-used to be able to keep the Id low and in one byte. All values for which
@@ -490,12 +498,12 @@ Payload structure:
 * Query Id (variable length integer)
 * Target query static keys... (32 bytes each)
 
-The query can contain any number of target addresses between 0 and 16, for which the
+The query can contain any number of target addresses between 0 and 16, for which
 an answer is expected.
 
 The query Id is a strictly increasing number for each query. Devices should remember
 the last query Id for each host for 10 seconds and not respond if they already done so. Note however, that devices
-must purge the rememebered id after 10 seconds as the sending device may reset its ids. Devices should
+must purge the remembered id after 10 seconds as the sending device may reset its ids. Devices should
 reset to a query Id to 0 if 20 seconds after the last sent query Id passed.
 
 Note, that if the full variable length integer range is exhausted, the device must reset the ids to be able to send queries.
@@ -543,7 +551,7 @@ When answering Identity Queries, this frame must be sent through a physical conn
 a connection to the device requesting, then that connection must be used. Otherwise
 a new connection needs to be established first. This connection must be closed after
 the reply is complete, if it is otherwise unused. A logical connection does not have to be
-estalished for this frame.
+established for this frame.
 
 Devices should remember the last query Id answered for 10 seconds. This is
 because it is likely the query will be received multiple times, but should be answered only once.
@@ -609,7 +617,7 @@ Devices may continue to monitor unsolicited Identity Announcements to build an i
 of IP addresses.
 
 If an IP address can not be found for a given identity key, the connection can not be established.
-Devices may choose display this to the user if capable, or may send specific error events through
+Devices may choose to display this to the user if capable, or may send specific error events through
 other logical connections.
 
 ## Application Layer
