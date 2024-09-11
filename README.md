@@ -194,12 +194,7 @@ Note that joining a network is not a security sensitive operation. The layers ab
 communication through unsecure networks just fine. The point of this layer is to make the device
 available to talk to, in the most convenient way possible for the user.
 
-## Network Layer
-
-TODO: change name to "logical" layer
-
-The network protocol is designed to be a "layer" on top of the Internet one. It is independent and
-ignorant of the "application layer" protocol defined in the next chapters.
+## Logical Layer
 
 The main purpose and design goals of this layer are the following:
 * Provide **security** features, such as authentication, authorization and anti-tampering features.
@@ -218,7 +213,7 @@ each device is free to directly communicate with any number of other devices. Th
 To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
-The network protocol is packet based, with each packet limited in size to a maximum of 32767 bytes
+The communication on this layer is packet based, with each packet limited in size to a maximum of 32767 bytes
 excluding the frame header.
 
 A logical connection is a connection between two devices identified by their public static keys. All
@@ -237,10 +232,7 @@ to distribute those reconnects inside the minute.
 
 ### Data Types
 
-A byte array is a concatenation of bytes. The length is not explicitly
-supplied but should be available from either the message overall length or by some other means.
-
-A variable length integer is a number stored as a variable number of bytes, at most 8, in big-endian
+A variable length integer (VLI) is a number stored as a variable number of bytes, at most 8, in big-endian
 ordering. On each byte except the last the highest bit indicates that a byte still follows. Note that
 the frame header contains a 2 byte VLI, while the rest of the specification has 8-bytes VLIs.
 
