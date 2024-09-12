@@ -134,7 +134,7 @@ addressable and all devices can be contacted by multicast packets. In this scena
 * Connections are made / received using TCP/IP on port 11372.
 * All devices are addressed over UDP, at the address 239.255.255.244:11372.
 
-Note, that this "local network" does not necessarily need to be "physically" local network,
+Note, that this "local network" does not necessarily need to be a "physical" local network,
 it can be a virtual local network that connects multiple devices, possibly through VPNs or other means.
 
 ### Gateway-based Configuration
@@ -230,7 +230,8 @@ to distribute those reconnects inside the minute.
 
 A variable length integer (VLI) is a number stored as a variable number of bytes, at most 8, in big-endian
 ordering. On each byte except the last the highest bit indicates that a byte still follows. Note that
-the frame header contains a 2 byte VLI, while the rest of the specification has 8-bytes VLIs.
+since the message is limited in size, the VLI here can be at most 2 bytes. It is an error if high bit of
+the second byte is set, i.e. more VLI bytes follow.
 
 ### Frame Header
 
