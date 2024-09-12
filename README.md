@@ -381,7 +381,7 @@ This message supports a backward-compatible upgrade path of the protocol. Future
 decide to add new message types, and may fall back to an earlier version of the protocol, if
 this frame is received.
 
-#### Frame type: 16 (Application Message Intermediate Frame)
+#### Frame type: 17 (Application Message Intermediate Frame)
 
 A part of an application message, including the initial frame, but not the last frame. This frame indicates
 that the message is not complete, additional frames will follow for this message.
@@ -408,7 +408,7 @@ The Message Id identifies this message and all frames it consists of. Message Id
 be re-used to be able to keep the Id low and in one byte. All values for which
 a Last Frame has been sent must be considered re-usable.
 
-#### Frame type: 17 (Application Message Last Frame)
+#### Frame type: 18 (Application Message Last Frame)
 
 The last frame of an application message. This frame may also be potentially the first and only
 frame the message has, although in this case the Single Frame Application Message should be preferred.
@@ -422,7 +422,7 @@ Encryption and key management is the same as for intermediate frames.
 
 The Message Id used in this frame must be considered reusable after this frame is sent.
 
-#### Frame type: 18 (Single Frame Application Message)
+#### Frame type: 19 (Single Frame Application Message)
 
 An application message that fits a single frame.
 
@@ -431,7 +431,7 @@ Payload structure:
 
 Encryption and key management is the same as for intermediate frames.
 
-#### Frame type: 33 (Identity Announcement)
+#### Frame type: 49 (Identity Announcement)
 
 Announces the identity or identities represented by a device. Every device must send
 identity announcements approximately once per second.
