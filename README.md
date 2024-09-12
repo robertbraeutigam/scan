@@ -123,9 +123,8 @@ Addressing uses native IP addresses.
 There can be multiple ways of configuring the SCAN device. However
 this configuration should be completely transparent for the layers above.
 
-Devices must reuse TCP connections in each direction, therefore
-at most two TCP connection must be present between two given peers at all times, one for each
-direction.
+Devices must reuse TCP connections, therefore
+at most one TCP connection must be present between two given peers at all times.
 
 ### Local Network Configuration
 
