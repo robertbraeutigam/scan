@@ -512,11 +512,13 @@ Each device may monitor identity announcements for two reasons:
 * To maintain "offline" status of devices
 
 A device which does not monitor announcements all the time may need to wait a couple of seconds
-to detect identity announcement it is interested in. Maintaining a cache of announcements speeds
+to detect the identity announcement it is interested in. Maintaining a cache of announcements speeds
 up this discovery, but is not required.
 
-Monitoring offline status is not required only if the device is sure this information is not needed
-by the programming of the device itself.
+Monitoring offline status is required only if the device uses this information. For example sets
+a warning light if the connected device it controls goes offline. Monitoring offline status is
+optional, if and only if the information is not used by the device, either in its own code, or the wiring
+it received.
 
 If an IP address can not be found for a given identity key, the connection can not be established.
 Devices may choose to display this to the user if capable, or may send specific error events through
