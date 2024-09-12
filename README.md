@@ -138,14 +138,9 @@ addressable and all devices can be contacted by multicast packets. In this scena
 Note, that this "local network" does not necessarily need to be "physically" local network,
 it can be a virtual local network that connects multiple devices, possibly through VPNs or other means.
 
-All UDP packets sent, regardless of content must be repeated 5 times with random intervals
-in order: 0-100ms, 0-400ms, 0-500ms, 1-2 seconds, 1-2 seconds, having a maximum total time of 5 seconds.
-If the device receives a complete answer for a packet earlier, such as a complete list of
-IP addresses for queried SCAN addresses, it may stop repeating the packet.
-
 ### Gateway-based Configuration
 
-Devices may support connecting through "Gateways". A "Gateway" is a SCAN "" level software or hardware
+Devices may support connecting through "Gateways". A "Gateway" is a SCAN "Logical Layer" level software or hardware
 device that does not necessarily have an "Application Layer" presence, i.e. it may be invisible
 to the SCAN network, but can present all the devices that connect to it.
 
@@ -223,9 +218,11 @@ can be at most two logical connection between any two devices, because the order
 a logical connection. Note however, that one physical connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
-they must immediately close the logical connection. If the logical connection is the only one in
-the physical connection, that needs to be closed instead. If not, a close message
-needs to be sent.
+they must immediately close the logical connection with a dedicated "close" message.
+
+Devices may terminate the TCP connection without closing the logical connection. In this case the device is considered
+"connected" but "offline". Devices may become offline in case of network or device errors temporarily, or may become offline
+intentionally for enery saving purposes. Offline devices may reconnect and continue sending messages without additional handshakes.
 
 The initiating party must not retry opening connections more often than 10 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
@@ -367,42 +364,12 @@ Payload structure:
 
 #### Frame type: 03 (Close Connection)
 
-There can be more than one logical connection in a single physical connection. In this case
-the party trying to terminate a logical connection must use this message to indicate
-that the communication is considered terminated. 
-
-If the physical connection has only this one logical connection, then
-that must be closed instead of sending this message.
-
-This message may be sent by intermediaries between the initiator and responder. For example
-a proxy might generate a Close Connection message if a physical connection to one party is lost
-and the other one is still connected through a physical connection that has other active
-connections.
+Both parties may send this message to terminate the logical connection. After this message
+all keys and state information about the connection can be discarded.
 
 This message has no payload.
 
-#### Frame type: 04 (Renegotiate)
-
-The responder may send this message to instruct the initiator to reopen the connection with
-a new handshake.
-
-There is no payload in this message.
-
-When a connection is closed or lost, upon re-establishing the initiator may
-continue to send frames with the already established keys for the previously lost logical connection.
-That is, it may continue sending application messages instead of starting with a handshake again.
-
-Devices may support remembering already established keys, or may even persist them to survive
-restarts. Therefore an initiator may try to continue communication with previously established keys.
-
-If this assumption does not hold, the responder must send a Renegotiate frame to indicate that
-it can not in fact decrypt the received messages, either because it does not remember the necessary
-keys or it became out of sync with the initiator and a new handshaking process is needed.
-
-The initiator should assume that the messages it sent in the meantime were not received
-and must remove its old keys and close the connection.
-
-#### Frame type: 05 (Ignored Frame)
+#### Frame type: 15 (Ignored Frame)
 
 Both parties may send this message to indicate that the given frame type was not known,
 therefore was ignored and skipped.
@@ -413,23 +380,6 @@ Payload structure:
 This message supports a backward-compatible upgrade path of the protocol. Future versions may
 decide to add new message types, and may fall back to an earlier version of the protocol, if
 this frame is received.
-
-#### Frame type: 06 (Keep-Alive)
-
-The initiator may send this message to make sure that the logical (and physical) connection
-to the responder is open.
-
-There is no payload in the message.
-
-In case of network failures the initiator would not necessarily be aware that a responder is no
-longer connected. It may wait for events to be delivered that never arrive. Although there is no
-explicit answer to this message, the underlying physical connection must eventually indicate an
-issue, if the message can not be delivered. Thus either this message gets eventually delivered, or the logical
-connection gets eventually closed.
-
-Intermediates must repeat this message and propagate failures back in an appropriate manner. Intermediates
-may batch keep-alive message, if multiple devices send keep-alive to a given device, not all of them
-need to be actually delivered, since the connection is already tested with one keep-alive.
 
 #### Frame type: 16 (Application Message Intermediate Frame)
 
@@ -481,75 +431,40 @@ Payload structure:
 
 Encryption and key management is the same as for intermediate frames.
 
-#### Frame type: 33 (Identity Query)
+#### Frame type: 33 (Identity Announcement)
 
-This frame is used to establish the IP addresses belonging to static identity keys,
-or to find out what devices are on the network.
-
-Payload structure:
-* Query Id (variable length integer)
-* Target query static keys... (32 bytes each)
-
-The query can contain any number of target addresses between 0 and 16, for which
-an answer is expected.
-
-The query Id is a strictly increasing number for each query. Devices should remember
-the last query Id for each host for 10 seconds and not respond if they already done so. Note however, that devices
-must purge the remembered id after 10 seconds as the sending device may reset its ids. Devices should
-reset to a query Id to 0 if 20 seconds after the last sent query Id passed.
-
-Note, that if the full variable length integer range is exhausted, the device must reset the ids to be able to send queries.
-
-This frame may get sent over a logical connection or to all devices. In case the sender is set up to use a gateway,
-and presumably is not on the same administrative network as other devices, it may send
-the query through a connection directly to the gateway. Otherwise it is a broadcast frame.
-
-If the frame is sent as a broadcast packet, all
-devices with the listed keys must respond to this query. If it is sent to a
-gateway, the gateway must respond.
-
-A query with 0 target keys is a wildcard query, which means *all* devices in the local network
-must respond. If sent to a gateway, the gateway must respond with
-all the identity keys that are reachable through the gateway. The gateway itself may mirror this
-request onto the "other" side of the gateway.
-
-Note that wildcard queries may or may not return all devices depending on 
-online/offline status, or network topology, timeouts or network congestion.
-
-If the device is interested in more than 16 addresses, it may make multiple queries simultaneously, provided
-it uses query Ids as described above.
-
-#### Frame type: 34 (Identity Announcement)
-
-Announces the identity or identities represented by a device.
+Announces the identity or identities represented by a device. Every device must send
+identity announcements approximately once per second.
 
 Payload structure:
 * Static keys... (32 bytes each)
 
-This reply tells the requester that these static keys are reachable at
+This message announces to all peers that these static keys are reachable at
 the address this frame is from. A device, such as a gateway,
 may represent multiple devices on the local network, that is why
 multiple static keys may reside at the same IP address.
 
-The packet may contain up to 16 static keys.
+The packet may contain up to 16 static keys. If a device represents more logical identities than that,
+it may send multiple packets of this frame.
 
-Devices should announce themselves when they become available, unless
-some restrictions (like low energy device) would make it impractical.
+Devices must announce themselves when they become available, unless
+some restrictions (like low energy device) would make it impractical, or they are
+not online for more than a second.
 
-This packet maybe sent unrequested to all devices on the network as a broadcast
-message.
+The identity announcement also doubles as keep-alive messages in addition to tracking the mapping
+between IP address and static public address of logical devices. If a device misses 3 identity announcements
+it must be considered *offline* from the network. Devices should not attempt to send anything to devices
+considered *offline*. Such a device may re-establish the internet connection at a later point in time 
+without doing a new logical handshake. It may just continue to send messages normally, as if nothing had happened.
 
-When answering Identity Queries, this frame must be sent through a physical connection. If there is already
-a connection to the device requesting, then that connection must be used. Otherwise
-a new connection needs to be established first. This connection must be closed after
-the reply is complete, if it is otherwise unused. A logical connection does not have to be
-established for this frame.
+Note however, devices are not required to be able to persist connection information, and may even handle
+offline devices with closing the connection and forgetting the keys altogether.
 
-Devices should remember the last query Id answered for 10 seconds. This is
-because it is likely the query will be received multiple times, but should be answered only once.
+If, after a device has been *offline*, cryptographic keys become out of sync, or those keys simply no longer exist, the connection must be closed,
+forcing the initiator to establish a new logical connection with new keys.
 
-If the device represents too many static keys so that it doesn't fit one packet, it may
-generate multiple packets.
+When sending to a gateway, this packet may be sent over TCP/IP directly to the gateway. The gateway
+must announce itself to a connected device as all logical devices that are behind it.
 
 ### Message Choreography
 
@@ -592,21 +507,16 @@ with the Renegotiate frame.
 
 ### Address Resolution
 
-To be able to establish a "physical" TCP connection between parties having static keys,
-there must be a way to query the network what actual IP address is associated with
-a given static key. This mechanism is not unlike what IP does to query the network
-for a MAC address for a given IP.
+Each device may monitor identity announcements for two reasons:
+* To maintain a mapping of IP address to public static address key
+* To maintain "offline" status of devices
 
-Device must attempt an address resolution every time before
-establishing a TCP connection. The device may use cached values of already resolved IP
-addresses, it must however fall back on a resolution process if connection can not be established
-with cached value.
+A device which does not monitor announcements all the time may need to wait a couple of seconds
+to detect identity announcement it is interested in. Maintaining a cache of announcements speeds
+up this discovery, but is not required.
 
-An Address Resolution is sending an Identity Query based on the configured network, and waiting
-for responses for it.
-
-Devices may continue to monitor unsolicited Identity Announcements to build an internal cache
-of IP addresses.
+Monitoring offline status is not required only if the device is sure this information is not needed
+by the programming of the device itself.
 
 If an IP address can not be found for a given identity key, the connection can not be established.
 Devices may choose to display this to the user if capable, or may send specific error events through
