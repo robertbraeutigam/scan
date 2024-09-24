@@ -13,8 +13,7 @@ The protocol is specifically created to support a wide-range of possible use-cas
   possibly including everything from doors, windows, lights to audio or video feeds.
 - *Building control*. Controlling access, security cameras, doors, windows, AC, etc.
 - *Automotive*. Controlling actuators, servos with feedback in a closed system.
-- *Marine*. Controlling all functions of a boat, including gps, plotters, lights, engines, video surveillance in one
-  standardized yet extensible, 3rd party friendly way.
+- *Marine*. Controlling all functions of a boat, including gps, plotters, lights, engines, winches, video surveillance, etc.
 
 ## Non-Functional Goals
 
@@ -30,12 +29,12 @@ The main considerations driving the design of this protocol:
 - **Discoverability**. It should be very easy to *discover* which devices need what inputs and react to-, or control
   what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
   through the protocol itself.
-- Enable **interoperability** **without a perfect list of codes** of
+- Enable **interoperability** **without a central list of codes** of
   semantic identifiers, and without everybody needing to agree on a single unified set of messages
   for devices to be interoperable.
 - Prevent proprietary extensions and the need to debug or reverse-engineer devices,
   by using transparent **dynamic wiring**, instead of devices directly hardcoded for each other or for specific codes.
-- **Failure tolerance** build into the protocol. The whole system system should be **eventually consistent** after errors are resolved.
+- **Failure tolerance** should be built into the protocol. The whole system system should be **eventually consistent** after errors are resolved.
 - **Optimal network usage**. Enable optimal usage of network resources by default.
 - **Minimal effort** implementations. The effort to implement compatible devices
   should be linear to the extent of features the device will support. I.e.
@@ -64,7 +63,7 @@ The SCAN protocol is divided into four layers:
 - Internet Layer (Packet Communication and Announcement over IP)
 - Logical Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
 - Data/Command Layer (Subscribing to Data and issuing Commands)
-- Application Layer (Required and common Data and Command definitions)
+- Application Layer (Required and common Data and Command definitions, including Wiring)
 
 The Internet Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
 packets between devices and enables announcements. It supports different IP topologies, including
@@ -524,12 +523,9 @@ If an IP address can not be found for a given identity key, the connection can n
 Devices may choose to display this to the user if capable, or may send specific error events through
 other logical connections.
 
-## Application Layer
+## Data/Command Layer
 
-The application layer is defined by specific payloads in Application Messages and their
-choreography after a logical connection on the network layer has been established.
-
-The Initiator of the network connection is called a Controller Device on this layer, while the Responder
+The Initiator of the logical connection is called a Controller Device on this layer, while the Responder
 is called the Controlled Device. A single logical connection only allows for one side to be the Controller.
 
 Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
@@ -537,79 +533,80 @@ themselves. For example in a single Light and a single Button setup, we may trad
 that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
 That is, to initiate a connection to the Button and based on Data the Button generates control its own
 operation. In this case the Light will obviously not "control" the Button in the traditional meaning,
-but will nonetheless
-assume the role of the "Controller" for the purposes of this specification. It will send Commands
-to read the Data from the Button.
+but will nonetheless assume the role of the "Controller" for the purposes of this specification.
 
-The application layer is a request-response type protocol. The Controller may make requests and
-the Controlled may respond. Unlike protocols such as HTTP, this protocol allows many requests and
-responses to be sent in parallel, including many streaming responses or multiple responses for
-a single request.
+This layer enables the Controller to perform following actions on the Controlled device:
+* Subscribe to data
+* Execute commands
 
-### Data Types
+Subscribing to data means to get a stream of values conforming to a given Data Type, while executing
+a command means to submit a value of a certain Data Type as an argument to a given command. In both cases
+getting a single data element or executing a single command call will involve a single, albeit possibly complex, value.
 
-A Value structure is a single value to a type defined elsewhere. It's structure is:
-* Identifier (variable length integer)
-* Length of following Value (variable length integer)
-* Value (byte array)
+Immediately after establishing the lower layer connection, the Controlled device must send its capabilities
+to the Controller unsolicited with the appropriate message. These capabilities must not change during the whole life of the connection.
+If the capabilities of the Controlled device do change, it must terminate the connection and let the
+Controller re-establish a connection where the new capabilities can be submitted.
 
-The Identifier above refers to some definition specific for the context this
-Value structure is used in. The Value, specifically its meaning is
-also defined by the entity referenced by the Identifier.
+All values, both for data and commands, are typed. This type system not just governs what kind of data
+can be sent and received, it is capable of determining whether a value of a given type can be submitted
+as a value of a different type.
 
-Note that the length here is the maximum length of the value. If this structure is at the
-end of a message, the message may end before the given length is reached. This is explicitly
-allowed to support unlimited streams, which should use a maximum value length (2^58-1). 
+This type system is also used to describe the messages of this layer itself.
 
-This also means that in every message, there may only be one value structure that has its
-length not given exactly.
+### Type System
 
-The length field exists for the explicit purpose to skip a value structure if the contents
-can not be interpreted.
+Types in this chapter are described with a pseudo-language inspired by ASN.1. In general it has a few primitive types,
+ways to combine primitive types together, and it also describes how to serialize such a definition into bytes that
+can be transmitted over the network.
 
-### Requests
+This specification uses this pseudo-language to describe types. Type definitions in actual devices will always
+use concrete types in serialized format instead of this language.
 
-A request is a message sent from the Controller to the Controlled. Its format is as follows:
-* Action (byte)
-* Content
+#### Primitive Types
 
-All requests contain an action (see below) and a content.
+The type system supports following primitive types:
+* Boolean
+* UnsignedInteger (1,2,4 or 8 bytes, or VLI, big-endian)
+* SignedInteger (1,2,4 or 8 bytes, two-complementer format)
+* Real (4 or 8 bytes, standard single or double precision)
 
-Devices must explicitly answer action codes that they don't understand with IGNORE responses.
+All types except Boolean have the option to be different sizes. Concrete types need to indicate the size
+using parentheses, for example: UnsignedInteger(4), Real(8) or UnsignedInteger(VLI).
 
-#### OPTIONS (01)
+#### Complex Types
 
-Request the Controlled to supply meta-information about the device itself, including
-what Controls it has, what Data it can provide, what Wiring it has currently configured.
+The following combinators are available to assemble complex types:
+* struct: A structure of a fix number of fields that each have their own type.
+* union: A single type that may contain values of any of the contained types, which must be disjunct.
+* enum: A single type that can have values from the contained values, which all need to be of the same type.
+* sequence: A limited amount of values of the same type. The limit might be statically or runtime fixed.
+* stream: An unlimited amount of values of the same type.
 
-Action will have at most one answer.
+##### Struct
 
-Content:
-* Locale (string, IETF BCP-47 format)
+A struct has a name and contains named fields, for example:
 
-The locale specifies the name and description language the options should be described in.
-The Controlled Device should honor the locale if possible, but may fall back on a default
-language if it does not have translations for the requested language.
+```
+struct Clock {
+  hour: UnsignedInteger(1)  
+}
+```
 
-#### STREAM DATA (02)
+### Controller Device Messages
 
-Request the Controlled to send values for the specified Data Packet indefinitely.
+#### STREAM DATA (01)
 
-Action will have any number of responses.
+Request the Controlled to send values for the specified Data Packet indefinitely. Action will have any number of responses.
 
-Request content:
-* Data Packet Id (variable length integer)
-* Locale (string, IETF BCP-47 format)
-* Maximum Rate (variable length integer)
+Message payload:
+* 01 (byte)
+* Data Index (VLI)
+* Maximum Rate (VLI)
 
-The Data Packet Id specifies the data to send.
+The Data Index specifies the data by its index (0 based) in the Controlled device's capabilities list.
 
-The locale applies to all potential text like names and descriptions that may be part of the data
-requested. This locale may be empty, in which case the Device should use a default translation
-for any data elements that are language dependent.
-
-The Maximum Rate specifies the rate at which the data should be sent in milliseconds. More specifically
-the time interval between the beginnings of sendings (i.e. not between the end of one data sending to the next beginning). 0 milliseconds
+The Maximum Rate specifies the rate at which the data should be sent in milliseconds. 0 milliseconds
 means as fast as possible, without any waiting. The Controlled Device must honor this rate
 in every case, even if the data is generated by manual input. It must never send data more
 frequently than specified. It may however send data less frequently.
@@ -617,43 +614,34 @@ frequently than specified. It may however send data less frequently.
 The Controller may repeat this message if the maximum rate changes for any reason.
 
 The Controlled Device should send the current state as soon as possible when receiving this request,
-and re-calculate the time for the next message. Sending this request with a maximum rate can therefore
-be used to request one data message, essentially immitate a pull-based approach.
+and re-calculate the time for the next message. Sending this request with an "infinite" maximum rate can therefore
+be used to request one data message, essentially imitate a pull-based approach.
 
 The Controlled Device must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
-### INVOKE (03)
+### INVOKE (02)
 
-Request to invoke a command defined on the other party.
+Request to invoke a command on the Controlled device.
 
 Request content:
-* Command Id (variable length integer)
-* Parameter Values (Value structures)
+* 02 (byte)
+* Command Id (VLI)
+* Value (see relevant chapter)
 
-### Responses
+### Controlled Device Messages
 
-A response is sent from the Controlled to the Controller, always as a response to a previous
-request. There may be multiple responses to the same request, depending on the action
-requested and other circumstances.
+#### CAPABILITIES (01)
 
-The format of the response is as follows:
-* Response Type (byte)
-* Content
+This is an unsolicited message sent immediately after establishing a connection. The Controlled device
+is required to send all capabilities to the Controller.
 
-The Response Type and its content is described in the next sections.
-
-#### OPTIONS (01)
-
-Send all the meta-information this device has, specifically
-data definitions, command definitions and wiring information.
-
-Content:
-* Number of Data Packet Definitions following (variable length number)
-* Data Packet Definitions
-* Number of Command Definitions following (variable length number)
-* Command Definitions
-* Wiring
+Message payload:
+* 01 (byte)
+* Number of Data Definitions following (VLI)
+* Data Definitions (see relevant chapter)
+* Number of Command Definitions following (VLI)
+* Data Definitions (see relevant chapter)
 
 A single Data Packet Definition record consist of:
 * Name (localized string)
@@ -750,6 +738,28 @@ Content:
 * Action (byte)
 
 Content is the action code that was ignored.
+
+### Data Types
+
+A Value structure is a single value to a type defined elsewhere. It's structure is:
+* Identifier (variable length integer)
+* Length of following Value (variable length integer)
+* Value (byte array)
+
+The Identifier above refers to some definition specific for the context this
+Value structure is used in. The Value, specifically its meaning is
+also defined by the entity referenced by the Identifier.
+
+Note that the length here is the maximum length of the value. If this structure is at the
+end of a message, the message may end before the given length is reached. This is explicitly
+allowed to support unlimited streams, which should use a maximum value length (2^58-1). 
+
+This also means that in every message, there may only be one value structure that has its
+length not given exactly.
+
+The length field exists for the explicit purpose to skip a value structure if the contents
+can not be interpreted.
+
 
 ## Technical Discussions
 
@@ -1324,6 +1334,30 @@ long as it results in the same values.
 If there are any errors while evaluating a wiring script an error must be raised with the predefined
 error data type.
 
+## Appendix: Data Type Serialization
+
+Primitive types are serialized to a single byte, according to the following rules:
+- Bit 7-5: The size of the value
+- Bit 4-0: How the bytes are to be interpreted.
+
+The size of the value may be the following:
+* 0 = 1 Byte
+* 1 = 2 Byte
+* 2 = 4 Byte
+* 3 = 8 Byte
+* 5 = Unused
+* 6 = Unused
+* 7 = VLI
+
+Following interpretations are available for the above sizes:
+* 0 = Boolean
+* 1 = Unsigned Integer
+* 2 = Signed Integer
+* 3 = Real
+
+Note, that not all combinations of these bits is a valid one. Invalid combinations must cause an error and the containing definition
+to become invalid.
+
 ## Appendix E: Communication Examples
 
 This addendum shows "physical" TCP/IP payloads for certain selected / common use-cases.
@@ -1344,4 +1378,3 @@ present, thus we don't have to include the sender or receiver address.
 * 01 (1 Byte): Length of data follows.
 * 00 (1 Byte): Enum value of 0, indicating "off"
 * MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with. We assume the default Noise Protocol.
-
