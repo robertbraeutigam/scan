@@ -100,6 +100,10 @@ to generate a new key for the administrator (the end-user) to use. After they ar
 they can be *wired* to get data from, or send commands to another device or multiple other
 devices.
 
+Provisioning and wiring is done by the end user. Although most of this requires simple drag-and-drop
+actions on an appropriate administrative interface, more advanced setups are possible using
+transformations of data and actions and wiring up devices in non-conventional ways.
+
 The SCAN protocol goes well beyond being just a transport protocol to deliver messages among
 devices. It has semantic rules, which constrains what messages may mean, in order to give
 stability guarantees, such as guaranteed recovery from error states, recovery from network
@@ -111,7 +115,7 @@ The internet layer supports basic network primitives based on IP-native means fo
 These functionalities are:
 
 * Open and receive a "physical" TCP/IP connection to/from a peer to send and receive data.
-* Send and receive data to / from all connected devices.
+* Send and receive data to/from all connected devices.
 
 This layer mimics IP closely. Meaning connections support streaming-based data exchange
 with no packet demarcations, while communication with the whole network supports stateless
@@ -166,9 +170,6 @@ essentially a stand-in for all devices that are behind it.
 This may be necessary for devices that are not on any "local" network. Connected through
 untrusted networks, such as cellular networks or other host networks.
 
-In addition, the network must support at least one direction of communication between devices
-or devices and gateways.
-
 Devices should do anything and everything that can be securely done to not have to configure
 the network to use the device. This should include the following:
 * Support WPS to join a WiFi network without configuration.
@@ -197,6 +198,7 @@ The main purpose and design goals of this layer are the following:
   being sent or even streamed indefinitely.
 * Enable **message fragmenting** so each fragment can be validated on its own and
   potentially partially processed, without assembling the whole message in memory.
+* Enable the **detection of offline** status of devices.
 * Add as **minimal overhead** as possible.
 
 Devices get a peer-to-peer, secure, flat logical topology. That is,
@@ -227,10 +229,11 @@ to distribute those reconnects inside the minute.
 
 ### Data Types
 
-A variable length integer (VLI) is a number stored as a variable number of bytes, at most 8, in big-endian
-ordering. On each byte except the last the highest bit indicates that a byte still follows. Note that
-since the message is limited in size, the VLI here can be at most 2 bytes. It is an error if high bit of
-the second byte is set, i.e. more VLI bytes follow.
+A variable length integer (VLI) is a number stored as a variable number of bytes, in big-endian
+ordering. On each byte except the last the highest bit indicates that a byte still follows, which means
+the last byte may use the high bit for representing the value itself, it does not have to be 0.
+
+The "last" byte of a VLI is the 8th byte for the following chapters, but for the frames below VLI's last byte is the second one.
 
 ### Frame Header
 
@@ -265,7 +268,7 @@ by intermediaries. These are explicitly not included in the end-to-end encryptio
 ### Frame types
 
 Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
-bytes in the stream, and then sending back an "Ignored Frame" (05) message.
+bytes in the stream, and then sending back an "Ignored Frame" message.
 
 Frames are categorized into several intervals:
 * 0-15: Control messages. These are related to establishing or closing the connection.
