@@ -7,7 +7,7 @@ way to collect data and control devices on a network.
 
 ## Functional Goals
 
-The protocol is specifically created to support a wide-range of possible use-cases:
+A non-exhaustive list of use-cases the protocol supports explicitly:
 
 - *Home automation use-cases*. Having a wide array of sensors, devices and controls controlling each other,
   possibly including everything from doors, windows, lights to audio or video feeds.
@@ -509,18 +509,16 @@ with the Renegotiate frame.
 
 ### Address Resolution
 
-Each device may monitor identity announcements for two reasons:
+Each device must monitor identity announcements for two reasons:
 * To maintain a mapping of IP address to public static address key
 * To maintain "offline" status of devices
 
-A device which does not monitor announcements all the time may need to wait a couple of seconds
+A device is not required to cache the monitored announcements, in which case it may need to wait a couple of seconds
 to detect the identity announcement it is interested in. Maintaining a cache of announcements speeds
-up this discovery, but is not required.
+up this discovery of course.
 
-Monitoring offline status is required only if the device uses this information. For example sets
-a warning light if the connected device it controls goes offline. Monitoring offline status is
-optional, if and only if the information is not used by the device, either in its own code, or the wiring
-it received.
+Monitoring announcements is required to maintain offline status of at least the connected devices.
+Devices must not send messages to offline devices to maintain key synchronization.
 
 If an IP address can not be found for a given identity key, the connection can not be established.
 Devices may choose to display this to the user if capable, or may send specific error events through
@@ -546,8 +544,8 @@ Subscribing to data means to get a stream of values conforming to a given Data T
 a command means to submit a value of a certain Data Type as an argument to a given command. In both cases
 getting a single data element or executing a single command call will involve a single, albeit possibly complex, value.
 
-Immediately after establishing the lower layer connection, the Controlled device must send its capabilities
-to the Controller unsolicited with the appropriate message. These capabilities must not change during the whole life of the connection.
+Immediately after establishing the lower layer connection, the Controller must ask for the capabilities
+of the Controlled device. These capabilities must not change during the whole life of the connection.
 If the capabilities of the Controlled device do change, it must terminate the connection and let the
 Controller re-establish a connection where the new capabilities can be submitted.
 
@@ -559,51 +557,36 @@ This type system is also used to describe the messages of this layer itself.
 
 ### Type System
 
-Types in this chapter are described with a pseudo-language inspired by ASN.1. In general it has a few primitive types,
-ways to combine primitive types together, and it also describes how to serialize such a definition into bytes that
-can be transmitted over the network.
+The type system consists of the following components:
+* A type definition language, which is used exclusively in this specification
+* A type definition language serialization format, which specifies a machine readable format for it
+* A value serialization format, which specifies how values of a certain type are to be serialized
+* Rules concerning how to determine whether a type is a subtype of another, needed to determine
+whether a value produced by some device can be fed into the command interface of another
 
-This specification uses this pseudo-language to describe types. Type definitions in actual devices will always
-use concrete types in serialized format instead of this language.
-
-#### Primitive Types
-
-The type system supports following primitive types:
-* Boolean
-* UnsignedInteger (1,2,4 or 8 bytes, or VLI, big-endian)
-* SignedInteger (1,2,4 or 8 bytes, two-complementer format)
-* Real (4 or 8 bytes, standard single or double precision)
-
-All types except Boolean have the option to be different sizes. Concrete types need to indicate the size
-using parentheses, for example: UnsignedInteger(4), Real(8) or UnsignedInteger(VLI).
-
-#### Complex Types
-
-The following combinators are available to assemble complex types:
-* struct: A structure of a fix number of fields that each have their own type.
-* union: A single type that may contain values of any of the contained types, which must be disjunct.
-* enum: A single type that can have values from the contained values, which all need to be of the same type.
-* sequence: A limited amount of values of the same type. The limit might be statically or runtime fixed.
-* stream: An unlimited amount of values of the same type.
-
-##### Struct
-
-A struct has a name and contains named fields, for example:
-
-```
-struct Clock {
-  hour: UnsignedInteger(1)  
-}
-```
+This type definition language is quite similar to ASN.1 or Protocol Buffers, with a couple of
+special features unique to SCAN. See the appropriate Appendix for the details of this type system.
 
 ### Controller Device Messages
 
-#### STREAM DATA (01)
+#### OPTIONS (01)
+
+Get the capabilities of the Controlled device.
+
+Message payload:
+* 01 (byte)
+* Locale (String, IETF BCP-47 format) 
+
+The locale specifies the formatting of language dependent parts of any future messages on this connection,
+not just the capabilities. The Controlled Device should honor the locale if possible, but may fall back on a default
+one if it does not have translations or formatting for the requested locale.
+
+#### STREAM DATA (02)
 
 Request the Controlled to send values for the specified Data Packet indefinitely. Action will have any number of responses.
 
 Message payload:
-* 01 (byte)
+* 02 (byte)
 * Data Index (VLI)
 * Maximum Rate (VLI)
 
@@ -612,7 +595,9 @@ The Data Index specifies the data by its index (0 based) in the Controlled devic
 The Maximum Rate specifies the rate at which the data should be sent in milliseconds. 0 milliseconds
 means as fast as possible, without any waiting. The Controlled Device must honor this rate
 in every case, even if the data is generated by manual input. It must never send data more
-frequently than specified. It may however send data less frequently.
+frequently than specified. It may however send data less frequently. If the data is produced more
+often than specified proactively, the Controlled must make sure the most current data is submitted
+when the next communication window arrives, even by potentially dropping or overwriting earlier data points.
 
 The Controller may repeat this message if the maximum rate changes for any reason.
 
@@ -623,24 +608,47 @@ be used to request one data message, essentially imitate a pull-based approach.
 The Controlled Device must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
-### INVOKE (02)
+### INVOKE (03)
 
 Request to invoke a command on the Controlled device.
 
 Request content:
-* 02 (byte)
+* 03 (byte)
 * Command Id (VLI)
-* Value (see relevant chapter)
+* Serialized value (of type specified by the command)
 
 ### Controlled Device Messages
 
 #### CAPABILITIES (01)
 
-This is an unsolicited message sent immediately after establishing a connection. The Controlled device
-is required to send all capabilities to the Controller.
+This message is a response to the OPTIONS message of the Controller.
 
 Message payload:
 * 01 (byte)
+* Value (of the Capabilities type defined below)
+
+This is the Capabilities type:
+
+```
+// Describes the capabilities of a Controlled Device.
+Capabilities = {
+   deviceDefinition: DeviceDefinition
+   dataDefinitions: [DataDefinition]
+   commandDefinitions: [CommandDefinition]
+}
+
+// Describes device specific information to identify the device
+DeviceDefinition = {
+   deviceName: Option[String]         // Display name of device
+   deviceDescription: Option[String]  // Description for the user
+   deviceId: Option[String]           // Vendor specific/internal id
+   deviceURI: Option[String]          // A website describing the device
+   vendorName: Option[String]         // Vendor's name
+   vendorURI: Option[String]          // Vendor's website
+}
+```
+
+
 * Number of Data Definitions following (VLI)
 * Data Definitions (see relevant chapter)
 * Number of Command Definitions following (VLI)
@@ -694,14 +702,13 @@ The wiring is described as a small complied binary language. See appropriate App
 
 #### DATA (02)
 
-Send data values.
+Send data values as requested by a subscription from the Controller.
 
 Response content:
-* Data Packet Id (variable length number)
-* Tag Values (Value structures for the defined Tags)
-* Data Element Values (Value structures for the defined Data Elements)
+* Data Index (VLI)
+* Value (of the type specified by index)
 
-The Data Packet Id identifies the Data Definition that describes the meaning of the
+The Data Index identifies the Data Definition that describes the meaning of the
 values submitted here.
 
 Note, that because of the Resolution Principle the Device must immediately
@@ -711,15 +718,15 @@ the value must always be the most current one in the given semantics.
 
 Note also, that this semantic may include a month-end meter value for example. "Historical"
 values are allowed, as long as this does not mix with "current" values. I.e. it has to have its own
-data definition, which presumably includes a timestamp or interval.
+data definition, as it has its own modality.
 
 #### INVOKE RESPONSE (03)
 
 Indicate the rate the given command can be invoked.
 
 Request content:
-* Command Id (variable length integer)
-* Maximum Rate (variable length integer)
+* Command Index (VLI)
+* Maximum Rate (VLI)
 
 Same as the maximum rate specified in STREAM DATA message, i.e. a millisecond value of time between subsequent
 requests. The Controlled indicates at which rate this
@@ -727,7 +734,7 @@ command can be invoked. The Controller must honor this rate and never invoke the
 more frequently than given.
 
 Controlled devices are not required to send this response, or they may send it multiple
-times. The Controller must honor the latest supplied maximum rate at all times.
+times. The Controller must honor the latest received maximum rate at all times.
 
 The Controller may proceed to invoke the command at any rate until the Controlled
 explicitly answers with a given rate. The Controlled is also free to skip certain
@@ -741,28 +748,6 @@ Content:
 * Action (byte)
 
 Content is the action code that was ignored.
-
-### Data Types
-
-A Value structure is a single value to a type defined elsewhere. It's structure is:
-* Identifier (variable length integer)
-* Length of following Value (variable length integer)
-* Value (byte array)
-
-The Identifier above refers to some definition specific for the context this
-Value structure is used in. The Value, specifically its meaning is
-also defined by the entity referenced by the Identifier.
-
-Note that the length here is the maximum length of the value. If this structure is at the
-end of a message, the message may end before the given length is reached. This is explicitly
-allowed to support unlimited streams, which should use a maximum value length (2^58-1). 
-
-This also means that in every message, there may only be one value structure that has its
-length not given exactly.
-
-The length field exists for the explicit purpose to skip a value structure if the contents
-can not be interpreted.
-
 
 ## Technical Discussions
 
@@ -1337,29 +1322,44 @@ long as it results in the same values.
 If there are any errors while evaluating a wiring script an error must be raised with the predefined
 error data type.
 
-## Appendix: Data Type Serialization
+## Appendix: Type System
 
-Primitive types are serialized to a single byte, according to the following rules:
-- Bit 7-5: The size of the value
-- Bit 4-0: How the bytes are to be interpreted.
+Types in this chapter are described with a pseudo-language inspired by ASN.1. In general it has a few primitive types,
+ways to combine primitive types together, and it also describes how to serialize such a definition into bytes that
+can be transmitted over the network.
 
-The size of the value may be the following:
-* 0 = 1 Byte
-* 1 = 2 Byte
-* 2 = 4 Byte
-* 3 = 8 Byte
-* 5 = Unused
-* 6 = Unused
-* 7 = VLI
+This specification uses this pseudo-language to describe types. Type definitions in actual devices will always
+use concrete types in serialized format instead of this language.
 
-Following interpretations are available for the above sizes:
-* 0 = Boolean
-* 1 = Unsigned Integer
-* 2 = Signed Integer
-* 3 = Real
+#### Primitive Types
 
-Note, that not all combinations of these bits is a valid one. Invalid combinations must cause an error and the containing definition
-to become invalid.
+The type system supports following primitive types:
+* Boolean
+* UnsignedInteger (1,2,4 or 8 bytes, or VLI, big-endian)
+* SignedInteger (1,2,4 or 8 bytes, two-complementer format)
+* Real (4 or 8 bytes, standard single or double precision)
+
+All types except Boolean have the option to be different sizes. Concrete types need to indicate the size
+using parentheses, for example: UnsignedInteger(4), Real(8) or UnsignedInteger(VLI).
+
+#### Complex Types
+
+The following combinators are available to assemble complex types:
+* struct: A structure of a fix number of fields that each have their own type.
+* union: A single type that may contain values of any of the contained types, which must be disjunct.
+* enum: A single type that can have values from the contained values, which all need to be of the same type.
+* sequence: A limited amount of values of the same type. The limit might be statically or runtime fixed.
+* stream: An unlimited amount of values of the same type.
+
+##### Struct
+
+A struct has a name and contains named fields, for example:
+
+```
+struct Clock {
+  hour: UnsignedInteger(1)  
+}
+```
 
 ## Appendix E: Communication Examples
 
@@ -1381,3 +1381,4 @@ present, thus we don't have to include the sender or receiver address.
 * 01 (1 Byte): Length of data follows.
 * 00 (1 Byte): Enum value of 0, indicating "off"
 * MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with. We assume the default Noise Protocol.
+
