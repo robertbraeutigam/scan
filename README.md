@@ -638,12 +638,14 @@ Capabilities = {
 }
 
 // Describes device specific information to identify the device
+// Note: all names and descriptions may be localized
 DeviceDefinition = {
-   deviceName: Option[String]         // Display name of device
-   deviceDescription: Option[String]  // Description for the user
-   deviceId: Option[String]           // Vendor specific/internal id
+   deviceName: String                 // Display name of device
+   deviceDescription: String          // Description for the user
+   deviceId: String                   // Vendor specific/internal id
    deviceURI: Option[String]          // A website describing the device
-   vendorName: Option[String]         // Vendor's name
+   vendorName: String                 // Vendor's name
+   vendorId: String                   // Vendor's id
    vendorURI: Option[String]          // Vendor's website
 }
 ```
