@@ -5,6 +5,11 @@
 SCAN is an open, free, easy-to-use, extensible, DIY-friendly
 way to collect data and control devices on a network.
 
+It consists of the following components:
+- *This specification* is the main artefact, describing how the protocol operates and how devices must behave on it.
+- *Reference implementations* in Java for PCs and C/C++ for the popular Arduino platform to create devices with.
+- *Reference administration interface* for Android to manage networks and devices.
+
 ## Functional Goals
 
 A non-exhaustive list of use-cases the protocol supports explicitly:
