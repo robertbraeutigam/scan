@@ -12,52 +12,35 @@ It consists of the following components:
 
 ## Functional Goals
 
-A non-exhaustive list of use-cases the protocol supports explicitly:
+SCAN supports the following use cases:
 
-- *Home automation use-cases*. Having a wide array of sensors, devices and controls controlling each other,
-  possibly including everything from doors, windows, lights to audio or video feeds.
-- *Building control*. Controlling access, security cameras, doors, windows, AC, etc.
-- *Automotive*. Controlling actuators, servos with feedback in a closed system.
-- *Marine*. Controlling all functions of a boat, including gps, plotters, lights, engines, winches, video surveillance, etc.
+- *Home Automation*: Sensors, devices, and controls (e.g., doors, windows, lights, audio/video feeds) interacting seamlessly.
+- *Building Control*: Managing access, security cameras, doors, windows, and HVAC systems.
+- *Automotive*: Controlling actuators, servos, doors, windows in a closed system with feedback.
+- *Marine*: Managing boat functions, including GPS, plotters, lights, engines, winches, and surveillance.
 
 ## Non-Functional Goals
 
-The main considerations driving the design of this protocol:
+The protocol design prioritizes:
 
-- **Security first**! State-of-the-art end-to-end peer-to-peer encryption, perfect forward secrecy, no hardcoded defaults,
-  per-device distributed authorization, etc., without complex certificate management, central servers,
-  authority nor any third-party involvement.
-- **DIY** friendly. No proprietary components, processes or certification requirements. No central registries.
-  A private individual should be able to easily create a compatible device completely
-  independently, which can then be used by any end-user to its full extent and be combined with any
-  other device that has or needs similar enough features.
-- **Discoverability**. It should be very easy to *discover* which devices need what inputs and react to-, or control
-  what other devices. Not out-of-band, for example through documentation, but through dynamic discovery
-  through the protocol itself.
-- Enable **interoperability** **without a central list of codes** of
-  semantic identifiers, and without everybody needing to agree on a single unified set of messages
-  for devices to be interoperable.
-- Prevent proprietary extensions and the need to debug or reverse-engineer devices,
-  by using transparent **dynamic wiring**, instead of devices directly hardcoded for each other or for specific codes.
-- **Failure tolerance** should be built into the protocol. The whole system system should be **eventually consistent** after errors are resolved.
-- **Optimal network usage**. Enable optimal usage of network resources by default.
-- **Minimal effort** implementations. The effort to implement compatible devices
-  should be linear to the extent of features the device will support. I.e.
-  simple devices (like a Light source or a Button) should be almost no effort to implement, while
-  more complicated devices may require more thorough analysis and design.
-- **Minimal setup** required by end-users, ideally plug-and-play in most cases to a *fully-secure* production installation.
-- Should work **over the internet** and in any network topology, trusted or not.
-- **Driven by individuals**, not industry. I.e. does not have to support complicated
-  use-cases which are almost never used, or used only because of historical reasons.
+
+- *Security*: End-to-end encryption, perfect forward secrecy, per-device authorization, no central servers or complex certificate management.
+- *DIY-Friendly*: No proprietary components or central registries; individuals can create and use compatible devices independently.
+- *Discoverability*: Users can discover all inputs, outputs, and interactions via the protocol, not external documentation.
+- *Interoperability*: Devices interoperate without a centralized code list or unified message set, using transparent dynamic wiring.
+- *Failure Tolerance*: Ensures eventual consistency after resolving errors.
+- *Efficient Network Use*: Optimizes network resources by default.
+- *Minimal Effort*: Simple devices (e.g., lights, buttons) require minimal implementation effort; complex devices scale linearly.
+- *Minimal Setup*: Plug-and-play with full security for most use cases.
+- *Internet Compatibility*: Operates over any network topology, trusted or untrusted.
+- *Individual-Driven*: Focuses on practical, user-driven use cases, avoiding unnecessary complexity.
 
 ## Out-of-scope
 
-This protocol does not replace radio-based protocols such as Bluetooth, Bluetooth Low Energy, LoRaWAN, etc.
+SCAN does not replace radio-based protocols (e.g., Bluetooth, LoRaWAN).
 
-Although devices using these protocols may be connected through some gateway into a SCAN network, they can not
-directly participate as these protocol have their own definitions of security, data exchange and semantics, which are
-incompatible with SCAN. Alternatively, embedding SCAN traffic in any of these would not be an optimal use of these
-protocols.
+Devices using these may connect via gateways but cannot participate directly due to incompatible security, data exchange, and semantics.
+Embedding SCAN traffic in such protocols is suboptimal.
 
 ## Solution Overview
 
