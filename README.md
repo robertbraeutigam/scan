@@ -2,49 +2,46 @@
 
 *Draft Version*
 
-SCAN is an open, free, easy-to-use, extensible, DIY-friendly
-way to collect data and control devices on a network.
+SCAN is an open, free, extensible, DIY-friendly way to collect data and control devices on a network.
 
-It consists of the following components:
-- *This specification* is the main artefact, describing how the protocol operates and how devices must behave on it.
-- *Reference implementations* in Java for PCs and C/C++ for the popular Arduino platform to create devices with.
-- *Reference administration interface* for Android to manage networks and devices.
+## Components
+
+What is SCAN and what does it consist of?
+
+- *This specification*: Defines the protocol and device behavior.
+- *Reference implementations*: Java (PC) and C/C++ (Arduino).
+- *Reference administration interface*: Android app for network and device management.
 
 ## Functional Goals
 
-SCAN supports the following use cases:
+SCAN supports scenarios such as:
 
-- *Home Automation*: Sensors, devices, and controls (e.g., doors, windows, lights, audio/video feeds) interacting seamlessly.
-- *Building Control*: Managing access, security cameras, doors, windows, and HVAC systems.
-- *Automotive*: Controlling actuators, servos, doors, windows in a closed system with feedback.
-- *Marine*: Managing boat functions, including GPS, plotters, lights, engines, winches, and surveillance.
+- *Home Automation*: Sensors, actuators, and controls (doors, windows, lights, AV).
+- *Building Control*: Access, security cameras, doors, windows, HVAC.
+- *Automotive*: Actuators, servos, doors, windows with feedback.
+- *Marine*: Boat functions: GPS, plotters, lights, engines, winches, surveillance.
 
 ## Non-Functional Goals
 
 The protocol design prioritizes:
 
-
-- *Security*: End-to-end encryption, perfect forward secrecy, per-device authorization, no central servers or complex certificate management.
-- *DIY-Friendly*: No proprietary components or central registries; individuals can create and use compatible devices independently.
-- *Discoverability*: Users can discover all inputs, outputs, and interactions via the protocol, not external documentation.
-- *Interoperability*: Devices interoperate without a centralized code list or unified message set, using transparent dynamic wiring.
-- *Failure Tolerance*: Ensures eventual consistency after resolving errors.
-- *Efficient Network Use*: Optimizes network resources by default.
-- *Minimal Effort*: Simple devices (e.g., lights, buttons) require minimal implementation effort; complex devices scale linearly.
-- *Minimal Setup*: Plug-and-play with full security for most use cases.
-- *Internet Compatibility*: Operates over any network topology, trusted or untrusted.
-- *Individual-Driven*: Focuses on practical, user-driven use cases, avoiding unnecessary complexity.
+- *Security*: End-to-end encryption, forward secrecy, per-device authorization, no central servers or PKI.
+- *DIY-Friendly*: No proprietary components, registries, membership fees or certifications.
+- *Discoverability*: All interactions discoverable via protocol.
+- *Interoperability*: Dynamic wiring without centralized message sets.
+- *Failure Tolerance*: Eventual consistency even given errors.
+- *Efficient*: Optimal use of network resources.
+- *Minimal Effort & Setup*: Plug-and-play, minimal implementation for simple devices, linear scaling for complex ones.
+- *Internet Compatibility*: Works over trusted and untrusted networks.
 
 ## Out-of-scope
 
-SCAN does not replace radio-based protocols (e.g., Bluetooth, LoRaWAN).
-
-Devices using these may connect via gateways but cannot participate directly due to incompatible security, data exchange, and semantics.
-Embedding SCAN traffic in such protocols is suboptimal.
+SCAN does not replace radio-based protocols (e.g., Bluetooth, LoRaWAN). Such devices may connect via gateways but cannot participate directly because
+they can not guarantee the appropriate level of security.
 
 ## Solution Overview
 
-### The Protocol
+### The Protocol Summary
 
 The SCAN protocol is divided into four layers:
 
@@ -73,7 +70,8 @@ debugging and logging commands and data, and most notably wiring.
 
 Wiring is an application layer tool that describes how devices interoperate. It describes which
 data from which devices invokes which commands at what other devices and it can also describe
-how to transform data to be compatible with the required command.
+how to transform data to be compatible with the required command or transform a command to be
+compatible with data.
 
 ### Operational Summary
 
