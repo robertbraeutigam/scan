@@ -95,6 +95,181 @@ devices. It has semantic rules, which constrains what messages may mean, in orde
 stability guarantees, such as guaranteed recovery from error states, recovery from network
 congestion, restarts, and other failure modes.
 
+## Type System
+
+An essential part of the protocol is a type system, which is not only used runtime by the devices,
+but its textual representation is used in the chapters below to describe certain data formats and
+network frames.
+
+This type system consist of following parts:
+* A human-readable textual representation
+* A binary representation of types
+* A binary representation of values
+* An algorithm to determine if a type defines a subset of values as another type
+* A human-readable transformation language to transform values to other values
+* A binary representation of a transformation
+
+### Type System Textual Language
+
+#### Primitive Types
+
+* Unit
+* FloatingPoint(size in bytes)
+* UnsignedInteger(size in bytes)
+* SignedInteger(size in bytes)
+* VariableLengthInteger(size in bytes)
+
+Type definitions may have parameters themselves as above. Type parameters may be other types or even values as above.
+
+The `FloatingPoint` type has a size parameter, which is either 4 or 8, corresponding to the standard IEEE float and double.
+
+The `UnsignedInteger` and `SignedInteger` numbers may have sizes of 1, 2, 4 or 8, corresponding to the usual number types:
+byte, word, int, long.
+
+The `VariableLengthInteger` is a number stored as a variable number of bytes.
+On each byte except the last the highest bit indicates that a byte still follows, which means
+the last byte may use the high bit for representing the value itself, it does not have to be 0. This type is
+for cases where lower numbers are much more likely, thus this results in more efficient packing. The size parameter
+can be any integer from 1 to 8 inclusive, although a VLI of 1 is just a normal unsigned byte.
+
+All values are stored in big-endian ordering.
+
+#### Basic Type Definitions
+
+Types are defined thusly:
+
+```
+Byte = UnsignedInteger(1)
+```
+
+This defines a `Byte` type that is a 1 byte sized `UnsignedInteger`. This is how this type is defined in the standard library available to all 
+definitions to use.
+
+More examples:
+
+```
+Long = UnsignedInteger(8)
+SignedLong = SignedInteger(8)
+Float = FloatingPoint(4)
+Double = FloatingPoint(8)
+```
+
+#### Aggregate Definitions
+
+Types can be of course aggregated in various ways. There's arrays written in Haskell style brackets:
+
+```
+String = [Character]
+```
+
+Arrays do not need to be a fixed size, but the size needs to be known for any given value. I.e. the size of the array
+precedes the array when serialized.
+
+There's structures:
+
+```
+LogLine = {
+   severity: Severity,
+   time: Timestamp,
+   line: String
+}
+```
+
+There's union types:
+
+```
+Boolean = False | True
+```
+
+And there's streams, which are potentially infinite sized values. For example a live video stream.
+
+```
+MediaContent = {
+   mediaType: String,
+   content: >>byte>>
+}
+```
+
+There can only be one stream per message, since one stream can be potentially infinite. A stream in any message will
+be sent last in the message, so all other data will be already available.
+
+#### Type Parameters
+
+Types can have parameters. For example this type has a value as parameter:
+
+```
+Measurement(unit: String) = Double
+```
+
+This `Measurement` type that is a measurement of something that can be expressed with a "unit". Volts, Amperes, Kg, %, etc. Since the type
+parameter is a value, it is essentially a constant and not a runtime value. It will not be encoded with the actual `Double` value.
+
+Types can have type parameters as well:
+
+```
+Option(contentType: Type) = Unit | contentType
+```
+
+Which defines the standard `Option` type to denote a potentially missing value. The union type can only unite other types not values.
+
+#### Constraints
+
+For all number types (all primitive types except `Unit`), following constraints are available:
+
+```
+TableLegNumber = Byte {1,2,3,4}
+```
+
+Or
+
+```
+TableLegNumber = Byte {1 to 4}
+```
+
+Or
+
+```
+TableLegNumber = Byte {min 1, max 4}
+```
+
+### Types Binary Representation
+
+This binary represenation is used by devices to tell other devices about data and command types, so it is parsed
+dynamically runtime by devices, but only once when they connect. It is therefore more important to have an easy
+parsing instead versus an efficient encoding.
+
+TODO
+
+### Values Binary Representation
+
+Values are sent between devices during runtime. It is what the network is designed for, therefore it is important
+to have the most space efficient encoding possible.
+
+TODO
+
+### Subset Determination
+
+When invvoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
+that value fits the type the command expects. These rules define when that is the case.
+
+TODO
+
+### Transformation Language
+
+Since this protocol does not define devices at all, the transformation language's goal is to make devices compatible, by
+being able to join current data and transform them into a proper format for a command invocation.
+
+TODO
+
+### Transformation Language Binary Representation
+
+The transformation program is sent to the devices dynamically and can be updated by the user at any time. All devices must support
+a VM to run these transformation programs in memory. The point of the binary representation is therefore to enable a very
+small VM implementation. Since these program are "just" statelessly transforming values, efficiency is less important than
+fitting small microcontrollers.
+
+TODO
+
 ## Internet Layer
 
 The internet layer supports basic network primitives based on IP-native means for the next layer.
