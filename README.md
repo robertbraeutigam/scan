@@ -95,181 +95,6 @@ devices. It has semantic rules, which constrains what messages may mean, in orde
 stability guarantees, such as guaranteed recovery from error states, recovery from network
 congestion, restarts, and other failure modes.
 
-## Type System
-
-An essential part of the protocol is a type system, which is not only used runtime by the devices,
-but its textual representation is used in the chapters below to describe certain data formats and
-network frames.
-
-This type system consist of following parts:
-* A human-readable textual representation
-* A binary representation of types
-* A binary representation of values
-* An algorithm to determine if a type defines a subset of values as another type
-* A human-readable transformation language to transform values to other values
-* A binary representation of a transformation
-
-### Type System Textual Language
-
-#### Primitive Types
-
-* Unit
-* FloatingPoint(size in bytes)
-* UnsignedInteger(size in bytes)
-* SignedInteger(size in bytes)
-* VariableLengthInteger(size in bytes)
-
-Type definitions may have parameters themselves as above. Type parameters may be other types or even values as above.
-
-The `FloatingPoint` type has a size parameter, which is either 4 or 8, corresponding to the standard IEEE float and double.
-
-The `UnsignedInteger` and `SignedInteger` numbers may have sizes of 1, 2, 4 or 8, corresponding to the usual number types:
-byte, word, int, long.
-
-The `VariableLengthInteger` is a number stored as a variable number of bytes.
-On each byte except the last the highest bit indicates that a byte still follows, which means
-the last byte may use the high bit for representing the value itself, it does not have to be 0. This type is
-for cases where lower numbers are much more likely, thus this results in more efficient packing. The size parameter
-can be any integer from 1 to 8 inclusive, although a VLI of 1 is just a normal unsigned byte.
-
-All values are stored in big-endian ordering.
-
-#### Basic Type Definitions
-
-Types are defined thusly:
-
-```
-Byte = UnsignedInteger(1)
-```
-
-This defines a `Byte` type that is a 1 byte sized `UnsignedInteger`. This is how this type is defined in the standard library available to all 
-definitions to use.
-
-More examples:
-
-```
-Long = UnsignedInteger(8)
-SignedLong = SignedInteger(8)
-Float = FloatingPoint(4)
-Double = FloatingPoint(8)
-```
-
-#### Aggregate Definitions
-
-Types can be of course aggregated in various ways. There's arrays written in Haskell style brackets:
-
-```
-String = [Character]
-```
-
-Arrays do not need to be a fixed size, but the size needs to be known for any given value. I.e. the size of the array
-precedes the array when serialized.
-
-There's structures:
-
-```
-LogLine = {
-   severity: Severity,
-   time: Timestamp,
-   line: String
-}
-```
-
-There's union types:
-
-```
-Boolean = False | True
-```
-
-And there's streams, which are potentially infinite sized values. For example a live video stream.
-
-```
-MediaContent = {
-   mediaType: String,
-   content: >>byte>>
-}
-```
-
-There can only be one stream per message, since one stream can be potentially infinite. A stream in any message will
-be sent last in the message, so all other data will be already available.
-
-#### Type Parameters
-
-Types can have parameters. For example this type has a value as parameter:
-
-```
-Measurement(unit: String) = Double
-```
-
-This `Measurement` type that is a measurement of something that can be expressed with a "unit". Volts, Amperes, Kg, %, etc. Since the type
-parameter is a value, it is essentially a constant and not a runtime value. It will not be encoded with the actual `Double` value.
-
-Types can have type parameters as well:
-
-```
-Option(contentType: Type) = Unit | contentType
-```
-
-Which defines the standard `Option` type to denote a potentially missing value. The union type can only unite other types not values.
-
-#### Constraints
-
-For all number types (all primitive types except `Unit`), following constraints are available:
-
-```
-TableLegNumber = Byte {1,2,3,4}
-```
-
-Or
-
-```
-TableLegNumber = Byte {1 to 4}
-```
-
-Or
-
-```
-TableLegNumber = Byte {min 1, max 4}
-```
-
-### Types Binary Representation
-
-This binary represenation is used by devices to tell other devices about data and command types, so it is parsed
-dynamically runtime by devices, but only once when they connect. It is therefore more important to have an easy
-parsing instead versus an efficient encoding.
-
-TODO
-
-### Values Binary Representation
-
-Values are sent between devices during runtime. It is what the network is designed for, therefore it is important
-to have the most space efficient encoding possible.
-
-TODO
-
-### Subset Determination
-
-When invvoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
-that value fits the type the command expects. These rules define when that is the case.
-
-TODO
-
-### Transformation Language
-
-Since this protocol does not define devices at all, the transformation language's goal is to make devices compatible, by
-being able to join current data and transform them into a proper format for a command invocation.
-
-TODO
-
-### Transformation Language Binary Representation
-
-The transformation program is sent to the devices dynamically and can be updated by the user at any time. All devices must support
-a VM to run these transformation programs in memory. The point of the binary representation is therefore to enable a very
-small VM implementation. Since these program are "just" statelessly transforming values, efficiency is less important than
-fitting small microcontrollers.
-
-TODO
-
 ## Internet Layer
 
 The internet layer supports basic network primitives based on IP-native means for the next layer.
@@ -284,7 +109,7 @@ packet based communication.
 
 Addressing uses native IP addresses.
 
-There can be multiple ways of configuring the SCAN device. However
+There can be multiple ways of configuring a device. However
 this configuration should be completely transparent for the layers above.
 
 Devices must reuse TCP connections, therefore
@@ -303,13 +128,13 @@ it can be a virtual local network that connects multiple devices, possibly throu
 
 ### Gateway-based Configuration
 
-Devices may support connecting through "Gateways". A "Gateway" is a SCAN "Logical Layer" level software or hardware
+Devices may support connecting through "Gateways". A "Gateway" is a "Logical Layer" level software or hardware
 device that does not necessarily have an "Application Layer" presence, i.e. it may be invisible
-to the SCAN network, but can present all the devices that connect to it.
+to the network, but can present all the devices that connect to it.
 
 In this scenario the software stack on the device that connects through a Gateway maps  operations thusly:
 
-* Connections are always made with the Gateway on port 11372 (the same SCAN port as above).
+* Connections are always made with the Gateway on port 11372 (the same port as above).
 * All devices are addressed over TCP through the same connection as above.
 
 In this case all communication is directed at the Gateway, which in turn reflects all information 
@@ -383,32 +208,24 @@ they must immediately close the logical connection with a dedicated "close" mess
 
 Devices may terminate the TCP connection without closing the logical connection. In this case the device is considered
 "connected" but "offline". Devices may become offline in case of network or device errors temporarily, or may become offline
-intentionally for enery saving purposes. Offline devices may reconnect and continue sending messages without additional handshakes.
+intentionally for energy saving purposes. Offline devices may reconnect and continue sending messages without additional handshakes.
 
 The initiating party must not retry opening connections more often than 10 times / minute, but may implement any heuristics
 to distribute those reconnects inside the minute.
 
-### Data Types
+### Frames
 
-A variable length integer (VLI) is a number stored as a variable number of bytes, in big-endian
-ordering. On each byte except the last the highest bit indicates that a byte still follows, which means
-the last byte may use the high bit for representing the value itself, it does not have to be 0.
+Frames are defined thusly:
 
-The "last" byte of a VLI is the 8th byte for the following chapters, but for the frames below VLI's last byte is the second one.
+```
+Frame = {
+   sourcePeer:      Option(PeerAddress)
+   destinationPeer: Option(PeerAddress)
+   content:         Union(Control, Payload, Advertisement)
+}
 
-### Frame Header
-
-All packets have the following header:
-
-* Header (1 byte) (clear-frame type is aad)
-* (optional) Source peer (32 bytes) (clear)
-* (optional) Destination peer (32 bytes) (clear)
-* Number of following bytes, excluding MIC (2 byte VLI) (clear)
-
-The header describes what this frame means and certain format parameters. It is organized as follows:
-* Bit 0-5: Frame type (see next chapters)
-* Bit 6: Whether the source peer is given
-* Bit 7: Whether the destination peer is given
+PeerAddress = Array(32, Byte)
+```
 
 The source is the sending peer's public identity key. The destination is the public identity key of the target device. 
 
@@ -426,39 +243,41 @@ Since a single logical connection may traverse multiple physical connections, wh
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
-### Frame types
+There is no explicit content delimiting. All peers, as well as intermediaries must be able to parse
+all message types. If a message type is unknown (parsing fails), a device must close the connection, although
+this shouldn't happen given the version number included in the handshake.
 
-Devices must ignore frame types they do not support. Ignoring a frame means to skip the given amount of
-bytes in the stream, and then sending back an "Ignored Frame" message.
+### Control Messages
 
-Frames are categorized into several intervals:
-* 0-15: Control messages. These are related to establishing or closing the connection.
-* 16-47: Payload messages, related to the actual payload of the communication.
-* 48-63: Messages that potentially are broadcast.
+```
+Control = Union(InitiateHandshake, ContinueHandshake, CloseConnection)
+```
 
-All payload messages (frames 16-47) will cause the encryption keys to be rotated. Each message will
-be sent with a completely new key for absolute forward security.
-
-All payload messages are encrypted and will include a MIC after the payload message. When skipping a frame,
-the appropriate MIC length of the established crypto need to be skipped as well. Note, this is not included
-in the length field.
-
-#### Frame type: 01 (Initiate Handshake)
+#### Initiate Handshake
 
 Sent from the initiator of the connection to establish a logical connection.
 If a physical connection does not exist yet, the initiator must open one first.
 The frame transmits the first handshake message together with the
 Noise Protocol Name.
 
-Payload structure:
-* Noise Protocol Name (string) (clear-prologue)
-* Handshake (byte array)
+```
+InitiateHandshake = {
+   noiseProtocolName: String
+   protocolVersion:   ProtocolVersion
+   handshake:         DynamicArray(Byte)
+}
+
+ProtocolVersion = Struct(
+   major: Byte,  // 1 for this document, increased on incompatible changes
+   minor: Byte   // 1 for this document, increased only on backwards compatible change
+)
+```
 
 The Noise Protocol Name is the exact protocol used for the following handshake
 and data exchange. If the recipient disagrees with the protocol it must close the
 logical connection.
 
-The protocol name has to be included in the *prologue* of the Noise Handshake to
+The protocol name, as well as the versions have to be included in the *prologue* of the Noise Handshake to
 make sure it has not been tampered with.
 
 All devices must support the following protocols:
@@ -515,92 +334,113 @@ or use a temporary ban list, etc. Devices are not required to permanently store 
 
 Both the sender and destination identifier must be present in this frame.
 
-#### Frame type: 02 (Continue Handshake)
+#### Continue Handshake
 
 Sent potentially by both parties. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
 and continue in turn until the connection is established based on the initially selected
 protocol variant.
 
-Payload structure:
-* Handshake (byte array)
+```
+ContinueHandshake = {
+   handshake: DynamicArray(Byte)
+}
+```
 
-#### Frame type: 03 (Close Connection)
+#### Close Connection
 
 Both parties may send this message to terminate the logical connection. After this message
 all keys and state information about the connection can be discarded.
 
-This message has no payload.
+```
+CloseConnection = Struct(
+   protocolVersion: ProtocolVersion,
+   reason: String
+)
+```
 
-#### Frame type: 15 (Ignored Frame)
+The close message contains the protocol version to detect a version mismatch, as well as
+a diagnostic, human readable reason for closing the connection.
 
-Both parties may send this message to indicate that the given frame type was not known,
-therefore was ignored and skipped.
+### Payload Messages
 
-Payload structure:
-- Frame type (byte)
+```
+Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
+```
 
-This message supports a backward-compatible upgrade path of the protocol. Future versions may
-decide to add new message types, and may fall back to an earlier version of the protocol, if
-this frame is received.
+#### Intermediate Payload Chunk
 
-#### Frame type: 17 (Application Message Intermediate Frame)
-
-A part of an application message, including the initial frame, but not the last frame. This frame indicates
-that the message is not complete, additional frames will follow for this message.
+A part of an application message, including the initial chunk, but not the last chunk. This frame indicates
+that the message is not complete, additional chunks will follow for this message.
 
 The actual payload of the application layer is described in the next chapters. This message
 may be sent by both the initiator and responder.
 
-Payload structure:
-* Message Id (variable length integer, clear-aad)
-* Payload (encrypted)
+Structure:
+
+```
+IntermediatePayloadChunk = Struct(
+   messageId: VariableLengthInteger(8),
+   payload:   DynamicArray(Byte) // Encrypted value
+```
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
-out of sync, messages were omitted or repeated, the connection must be closed.
+out of sync, messages were omitted or repeated, or parsing failed, the connection must be closed.
 
 All encryption happens with "nonce" of all zero. Note, that each message encryption will use a completely
 new key, so the nonce is superfluous.
 
-If a message is too large to fit
-into one Application Message frame, it must be fragmented, with each fragment having the
-same Message Id. A sender may also choose to fragment messages for other reasons, for example
+Chunks are a mechanism to split messages that are too large to fit into one frame into multiple
+chunks. Each chunk of the same message must have the same message Id.
+A sender may also choose to chunk messages for other reasons, for example
 to get video frames that are already available quicker to the receiver to reduce lag.
 
-The Message Id identifies this message and all frames it consists of. Message Ids should
+The Message Id identifies this message and all chunks it consists of. Message Ids should
 be re-used to be able to keep the Id low and in one byte. All values for which
-a Last Frame has been sent must be considered re-usable.
+a last chunk has been sent must be considered re-usable.
 
-#### Frame type: 18 (Application Message Last Frame)
+#### Last Payload Chunk
 
-The last frame of an application message. This frame may also be potentially the first and only
-frame the message has, although in this case the Single Frame Application Message should be preferred.
+The last chunk of an application message. This chunk may also be potentially the first and only
+chunk the message has, although in this case the below frame should be preferred.
 It indicates that the application message identified by Message Id is complete with this payload.
 
 Payload structure:
-* Message Id (variable length integer, clear-aad)
-* Payload (encrypted)
+```
+LastPayloadChunk = Struct(
+   messageId: VariableLengthInteger(8),
+   payload:   DynamicArray(Byte) // Encrypted value
+```
 
 Encryption and key management is the same as for intermediate frames.
 
 The Message Id used in this frame must be considered reusable after this frame is sent.
 
-#### Frame type: 19 (Single Frame Application Message)
+#### Single Chunk Payload
 
-An application message that fits a single frame.
+An application message that fits a single chunk.
 
-Payload structure:
-* Payload (encrypted)
+```
+SingleChunkPayload = Struct(
+   payload:   DynamicArray(Byte) // Encrypted value
+```
 
 Encryption and key management is the same as for intermediate frames.
 
-#### Frame type: 49 (Identity Announcement)
+### Advertisement
+
+```
+Advertisement = IdentityAnnouncement
+```
+
+#### Identity Announcement
 
 Announces the identity or identities represented by a device. Every device must send
 identity announcements approximately once per second.
 
-Payload structure:
-* Static keys... (32 bytes each)
+```
+IdentityAnnouncement = DynamicArray(PeerAddress, max=16)
+```
 
 This message announces to all peers that these static keys are reachable at
 the address this frame is from. A device, such as a gateway,
@@ -618,13 +458,14 @@ The identity announcement also doubles as keep-alive messages in addition to tra
 between IP address and static public address of logical devices. If a device misses 3 identity announcements
 it must be considered *offline* from the network. Devices should not attempt to send anything to devices
 considered *offline*. Such a device may re-establish the internet connection at a later point in time 
-without doing a new logical handshake. It may just continue to send messages normally, as if nothing had happened.
+without initiating a new logical handshake. It may just continue to send messages normally, as if nothing had happened.
 
 Note however, devices are not required to be able to persist connection information, and may even handle
 offline devices with closing the connection and forgetting the keys altogether.
 
 If, after a device has been *offline*, cryptographic keys become out of sync, or those keys simply no longer exist, the connection must be closed,
-forcing the initiator to establish a new logical connection with new keys.
+forcing the initiator to establish a new logical connection with new keys. This also means that a receiver must send a close
+connection frame on unsolicited application message frames.
 
 When sending to a gateway, this packet may be sent over TCP/IP directly to the gateway. The gateway
 must announce itself to a connected device as all logical devices that are behind it.
