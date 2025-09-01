@@ -613,7 +613,7 @@ The Controlled devices send this message as soon as a connection is established 
 
 ```
 Capabilities = {
-   version: Version,
+   protocolVersion:    ProtocolVersion,
    deviceDefinition:   DeviceDefinition
    dataDefinitions:    DynamicArray(InterfaceDefinition)
    commandDefinitions: DynamicArray(InterfaceDefinition)
@@ -626,7 +626,6 @@ DeviceDefinition = {
    deviceId: String                   // Vendor specific/internal id
    deviceURI: Optional(String)        // A website describing the device
    firmwareVersion: Long              // Monotonically increasing firmware version number
-   protocolVersion: ProtocolVersion   // The protocol version used by the Controlled device
    vendorName: String                 // Vendor's name
    vendorId: String                   // Vendor's id
    vendorURI: Optional(String)        // Vendor's website
