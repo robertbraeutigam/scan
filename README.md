@@ -246,10 +246,8 @@ Since a single logical connection may traverse multiple physical connections, wh
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
-FIXME: Wrong! In termediaries don't know all types!
-
 There is no explicit content delimiting. All peers, as well as intermediaries must be able to parse
-all message types. If a message type is unknown (parsing fails), a device must close the connection, although
+all message types on this layer. If a message type is unknown (parsing fails), a device must close the connection, although
 this shouldn't happen given the version number included in the handshake.
 
 ### Control Messages
