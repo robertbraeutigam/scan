@@ -372,6 +372,12 @@ a diagnostic, human readable reason for closing the connection.
 
 ```
 Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
+
+// Used later
+EncryptedPayload = Struct(
+   payload:   DynamicArray(Byte),
+   mac:       Array(16, Byte)
+)
 ```
 
 #### Intermediate Payload Chunk
@@ -386,8 +392,8 @@ Structure:
 
 ```
 IntermediatePayloadChunk = Struct(
-   messageId: VariableLengthInteger(8),
-   payload:   DynamicArray(Byte) // Encrypted value + MAC
+   messageId:          VariableLengthInteger(8),
+   encryptedPayload:   EncryptedPayload
 ```
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
@@ -414,8 +420,8 @@ It indicates that the application message identified by Message Id is complete w
 Payload structure:
 ```
 LastPayloadChunk = Struct(
-   messageId: VariableLengthInteger(8),
-   payload:   DynamicArray(Byte) // Encrypted value + MAC
+   messageId:          VariableLengthInteger(8),
+   encryptedPayload:   EncryptedPayload
 ```
 
 Encryption and key management is the same as for intermediate frames.
@@ -427,25 +433,18 @@ The Message Id used in this frame must be considered reusable after this frame i
 An application message that fits a single chunk.
 
 ```
-SingleChunkPayload = Struct(
-   payload:   DynamicArray(Byte) // Encrypted value + MAC
+SingleChunkPayload = EncryptedPayload
 ```
 
 Encryption and key management is the same as for intermediate frames.
 
 ### Advertisement
 
-```
-Advertisement = IdentityAnnouncement
-```
-
-#### Identity Announcement
-
 Announces the identity or identities represented by a device. Every device must send
 identity announcements approximately once per second.
 
 ```
-IdentityAnnouncement = DynamicArray(PeerAddress, max=16)
+Advertisement = DynamicArray(PeerAddress, max=16)
 ```
 
 This message announces to all peers that these static keys are reachable at
