@@ -620,6 +620,7 @@ The Controlled devices send this message as soon as a connection is established 
 Capabilities = {
    protocolVersion:    ProtocolVersion,
    deviceDefinition:   DeviceDefinition
+   typesDefinitions:   DynamicArray(Byte)  // Compiled type definitions
    dataDefinitions:    DynamicArray(InterfaceDefinition)
    controlDefinitions: DynamicArray(InterfaceDefinition)
 }
@@ -639,7 +640,7 @@ DeviceDefinition = {
 InterfaceDefinition = Struct(
    name:        String,
    descirption: Markdown,
-   dataType:    DynamicArray(Byte)    // Serialized type definition
+   typeName:    String     // Name of the type
 )
 ```
 
