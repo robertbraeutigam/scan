@@ -246,6 +246,8 @@ Since a single logical connection may traverse multiple physical connections, wh
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
+FIXME: Wrong! In termediaries don't know all types!
+
 There is no explicit content delimiting. All peers, as well as intermediaries must be able to parse
 all message types. If a message type is unknown (parsing fails), a device must close the connection, although
 this shouldn't happen given the version number included in the handshake.
@@ -398,9 +400,6 @@ IntermediatePayloadChunk = Struct(
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, messages were omitted or repeated, or parsing failed, the connection must be closed.
-
-All encryption happens with "nonce" of all zero. Note, that each message encryption will use a completely
-new key, so the nonce is superfluous.
 
 Chunks are a mechanism to split messages that are too large to fit into one frame into multiple
 chunks. Each chunk of the same message must have the same message Id.
