@@ -598,13 +598,13 @@ for the same data sequentially.
 Request to set a control on the Controlled device.
 
 ```
-SetControl(valueType) = Struct(
+SetControl = Struct(
    controlIndex: VariableLengthInteger(8),
-   value:        valueType
+   value:        DynamicValue
 )
 ```
 
-The value type for this control comes from the capabilities of the Controlled device.
+The value type is dynamically set at the time of sending, since it depends on the control being sent.
 
 ### Controlled Device Messages
 
@@ -648,9 +648,9 @@ InterfaceDefinition = Struct(
 Send data values as requested by a subscription from the Controller.
 
 ```
-Data(valueType) = Struct(
+Data = Struct(
    dataIndex: VariableLengthInteger(8),
-   value: valueType
+   value:     DynamicValue
 )
 ```
 
