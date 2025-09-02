@@ -255,10 +255,10 @@ Control = Union(InitiateHandshake, ContinueHandshake, CloseConnection)
 
 #### Initiate Handshake
 
-Sent from the initiator of the connection to establish a logical connection.
-If a physical connection does not exist yet, the initiator must open one first.
+Sent first from the initiator of the connection to establish a logical connection.
+If a physical connection does not exist yet, the initiator must try to open one first.
 The frame transmits the first handshake message together with the
-Noise Protocol Name.
+Noise Protocol Name and version of the logical layer.
 
 ```
 InitiateHandshake = {
@@ -279,6 +279,9 @@ logical connection.
 
 The protocol name, as well as the versions have to be included in the *prologue* of the Noise Handshake to
 make sure it has not been tampered with.
+
+If the responder disagrees with the version or the Noise protocol, it may respond with and Initial Handshake
+of its own with the counter proposal. If the initiator does not agree, the handshake failed.
 
 All devices must support the following protocols:
 
@@ -755,7 +758,8 @@ The Quality of Service of SCAN is not as clear-cut as "At most once", "At least 
 or "Exactly Once". That is because the purpose of the network is not just delivering data for its own sake,
 but *controlling* devices based on the most current data available.
 
-SCAN guarantees that *the most current data* is delivered *as fast as possible* at all times.
+SCAN guarantees that *the most current data* is delivered *as fast as possible* at all times, i.e.
+that the correct controls will be *eventually applied* in the face of temporary errors.
 
 The first part of that guarantee is that at least the most current data for each modality *will*
 be delivered eventually. That means if there is a new piece of data or there is a new command
@@ -842,218 +846,6 @@ from the other party.
 consecutive data items (or commands) can be replaced with the latest one without altering
 the meaning of the stream.
 * **Operator**: A human user configuring the network and/or devices.
-
-## Appendix B: Types
-
-SCAN has a tiered type system. This means types are defined on multiple tiers (layers), where
-each tier is using the tier below to define itself. The lower tiers are more technical and generic,
-while upper tiers are richer in semantics, but narrower in usage.
-
-The purpose of this tiered system is for devices to define as much meaning as possible for each
-data element or command parameter. Even if the corresponding meaning is not found on a given
-level, there may be an appropriate lower level meaning to be found.
-
-All of these types on all Tiers may be extended by later specifications. However, they are
-created in a way that devices may simply ignore or skip values they don't understand. 
-
-A type is always defined with at least the primitive type that specifies the physical length
-of the value and some minimal semantics, whether it is a number of string, etc. All the layers
-above are optional and only add context and meaning to this one value, with the top layer
-actually defining the exact use for the specific application at hand.
-
-So to full define a type, the following structure is used (Type Definition):
-* VLI, the length of following bytes
-* Tier 0 code (1 byte), the actual primitive type of the value under definition.
-* Tier 1 code (1 byte), the format of the value or how to interpret it.
-* Tier 2 code (1 byte), the usage-specific semantics of the value.
-* Tier 1 definition of the Tier 2 type (length depending on Tier 1 code)
-* Tier 3 code (1 byte), the application specific semantics
-
-### Tier 0: Primitive Types
-
-Value Types are the actual values in data messages or actual parameter values for invoking
-a command. All following Tiers just add more meaning but don't change the actual format described
-here.
-
-All value types are defined in 1 byte, where the byte itself is organized as follows:
-- Bit 7-5: The size of the value
-- Bit 4-0: How the bytes are to be interpreted.
-
-The size of the value may be the following:
-* 0 = Value will start with an max 8-byte VLI that will define its size.
-* 1 = 1 Byte
-* 2 = 2 Byte
-* 3 = 4 Byte
-* 4 = 8 Byte
-* 5 = Unused
-* 6 = Unused
-* 7 = VLI
-
-Following interpretations are available for the above sizes:
-* 0 = Byte Array
-* 1 = String (UTF-8 characters)
-* 2 = Unsigned big-endian number
-* 3 = Signed big-endian number
-* 4 = Floating Point Number
-* 5 = Boolean (0=False, 1=True)
-
-Note, that there are some combinations that are not defined and must produce an error when encountered:
-* Boolean is only defined for 1 byte.
-* Floating point is only defined for 4-byte (single) or 8-byte (double) precision.
-* Numbers are only defined for 1 to 8 bytes.
-
-### Tier 1: Definition Types
-
-These are types that have enough meaning to be used in definitions. This is the minimal meaning
-all data packet elements and command parameters must carry.
-
-These are the currently supported Definition Types:
-
-| Name                | Code    | Definition  | Tier 0      | Description                                      | Example Semantic  |
-|---------------------|---------|-------------|----------------|--------------------------------------------------|-------------------|
-| Media-Type          |       1 | String (the Media-Type name) | Byte Stream | Format is defined by the given Media-Type. Note that this type is opaque for SCAN, therefore no parameters can be defined here. | Video stream.
-| Defd. Number Enum   |       2 | Tier 0 Code, Count (variable length numer), Values (Count number of values of specified Type) | Integer (Index of value) | A predefined set of number values. | Presence, Switch state, Multi-state switch state. |
-| Undef. Number Enum  |       3 | Tier 0 Code | (As specified)  | A dynamic or larger, but bound set of number values. | I2C Address. Or even IP address, if known to be bound for use-case. Window name (for String). |
-| Measurement         |       4 | Unit (See Appendix.)  | Double | A measured value of some unit. | Voltage of a pin, temperature, remaining battery capacity. |
-| Measurement Aggregate |     5 | Id of parent Measurement, Aggregate Type (01-Min, 02-Max, 03-Avg, 04-Count of measurements that were aggregated) | Double | A measured or calculated minimum of the given parent measurement over a context/description-defined time period. | Voltage of a pin, temperature, remaining battery capacity. |
-| Localized String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Markdown             |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Arbitrary String    |       6 | Empty       | String         | Arbitrary, unlimited value set string. | Current status localized string. Manufacturer name. |
-| Unix Timestamp      |       7 | Empty       | Integer     | Unix timestamp with millisecond precision. | Effective date, Billing date. Last update time. |
-
-The "Definition" column specifies what parameters this type requires for the definition in a Data Packet.
-
-### Tier 2: Usage Types
-
-Types that are usage specific, but are generic enough to be not application specific. It is *not necessary* for a device to use
-usage types, all types can be ad-hoc defined.
-
-Devices should however use usage types wherever they can to make *wiring*
-easier for an operator.
-
-| Name             | Code    | Tier 1           | Description                                      |
-|------------------|---------|------------------|-------------------------------------------------|
-| None             |       0 | Any              | No defined usage type applies to the data at hand. |
-| On-Off           |       1 | Enum 0=Off, 1=On | Indicates an operational status of either on or off. |
-| Latitude         |       2 | Measurement, deg | |
-| Longitude        |       3 | Measurement, deg | |
-
-TODO: Manufacturer Name
-TODO: Add constraints to Lat/Long ? And other stuff.
-
-### Tier 3: Application Types
-
-The purpose of application types is for the device to express what a data element
-or a command parameter means *in the current application*. It
-is *not necessary* for a device to use application types. Nor is it necessary for
-a device to know these.
-
-Application types are merely a *convenience* to enable easy *wiring* of data and
-commands. Even without them operators are still perfectly capable
-of connecting data and commands based on their understanding.
-
-| Name             | Code    | Tier 2          | Description                            |
-|------------------|---------|-----------------|----------------------------------------|
-| None             |       0 | Any             | Data element has no defined type specific to this application. Use when no application types apply. |
-| Main Power       |       1 | On-Off          | The power state of the whole system. Use when the power state of the whole system represented by the SCAN network is involved, if there is such a thing.              |
-| Misc. Power      |       2 | On-Off          | Power state of a part of the system. Use for miscellaneous power states across the system if no more appropriate semantics can be applied.                         |
-
-## Appendix C: Unit System
-
-The Unit System of SCAN describes what Units (in the general sense, not strictly in the SI sense)
-can be used for measured values. Examples include: m³, kg, bit, m³/h, %, etc.
-
-The SCAN Unit System is not a complete SI-derived system. It is specifically designed to be easy
-to use, minimal as possible and customizable. Dimensions (such as Power, Current, etc.) are not defined
-at all. Instead each measurement must define the exact Unit its values are published in, or for a command,
-define what unit the values are expected in. Possible conversion happens in the wiring, not in the device
-itself. The device itself does not have to convert, validate or calculate between units.
-
-Whether the units are "compatible" is also not explicitly defined in this specification. It is left
-up to the wiring software or the human operator to figure out how to convert between compatible
-units or indeed to determine whether two units are compatible in the first place. Devices do not have to
-include any of this knowledge, instead must execute the wiring as configured and should assume that the
-result of any calculation given there will match the unit defined by the receiver.
-
-Prefixes or prefix multipliers, like Kilo, Mega, Milli, KiBi, etc. are also not defined. Definitions
-can instead contain literal values matching the desired multiplier. Presenting devices may choose to
-interpret and show corresponding multiplier symbol if needed.
-
-This specification defines mostly Base Units only (some are actually derived units, but are included for convenience anyway)
-and a description language to arbitrarily combine Base Units
-and Scalar values.
-
-All values for all units are typed double (that is, 8 bytes).
-
-### Base units
-
-|   Code |   Symbol | Description                       |
-|--------|----------|-----------------------------------|
-|      1 |        m | meter                             |
-|      2 |        g | gram                              |
-|      3 |        s | second                            |
-|      4 |        A | ampere                            |
-|      5 |        K | kelvin                            |
-|      6 |        C | degrees Celsius                   |
-|      7 |       cd | candela                           |
-|      8 |      mol | mole                              |
-|      9 |       Hz | hertz                             |
-|     10 |      rad | radian                            |
-|     11 |      deg | degree                            |
-|     12 |       sr | steradian                         |
-|     13 |        N | newton                            |
-|     14 |       Pa | pascal                            |
-|     15 |        J | joule                             |
-|     16 |        W | watt                              |
-|     17 |        C | coulomb                           |
-|     18 |        V | volt                              |
-|     19 |        F | farad                             |
-|     20 |      Ohm | ohm                               |
-|     21 |        S | siemens                           |
-|     22 |       Wb | weber                             |
-|     23 |        T | tesla                             |
-|     24 |        H | henry                             |
-|     25 |       lm | lumen                             |
-|     26 |       lx | lux                               |
-|     27 |       Bq | becquerel                         |
-|     28 |       Gy | gray                              |
-|     29 |       Sv | sievert                           |
-|     30 |      kat | katal                             |
-|     31 |        l | liter                             |
-|     32 |      bit | bit                               |
-|     33 |        B | Byte                              |
-|     34 |       pH | pH                                |
-|     35 |       dB | decibel                           |
-|     36 |      dBm | decibel relative to 1 mW          |
-|     37 |    count | 1                                 |
-|     38 |    ratio | 1                                 |
-|     39 |       VA | volt-ampere                       |
-|     40 |      var | volt-ampere reactive              |
-
-### Unit description
-
-The unit description is a reverse polish notation format expression of units and constants. It is used
-to express the exact type of measurement or input in a machine readable format.
-It is capable of describing derived units that are multiplications or divisions
-of other units or constants. It can not describe offset or logarithmic relationships.
-
-The format is:
-* Length of bytes following (variable length integer)
-* Description bytes
-
-Where description bytes are a sequence of the following possible phrases:
-* Put Base Unit Code (1 byte value less than 250) on the stack
-* Value 250, followed by a double value for putting a constant on the stack
-* Value 251, multiply the top 2 things on the stack
-* Value 252, divide the top 2 things on the stack
-
-For example "g" (gram) would be written: 01 (length) 02 (base code for gram)
-
-"Kg" (kilogram) would be: 0B (length) 250 (constant follows) 1000d (1000 in double format) 02 (base code for gram) 251 (multiply)
-
-Derived units, both multipliers and the units themselves should be formulated in the order
-its most commonly used in for easier consumption. I.e. "Kg" should be 1000 g * and
-"kmh" should be 1000 m * 3600 s * /.
 
 ## Appendix D: Wiring Language
 
@@ -1253,64 +1045,4 @@ long as it results in the same values.
 
 If there are any errors while evaluating a wiring script an error must be raised with the predefined
 error data type.
-
-## Appendix: Type System
-
-Types in this chapter are described with a pseudo-language inspired by ASN.1. In general it has a few primitive types,
-ways to combine primitive types together, and it also describes how to serialize such a definition into bytes that
-can be transmitted over the network.
-
-This specification uses this pseudo-language to describe types. Type definitions in actual devices will always
-use concrete types in serialized format instead of this language.
-
-#### Primitive Types
-
-The type system supports following primitive types:
-* Boolean
-* UnsignedInteger (1,2,4 or 8 bytes, or VLI, big-endian)
-* SignedInteger (1,2,4 or 8 bytes, two-complementer format)
-* Real (4 or 8 bytes, standard single or double precision)
-
-All types except Boolean have the option to be different sizes. Concrete types need to indicate the size
-using parentheses, for example: UnsignedInteger(4), Real(8) or UnsignedInteger(VLI).
-
-#### Complex Types
-
-The following combinators are available to assemble complex types:
-* struct: A structure of a fix number of fields that each have their own type.
-* union: A single type that may contain values of any of the contained types, which must be disjunct.
-* enum: A single type that can have values from the contained values, which all need to be of the same type.
-* sequence: A limited amount of values of the same type. The limit might be statically or runtime fixed.
-* stream: An unlimited amount of values of the same type.
-
-##### Struct
-
-A struct has a name and contains named fields, for example:
-
-```
-struct Clock {
-  hour: UnsignedInteger(1)  
-}
-```
-
-## Appendix E: Communication Examples
-
-This addendum shows "physical" TCP/IP payloads for certain selected / common use-cases.
-
-Note for all examples: Payload bytes (except for MIC) are always encrypted with symmetric cipher, even though they are shown here as clear text.
-
-### Data coming from a Light
-
-Full state information coming from a two-state light that is either on or off. We assume the logical connection is already established:
-
-Bytes:
-* 18 (1 Byte): This is the frame for single-frame application messages, since our message will fit in 64K. Also, we assume that no other logical connections are
-present, thus we don't have to include the sender or receiver address.
-* 05 (1 Byte): The number of bytes following.
-* 02 (1 Byte): Indicate that his is the "Data" package presumably as a response to an earlier "Stream Data" request by the initiator.
-* 00 (1 Byte): Identifies the "Data Packet" this Light defined in the "Options" response.
-* 00 (1 Byte): Identifies the data element in the packet.
-* 01 (1 Byte): Length of data follows.
-* 00 (1 Byte): Enum value of 0, indicating "off"
-* MIC (16 Bytes): Message integrity code. Makes sure the message has not been tampered with. We assume the default Noise Protocol.
 
