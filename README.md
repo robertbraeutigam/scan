@@ -47,8 +47,8 @@ The SCAN protocol is divided into four layers:
 
 - Internet Layer (Packet Communication and Announcement over IP)
 - Logical Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
-- Data/Command Layer (Subscribing to Data and issuing Commands)
-- Application Layer (Required and common Data and Command definitions, including Wiring)
+- Data/Control Layer (Subscribing to Data and setting Controls)
+- Application Layer (Required and common Data and Control definitions, including Wiring)
 
 The Internet Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
 packets between devices and enables announcements. It supports different IP topologies, including
@@ -59,19 +59,22 @@ for communications between devices. Devices are identified, addressed based on s
 of hardware addresses and communicate point to point using a packet-based protocol that supports easy
 multiplexing as well as unlimited length streaming messages.
 
-The Data/Command Layer adds minimal quasi-request-response based interface that enables:
+The Data/Control Layer adds minimal quasi-request-response based interface that enables:
 
 * Subscribing to *data* emitted by devices, which are a stream of changes in the state of the device.
-* Invoking *commands*, which may change the state of the device.
+* Setting *controls*, which may change the state of the device.
 
-The application layer defines common data elements and commands that are either optional
-or required for every device, such as setting up roles, resetting, unified software update command,
-debugging and logging commands and data, and most notably wiring.
+The application layer defines common data elements and controls that are either optional
+or required for every device, such as setting up roles, resetting, unified software update control,
+debugging and logging controls and data, and most notably wiring.
 
 Wiring is an application layer tool that describes how devices interoperate. It describes which
-data from which devices invokes which commands at what other devices and it can also describe
-how to transform data to be compatible with the required command or transform a command to be
-compatible with data.
+data from which devices sets which controls at what other devices and it can also describe
+how to transform data to be compatible with the required control.
+
+Controls are a slightly different concept than *commands*. Even though they can be invoked in a
+set-and-forget way on occasion like commands, the intended usage of controls through wiring is that they are *bound* to data, i.e. state,
+coming from other devices. This means they will be eventually consistent with the data they are bound to.
 
 ### Operational Summary
 
@@ -83,7 +86,7 @@ option is available if needed.
 
 SCAN devices from the "factory" need to be provisioned first, which means that they need
 to generate a new key for the administrator (the end-user) to use. After they are provisioned,
-they can be *wired* to get data from, or send commands to another device or multiple other
+they can be *wired* to get data from, or set controls on another device or multiple other
 devices.
 
 Provisioning and wiring is done by the end user. Although most of this requires simple drag-and-drop
@@ -315,7 +318,7 @@ domain, i.e. they all are only as strong as the weakest device that has that key
 Every device must come with a unique PSK already set up for its initial or following enrollments.
 This permanent "factory PSK" must not be allowed to be used for anything else other than setting up a
 new administrative (full access) PSK, when the device is being enrolled by the end-user.
-This is a command each device must support (see relevant chapter). During this process however, the device
+This is a control each device must support (see relevant chapter). During this process however, the device
 should reset all state to factory defaults and purge all information potentially
 stored on the device. This way the protocol guarantees, that the device will always
 generate a previously unknown PSK for usage, but still allow the user to recover / re-enroll
@@ -529,7 +532,7 @@ If an IP address can not be found for a given identity key, the connection can n
 Devices may choose to display this to the user if capable, or may send specific error events through
 other logical connections.
 
-## Data/Command Layer
+## Data/Control Layer
 
 The Initiator of the logical connection is called a Controller Device on this layer, while the Responder
 is called the Controlled Device. A single logical connection only allows for one side to be the Controller.
@@ -543,11 +546,11 @@ but will nonetheless assume the role of the "Controller" for the purposes of thi
 
 This layer enables the Controller to perform following actions on the Controlled device:
 * Subscribe to data
-* Execute commands
+* Set controls
 
-Subscribing to data means to get a stream of values conforming to a given Data Type, while executing
-a command means to submit a value of a certain Data Type as an argument to a given command. In both cases
-getting a single data element or executing a single command call will involve a single, albeit possibly complex, value.
+Subscribing to data means to get a stream of values conforming to a given Data Type, while settings a
+control means to submit a value of a certain Data Type as an argument. In both cases
+getting a single data element or executing a single control call will involve a single, albeit possibly complex, value.
 
 Immediately after establishing the lower layer connection, the Controlled must send its capabilities to the Controller.
 These capabilities must not change during the whole life of the connection.
@@ -559,7 +562,7 @@ The Controller may not send any messages before the Capabilities is received.
 ### Controller Device Messages
 
 ```
-ControllerMessage = Union(StreamData, InvokeCommand)
+ControllerMessage = Union(StreamData, SetControl)
 ```
 
 #### Stream Data
@@ -591,23 +594,23 @@ be used to request one data message, essentially imitate a pull-based approach.
 The Controlled Device must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
-### Invoke Command
+### Set Control
 
-Request to invoke a command on the Controlled device.
+Request to set a control on the Controlled device.
 
 ```
-InvokeCommand(valueType) = Struct(
-   commandIndex: VariableLengthInteger(8),
+SetControl(valueType) = Struct(
+   controlIndex: VariableLengthInteger(8),
    value:        valueType
 )
 ```
 
-The value type for this command comes from the capabilities of the Controlled device.
+The value type for this control comes from the capabilities of the Controlled device.
 
 ### Controlled Device Messages
 
 ```
-ControlledMessages = Union(Capabilities, Data, InvokeResponse)
+ControlledMessages = Union(Capabilities, Data, ControlResponse)
 ```
 
 #### Capablities
@@ -619,7 +622,7 @@ Capabilities = {
    protocolVersion:    ProtocolVersion,
    deviceDefinition:   DeviceDefinition
    dataDefinitions:    DynamicArray(InterfaceDefinition)
-   commandDefinitions: DynamicArray(InterfaceDefinition)
+   controlDefinitions: DynamicArray(InterfaceDefinition)
 }
 
 // Describes device specific information to identify the device
@@ -663,41 +666,41 @@ Note also, that this semantic may include a month-end meter value for example. "
 values are allowed, as long as this does not mix with "current" values. I.e. it has to have its own
 data definition, as it has its own modality.
 
-#### Invoke Response
+#### Control Response
 
-Used by the Controlled device to optionally indicate the rate the given command can be invoked.
+Used by the Controlled device to optionally indicate the rate the given control can be set.
 
 ```
-InvokeResponse = Struct(
-   commandIndex: VariableLengthInteger(8),
+ControlResponse = Struct(
+   controlIndex:    VariableLengthInteger(8),
    minimumSendWait: Duration
 )
 ```
 
-Same as the similarly named attribute in the data streaming request, it controls the minimum waiting time the command can be invoked.
-The Controller must honor this rate and never invoke the command more frequently than given.
+Same as the similarly named attribute in the data streaming request, it controls the minimum waiting time the control can be set.
+The Controller must honor this rate and never set the control more frequently than given.
 
 Controlled devices are not required to send this response, or they may send it multiple
 times. The Controller must honor the latest received maximum rate at all times.
 
-The Controller may proceed to invoke the command at any rate until the Controlled
+The Controller may proceed to set the control at any rate until the Controlled
 explicitly answers with a given rate. The Controlled is also free to skip certain
-command invocations, if it can be immediately replaced with a newer one.
+control settings, if it can be immediately replaced with a newer one.
 
 ## Technical Discussions
 
 ### The Resolution Principle
 
-In SCAN any piece of data or command must be replaceable by newer versions
-of the same data or command.
+In SCAN any piece of data or control must be replaceable by newer versions
+of the same data or control setting.
 
-This means that any stream of data or commands *for the same thing*
+This means that any stream of data or control *for the same thing*
 may be simply substituted by the last (newest) element. In other words, losing messages
 will only decrease the *resolution*, not change the *meaning*.
 
 "The same thing" is called a *modality* for the purposes of this specification. A *modality*
 is a single semantic entity on the device. A single physical sensor or a single logical
-entity that emits data or commands. For a modality any emitted data makes any old data
+entity that emits data or control. For a modality any emitted data makes any old data
 from the same modality obsolete for the purposes of determining the state of the modality.
 
 An example would be submitting the current value of a thermistor, the current
@@ -714,7 +717,7 @@ and must be adhered to at all times.
 
 For the above to work the device must also make sure that the newest message does
 actually get delivered. So in the case of connection loss all devices must
-send all relevant newest data and/or commands immediately upon the connection is established
+send all relevant newest data and/or control values immediately upon the connection is established
 and the data is requested again.
 
 This applies also to the case if the device itself crashes and gets restarted. The device
@@ -762,8 +765,8 @@ SCAN guarantees that *the most current data* is delivered *as fast as possible* 
 that the correct controls will be *eventually applied* in the face of temporary errors.
 
 The first part of that guarantee is that at least the most current data for each modality *will*
-be delivered eventually. That means if there is a new piece of data or there is a new command
-it will not get lost, only possibly replaced by an even newer piece of data or command for that same modality.
+be delivered eventually. That means if there is a new piece of data or there is a new control value
+it will not get lost, only possibly replaced by an even newer piece of data or control for that same modality.
 This holds under all circumstances, even in the face of network errors and intermediaries having random errors.
 
 This is easy to prove using the following observations:
@@ -790,12 +793,12 @@ but perhaps more importantly it is to provide a way to
 synchronize the producers with the consumers to guarantee the most recent measurements
 are available at the right time, with almost no communication overhead.
 
-SCAN networks can form a complex graph of devices communicating, issuing data and commands to each other.
-Rate Limiting is the way SCAN ensures that throughout all processing chains data and commands
+SCAN networks can form a complex graph of devices communicating, issuing data and setting controls on each other.
+Rate Limiting is the way SCAN ensures that throughout all processing chains data and controls
 are generated at _exactly_ the same rate as they are consumed throughout the whole chain, _and_ at the
 exact right time.
 
-For example, if one device specifices that a command only need to be invoked once per second, it's
+For example, if one device specifices that a control only need to be set once per second, it's
 controller is notified of this fact (see message descriptions). From this point, the controller
 is responsible for the timing of the controlled device. If that controller relies on another device
 for some events, it pushes the rate limiting further upstream, making the first device in the chain
@@ -803,7 +806,7 @@ responsible for the timing of all downstream devices. Devices can also use "pull
 reception for more complex dependency trees or graphs.
 
 Note that network backpressure alone does not lead to an ideal producer-consumer synchronization. 
-Network backpressure is not specific to a single command or data, but may influence all the
+Network backpressure is not specific to a single control nor data, but may influence all the
 communication on the network. It would be difficult to isolate which communication channel, if any,
 caused network congestion. This uncertainty and imprecision may cause various communication artifacts,
 including network over-use, messages coming in batches or waves, or even not finding a steady state.
@@ -811,7 +814,7 @@ including network over-use, messages coming in batches or waves, or even not fin
 Rate Limiting is an explicit measure based on application-level feedback to senders from receivers. All
 receivers must define the maximum rate at which they can consume messages, or more accurately, they
 should define the minimum practicable rate for the given use-case. This is for both data and
-command invocations. This measure is trivially independent of network problems, therefore can work
+control settings. This measure is trivially independent of network problems, therefore can work
 reliably even in the face of network backpressure events.
 
 A steady state is easily reached as producers will automatically approximate the consumer's rate at all times
@@ -838,12 +841,11 @@ Devices need only define *how* and *what* to measure and then let the SCAN netwo
 * **Device**: A party in a SCAN network. Although the term "Device" implies a physical
 machine, a Device may be fully software implemented, or one physical device may even represent
 multiple logical Devices.
-* **Controller**: The *Initiator* on the application layer. The party who invokes commands
+* **Controller**: The *Initiator* on the application layer. The party who setgs controls
 on the other party.
-* **Controlled**: The *Responder* on the application layer. The part who responds to commands
+* **Controlled**: The *Responder* on the application layer. The part who responds to controls
 from the other party.
-* **Modality**: A single physical or logical entity in a device, for which any stream of
-consecutive data items (or commands) can be replaced with the latest one without altering
-the meaning of the stream.
+* **Modality**: A single physical or logical entity in a device, which may produce stream of data or may
+be set as control, or both.
 * **Operator**: A human user configuring the network and/or devices.
 
