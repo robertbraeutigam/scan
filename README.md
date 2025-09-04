@@ -360,13 +360,11 @@ all keys and state information about the connection can be discarded.
 
 ```
 CloseConnection = Struct(
-   protocolVersion: ProtocolVersion,
    reason: String
 )
 ```
 
-The close message contains the protocol version to detect a version mismatch, as well as
-a diagnostic, human readable reason for closing the connection.
+It contains a diagnostic message, a human readable reason for closing the connection.
 
 ### Payload Messages
 
