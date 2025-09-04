@@ -311,7 +311,7 @@ privileges to certain PSKs, the PSK presented by the initiator categorizes
 it to have those privileges. PSKs can be potentially published to multiple devices,
 effectively creating a role or group of devices.
 
-Security note: If PSKs are shared, those devices must be considered to be in the same security
+Security note: If PSKs are shared among more than two devices, those devices must be considered to be in the same security
 domain, i.e. they all are only as strong as the weakest device that has that key. I.e. they all
 "fall" together. 
 
