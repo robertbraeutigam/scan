@@ -613,7 +613,7 @@ The value type is dynamically set at the time of sending, since it depends on th
 ControlledMessages = Union(Capabilities, Data, ControlResponse)
 ```
 
-#### Capablities
+#### Capabilities
 
 The Controlled devices send this message as soon as a connection is established unsolicited.
 
@@ -640,7 +640,7 @@ DeviceDefinition = {
 
 InterfaceDefinition = Struct(
    name:        String,
-   descirption: Markdown,
+   description: Markdown,
    typeName:    String     // Name of the type
 )
 ```
@@ -799,7 +799,7 @@ Rate Limiting is the way SCAN ensures that throughout all processing chains data
 are generated at _exactly_ the same rate as they are consumed throughout the whole chain, _and_ at the
 exact right time.
 
-For example, if one device specifices that a control only need to be set once per second, it's
+For example, if one device specifies that a control only need to be set once per second, it's
 controller is notified of this fact (see message descriptions). From this point, the controller
 is responsible for the timing of the controlled device. If that controller relies on another device
 for some events, it pushes the rate limiting further upstream, making the first device in the chain
