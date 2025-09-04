@@ -100,7 +100,7 @@ congestion, restarts, and other failure modes.
 
 ## Internet Layer
 
-The internet layer supports basic network primitives based on IP-native means for the next layer.
+The Internet Layer supports basic network primitives based on IP-native means for the next layer.
 These functionalities are:
 
 * Open and receive a "physical" TCP/IP connection to/from a peer to send and receive data.
@@ -203,7 +203,7 @@ excluding the frame header.
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
 on the network. There 
-can be at most two logical connection between any two devices, because the ordered pair of public static keys uniquely identifies
+can be at most two logical connections between any two devices, because the ordered pair of public static keys uniquely identifies
 a logical connection. Note however, that one physical connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
@@ -304,7 +304,7 @@ any allow-, or deny-listing based on the public static key, or implement
 other restrictions based on either the public static key, time of day
 or any other information gained during communications.
 
-All handshakes contain a PSK (Private Shared Key).
+All handshakes contain a PSK (Pre-Shared Key).
 
 A PSK works as a "role" during authorization. Since the responder may assign
 privileges to certain PSKs, the PSK presented by the initiator categorizes
@@ -342,7 +342,7 @@ Both the sender and destination identifier must be present in this frame.
 
 #### Continue Handshake
 
-Sent potentially by both parties. It continues the handshake after it has been initiated.
+Sent potentially by both devices. It continues the handshake after it has been initiated.
 The first continue handshake must come from the responder, then from the initiator
 and continue in turn until the connection is established based on the initially selected
 protocol variant.
@@ -475,7 +475,7 @@ must announce itself to a connected device as all logical devices that are behin
 ### Message Choreography
 
 There can be only at most two logical connections
-between any two parties. If a logical connection already exists, that must be used.
+between any two devices. If a logical connection already exists, that must be used.
 If not, a new logical connection needs to be established. If there is already a physical
 connection between the source and the target, that physical connection must be used. If not, a new physical
 connection must be established first.
@@ -485,7 +485,8 @@ The *responder* is the one that accepts the connection.
 
 Note, there is an asymmetry between the initiator and the responder, because only the initiator
 "sets" the PSK. This means the responder *authorizes* the initiator for the communication, but the
-reverse is not true.
+reverse is not true. It is assumed that layers above will also be asymmetric, in that the initiator will
+use services of the responder, but not the other way around.
 
 #### Initiator establishes new connection
 
@@ -493,23 +494,26 @@ A handshake is started by the initiator.
 
 1. If there is no TCP connection between the two peers, initiator opens one.
 2. Initiator sends "Initiate Handshake" message.
-3. If handshake not concluded, Responder sends "Continue Handshake".
-4. If handshake not concluded, Initiator also sends "Continue Handshake" and process continues at step 3 again.
-5. If no errors happened, logical connection established.
+3. If Responder does not accept version or protocol, it also send an "Initiate Handshake" message back
+with the proposed parameters.
+4. If handshake not concluded, both devices continue to send "Continue Handshake" messages.
+5. If any errors happened, Close is sent and the physical connection is possibly closed if not used.
+6. If no errors happened, connection is established.
 
 After the handshake is finished both parties are now allowed to send any number of application messages in any order, provided
 the chosen Noise protocol allows it.
 
-Any party may close the connection at any time for any reason. The initiator is
-free to re-open the connection at any time. The Responder may close the connection
-with the Renegotiate frame.
+Any party may close the logical connection at any time for any reason. The initiator is
+free to re-open the connection at any time. 
 
-#### Initiator re-establishes a connection
+Any party is also free to close the physical connection at any time to mark itself "offline" but still
+"connected".
+
+#### Initiator re-establishes a physical connection
 
 1. Initiator sends Application Messages with previously established keys.
-2. If Responder does not remember previous keys, or is unable to decrypt, it sends a Renegotiate frame.
-3. If Responder sent Renegotiate, Initiator removes it keys and closes the connection.
-4. Otherwise, logical connection established.
+2. If Responder does not remember previous keys, or is unable to decrypt, it sends a Close frame.
+3. Otherwise, logical connection is still established.
 
 ### Address Resolution
 
@@ -838,7 +842,7 @@ Devices need only define *how* and *what* to measure and then let the SCAN netwo
 * **Device**: A party in a SCAN network. Although the term "Device" implies a physical
 machine, a Device may be fully software implemented, or one physical device may even represent
 multiple logical Devices.
-* **Controller**: The *Initiator* on the application layer. The party who setgs controls
+* **Controller**: The *Initiator* on the application layer. The party who sets controls
 on the other party.
 * **Controlled**: The *Responder* on the application layer. The part who responds to controls
 from the other party.
