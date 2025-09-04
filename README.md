@@ -222,8 +222,8 @@ Frames are defined thusly:
 
 ```
 Frame = {
-   sourcePeer:      Option(PeerAddress)
-   destinationPeer: Option(PeerAddress)
+   sourcePeer:      Optional(PeerAddress)
+   destinationPeer: Optional(PeerAddress)
    content:         Union(Control, Payload, Advertisement)
 }
 
