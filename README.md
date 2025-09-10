@@ -532,38 +532,46 @@ other logical connections.
 
 ## Data/Control Layer
 
-The Initiator of the logical connection is called a Controller Device on this layer, while the Responder
-is called the Controlled Device. A single logical connection only allows for one side to be the Controller.
+All devices expose one or more *modalities*. A modality is the primary way to interact with a device
+and represents an isolated aspect of its state or behavior. 
 
-Note that in any setup the Controller and Controlled roles may be defined independently of the Devices
-themselves. For example in a single Light and a single Button setup, we may traditionally think,
-that the Button "controls" the Light, but in fact the Light can be set up to "control" the Button.
-That is, to initiate a connection to the Button and based on Data the Button generates control its own
-operation. In this case the Light will obviously not "control" the Button in the traditional meaning,
-but will nonetheless assume the role of the "Controller" for the purposes of this specification.
+Examples include:
+* Light on/off
+* Switch on/off (up/down)
+* Volume knob position (0-100)
 
-This layer enables the Controller to perform following actions on the Controlled device:
-* Subscribe to data
-* Set controls
+Modalities can also carry complex or streaming data (e.g., a camera’s video stream) and
+administrative functions (e.g., firmware, roles). A modality’s value may be a single scalar, a structured type, and may include a stream.
 
-Subscribing to data means to get a stream of values conforming to a given Data Type, while settings a
-control means to submit a value of a certain Data Type as an argument. In both cases
-getting a single data element or executing a single control call will involve a single, albeit possibly complex, value.
+Modalities that should share one logical state can be *joined* by the administrator of the network into a *modality group*.
+A modality group represents a single, canonical state that is shared among its members.
+Exactly one device in the group acts as the authoritative source: it publishes the canonical state.
+All other devices connect to this authority and mirror that state for their corresponding modalities.
 
-Immediately after establishing the lower layer connection, the Controlled must send its capabilities to the Controller.
-These capabilities must not change during the whole life of the connection.
-If the capabilities of the Controlled device do change, it must terminate the connection and let the
-Controller re-establish a connection where the new capabilities can be submitted.
+Non-authoritative devices may also request changes on this canonical state. All accepted changes are applied by the authority
+and then reflected to the group as the new canonical state. Which device is authoritative is a deployment/use-case decision and may change over time.
 
-The Controller may not send any messages before the Capabilities is received.
+The concept of modalities differs from the traditional "data and commands" or "read/write attributes" concept in several ways. Commands 
+or writing attributes are one-off instructions between devices, which are not capable of representing the system in a consistent way. If
+any intermittent errors happen, the state of the whole system, even after the error is resolved, is basically random and it may or
+may not be consistent. For example a switch might indicate the light should be on, but the light is not on.
 
-### Controller Device Messages
+The modality group concept guarantees that the system is *eventually consistent*. The switch does not just send
+a command to the light to be on, instead the protocol guarantees a *synchronization* of the shared state to all
+members of the group. This synchronization is stable and is effectively running continuously, so if all errors are resolved,
+the system automatically arrives at a consistent state eventually.
+
+The Initiator of the logical connection is the non-authoritative device, and the Responder is the authoritative device for
+all join operations on this connection. In any modality group there is exactly one authoritative device and one or more non-authoritative devices, which
+all must connect to the one authoritative device.
+
+### Non-Authoritative Device Messages
 
 ```
-ControllerMessage = Union(StreamData, SetControl)
+NonAuthoritativeMessages = Union(Join, Intent)
 ```
 
-#### Stream Data
+#### Join
 
 Request the Controlled to send values for the specified Data Packet indefinitely. Action will have any number of responses.
 
@@ -592,7 +600,7 @@ be used to request one data message, essentially imitate a pull-based approach.
 The Controlled Device must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
-### Set Control
+#### Set Control
 
 Request to set a control on the Controlled device.
 
