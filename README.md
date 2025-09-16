@@ -916,6 +916,6 @@ If the Non-Authoritative device needs to wait for the Intent to complete, this i
 * If *at any point* before a terminal state, a network error occurs, the connection is re-established, all pending Intents to that device
   should be regarded as Lost.
 * Wait for an `IntentAccepted` update. If received, Intent is in an Accepted state.
-* If Intent is not Accepted or Applied immediately, it is Late.
+* If Intent is not Accepted or Applied immediately after sending, it is Late.
 * If the Intent is Accepted, wait for one of the terminal states (Rejected, Overwritten or Applied).
 
