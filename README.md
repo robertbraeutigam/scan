@@ -633,12 +633,12 @@ Capabilities = {
 
 // Describes device specific information to identify the device.
 DeviceDefinition = {
-   deviceName:      String,
+   deviceName:      Message,
    deviceURI:       String,                // A website describing the device
 }
 
 Modality = Struct(
-   name:            String,
+   name:            Message,
    modalityURI:     String,
    readable:        Boolean,
    writable:        Boolean,
@@ -712,8 +712,14 @@ IntentStatus = Union(IntentAccepted, IntentRejected, IntentOverridden, IntentApp
 IntentAccepted = Unit
 
 IntentRejected = Struct(
-   // TODO: result: repeatable, user-error, server-error?
-   // TODO: message with i18n??
+   rejectionType: RejectionType,
+   reason: Message
+)
+
+RejectionType = Union(
+   IntentApplyError,    // The intent should have been applicable, but there was some unexpected error applying it
+   IntentMalformed,     // Intent malformed or values out of bound
+   IntentNotApplicable, // Intent is ok, but not applicable at this time because of some rules or logic constraints
 )
 
 IntentOverridden = Struct(
@@ -911,19 +917,4 @@ If the Non-Authoritative device needs to wait for the Intent to complete, this i
 * Wait for an `IntentAccepted` update. If received, Intent is in an Accepted state.
 * If Intent is not Accepted or Applied immediately, it is Late.
 * If the Intent is Accepted, wait for one of the terminal states (Rejected, Overwritten or Applied).
-
-## Appendix A: Terminology
-
-* **Initiator**: The party who establishes a network layer connection to another party.
-* **Responder**: The party who receives a network layer connection from another party.
-* **Device**: A party in a SCAN network. Although the term "Device" implies a physical
-machine, a Device may be fully software implemented, or one physical device may even represent
-multiple logical Devices.
-* **Controller**: The *Initiator* on the application layer. The party who sets controls
-on the other party.
-* **Controlled**: The *Responder* on the application layer. The part who responds to controls
-from the other party.
-* **Modality**: A single physical or logical entity in a device, which may produce stream of data or may
-be set as control, or both.
-* **Operator**: A human user configuring the network and/or devices.
 
