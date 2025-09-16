@@ -917,5 +917,5 @@ If the Non-Authoritative device needs to wait for the Intent to complete, this i
   should be regarded as Lost.
 * Wait for an `IntentAccepted` update. If received, Intent is in an Accepted state.
 * If Intent is not Accepted or Applied immediately after sending, it is Late.
-* If the Intent is Accepted, wait for one of the terminal states (Rejected, Overwritten or Applied).
+* If the Intent is Accepted, wait for one of the terminal states indefinitely (Rejected, Overwritten or Applied).
 
