@@ -741,7 +741,8 @@ The different status indicators are:
    guaranteed to come, unless a `State` message in which the state is set, or a protocol error occurs.
 * `IntentRejected`: Intent was rejected by device. Intent workflow is complete.
 * `IntentOverridden`: Intent was overridden by another intent. Workflow complete.
-* `IntentApplied`: Intent was applied, but device may be coalesced the `State` message for it. Workflow complete.
+* `IntentApplied`: Intent was applied, but device may be coalesced the `State` message for it, so the device
+  may not see an actual state with the requested value. Workflow complete.
 
 ## Technical Discussions
 
