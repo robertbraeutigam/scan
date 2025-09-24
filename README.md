@@ -633,13 +633,14 @@ Capabilities = {
 
 // Describes device specific information to identify the device.
 DeviceDefinition = {
-   deviceName:      Message,
-   deviceURI:       String,                // A website describing the device
+   name:         Text,
+   description:  MarkdownText,
+   icon:         Icon
 }
 
 Modality = Struct(
-   name:            Message,
-   modalityURI:     String,
+   name:            Text,
+   description:     MarkdownText,
    readable:        Boolean,
    writable:        Boolean,
    minimumSetWait:  Duration,              // Minimum time to wait between Set requests
@@ -660,9 +661,7 @@ There is only a `deviceName` which is available separately,
 to be able to refer to this device in logs or other network internal descriptions.
 
 The `modalities` field describes all the modalities available on this device. The administrative interface
-may display this to the user to interact with. The URI of the modality must point to a web-page where that
-modality is described. Similarly to the device itself, only the `name` of the modality is captured explicitly
-for internal (for example: logging) uses.
+may display this to the user to interact with. 
 
 All modalities may be `readable`, `writable`, both or none. Since these flags should reflect the connected device's rights,
 it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
