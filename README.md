@@ -47,8 +47,8 @@ The SCAN protocol is divided into four layers:
 
 - Internet Layer (Packet Communication and Announcement over IP)
 - Logical Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
-- Data/Control Layer (Subscribing to Data and setting Controls)
-- Application Layer (Required and common Data and Control definitions, including Wiring)
+- Modalities Layer (Defining the Capabilities of the Device)
+- Application Layer (Required and common modality definitions, including Wiring)
 
 The Internet Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
 packets between devices and enables announcements. It supports different IP topologies, including
@@ -59,22 +59,16 @@ for communications between devices. Devices are identified, addressed based on s
 of hardware addresses and communicate point to point using a packet-based protocol that supports easy
 multiplexing as well as unlimited length streaming messages.
 
-The Data/Control Layer adds minimal quasi-request-response based interface that enables:
+The Modalities Layer adds minimal quasi-request-response based interface that enables *joining* modalities to act as one consistent unit,
+enabling an error-resistant, eventually consistent, intent-based system.
 
-* Subscribing to *data* emitted by devices, which are a stream of changes in the state of the device.
-* Setting *controls*, which may change the state of the device.
-
-The application layer defines common data elements and controls that are either optional
-or required for every device, such as setting up roles, resetting, unified software update control,
-debugging and logging controls and data, and most notably wiring.
+The application layer defines common modalities that are either optional
+or required for every device, such as setting up roles, resetting, unified software update,
+debugging and logging, and most notably wiring.
 
 Wiring is an application layer tool that describes how devices interoperate. It describes which
 data from which devices sets which controls at what other devices and it can also describe
 how to transform data to be compatible with the required control.
-
-Controls are a slightly different concept than *commands*. Even though they can be invoked in a
-set-and-forget way on occasion like commands, the intended usage of controls through wiring is that they are *bound* to data, i.e. state,
-coming from other devices. This means they will be eventually consistent with the data they are bound to.
 
 ### Operational Summary
 
@@ -530,7 +524,7 @@ If an IP address can not be found for a given identity key, the connection can n
 Devices may choose to display this to the user if capable, or may send specific error events through
 other logical connections.
 
-## Data/Control Layer
+## Modalities Layer
 
 All devices expose one or more *modalities*. A modality is the primary way to interact with a device
 and represents an isolated aspect of its state or behavior. 
