@@ -572,11 +572,13 @@ Request the Authoritative Device to send state values indefinitely.
 ```
 Join = Struct(
    modalityIndex:       VariableLengthInteger(8),
+   modalityKey:         DynamicValue,
    minimumSendWait:     Duration
 )
 ```
 
-The `modalityIndex` specifies the data by its index (0 based) in the Authoritative Device's Capabilities list.
+The `modalityIndex` specifies the data by its index (0 based) in the Authoritative Device's Capabilities list. The
+`modalityKey` identifies the modality instance this join applies to.
 
 Minimum send wait specifies how much time the Authoritative Device should wait between sending data. Zero
 means as fast as possible, without any waiting. The Authoritative Device must honor this wait
@@ -601,6 +603,7 @@ Signal an intent to change the state of a modality on the Authoritative Device.
 ```
 Intent = Struct(
    modalityIndex: VariableLengthInteger(8),
+   modalityKey:   DynamicValue,
    value:       : DynamicValue
 )
 ```
@@ -638,6 +641,7 @@ Modality = Struct(
    readable:        Boolean,
    writable:        Boolean,
    minimumSetWait:  Duration,              // Minimum time to wait between Set requests
+   keyType:         String,                // The type identifying modality instances
    stateType:       String,                // The type to describe State
    intentType:      String,                // The type to describe an Intent to change State
 )
@@ -664,6 +668,11 @@ can accept a `ChangeState` message.
 
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
 needs to be physically toggled to change state.
+
+Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
+capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
+stream, while a simple switch may set this to `Unit`, to indicate that there is only one instance of this modality actually
+available.
 
 #### State
 
