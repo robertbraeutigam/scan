@@ -875,19 +875,17 @@ Modality(
    id:                 "scan.firmware",
    keyType:            "Unit",
    stateType:          "FirmwareDescription",
-   intentType:         "FirmwareImage"
+   intentType:         "Media"
 )
 
 FirmwareDescription = Struct(
    currentVersion:     String,   // Vendor specific version string
    updateSource:       URI
 )
-
-FirmwareImage = DynamicArray(Byte)
 ```
 
 The readable state of the firmware is not the firmware image itself, but information about the firmware, such as
-the currently deployed version number, and where to download updates. The change
+the currently deployed version number, and where to download updates. The change intent itself
 however does include the full firmware image update in a format specified by the device vendor.
 
 The update source must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
@@ -897,6 +895,9 @@ should assume there are no updates available.
 
 It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, even
 if offline.
+
+It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
+should not assume that they have, or will eventually have access to the internet.
 
 ### Optional Modalities
 
@@ -922,6 +923,12 @@ Version = Struct(
 )
 
 URI = String
+
+// Represents content that is typed by mime-type
+Media = Struct(
+   mimeType:    String,
+   content:     Stream(Byte)
+)
 ```
 
 ## Technical Discussions
