@@ -207,6 +207,6 @@ TODO
 ```
 ModalityReference = Struct(
    modalityIndex:       VariableLengthInteger(8),
-   modalityKey:         DynamicValue
+   modalityInstanceKey: DynamicValue
 )
 ```

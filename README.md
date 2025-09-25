@@ -613,12 +613,21 @@ Signal an intent to change the state of a modality on the Authoritative Device.
 
 ```
 Intent = Struct(
-   modality:      ModalityReference
-   value:         DynamicValue
+   id:            VariableLengthInteger(8),
+   modality:      ModalityReference,
+   value:         DynamicValue,
 )
 ```
 
-The exact type of the value should be the `intentType` in the modality definition.
+The intent Id identifies this intent for this modality instance. The Authoritative modality does not acknowledge each intent
+individually, only in batches. When it does, it must always acknowledge the latest intent from the device and must include its
+id in the update message.
+
+The sender should strive to keep this id number low and reuse ids as far as possible. One strategy is to use increasing id numbers
+and reset them to 0 when an update is received and there is no in-flight intent. Another strategy would be to track used ids and their
+ordering on the sender, so the full batch of sent intent ids can be identified when receiving an update.
+
+The exact type of the `value` should be the `intentType` in the modality definition.
 
 ### Authoritative Device Messages
 
@@ -665,19 +674,19 @@ delegated to the web page, which each device must have. Note that the device lin
 exact page for this hardware and software/firmware version. It is expected that this description will
 be mostly used by the administrative interface.
 
-There is only a `deviceName` which is available separately,
-to be able to refer to this device in logs or other network internal descriptions.
-
 The `modalities` field describes all the modalities available on this device. The administrative interface
 may display this to the user to interact with. 
 
 All modalities may be `readable`, `writable`, both or none. Since these flags should reflect the connected device's rights,
 it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
-readable, to get its state. A writable modality is one that can change its authoritative state programmatically, hence it
+readable, to get its state, although that state may be "empty" (Unit). A writable modality is one that can change its authoritative state programmatically, hence it
 can accept a `ChangeState` message.
 
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
 needs to be physically toggled to change state.
+
+There also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
+may be no corresponding reading of the firmware image.
 
 Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
 capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
@@ -707,13 +716,13 @@ The value must be of type `stateType` defined in the modality.
 
 #### Intent Update
 
-A direct response to an `Intent`, sent only if the requested state can not be immediately established
-and sent to the requester.
+A direct response to an `Intent` to only the sending device.
 
 ```
 IntentUpdate = Struct(
+   intentId: VariableLengthInteger(8),
    modality: ModalityReference,
-   status: IntentStatus
+   status:   IntentStatus
 )
 
 IntentStatus = Union(IntentAccepted, IntentRejected, IntentOverridden, IntentApplied)
@@ -722,7 +731,7 @@ IntentAccepted = Unit
 
 IntentRejected = Struct(
    rejectionType: RejectionType,
-   reason: Message
+   reason:        Text
 )
 
 RejectionType = Union(
@@ -732,26 +741,33 @@ RejectionType = Union(
 )
 
 IntentOverridden = Struct(
-   targetState: DynamicValue   // The new target state
+   value: DynamicValue  // The override value
 )
 
 IntentApplied = Unit
 ```
 
-Intent updates are only sent to the device whose intent is currently being processed. There can be
-only one Intent being processed for each modality. The Authoritative device must track the current
-Intent for all modalities in memory, but it does not need to be persistent.
+Intent updates are only sent to the device whose intent is currently being processed, so they are not
+broadcasted. Updates are not sent for each and every intent message necessarily.
+
+An intent must receive an update at most 100 milliseconds after received, unless there is a new intent
+received from the same device for the same modality instance. If there's a continuous stream of intents
+overriding the previous intent, the sending of updates may be delayed indefinitely, provided there's no
+errors. Errors must be sent immediately.
+
+The updates include the `intentId` identifying exactly what intent is updated. The sending device should
+strive to keep this number as low as possible to keep it in one byte. A good point to reset this number is
+when an intent is acknowledged and there's no in-flight intents.
 
 Note, that the Resolution Principle does not apply to these messages, they will always be
 sent, so the device may rely on getting them eventually.
 
 The different status indicators are:
-* `IntentAccepted`: Intent was accepted by the device, now it will be tracked there. Further updates will
-   guaranteed to come, unless a `State` message in which the state is set, or a protocol error occurs.
-* `IntentRejected`: Intent was rejected by device. Intent workflow is complete.
-* `IntentOverridden`: Intent was overridden by another intent. Workflow complete.
-* `IntentApplied`: Intent was applied, but device may have coalesced the `State` message for it, so the device
-  may not see an actual state with the requested value. Workflow complete.
+* `IntentAccepted`: Intent was accepted by the device, but it is still being applied. A further update will
+   occur, if no new intents by the device override it.
+* `IntentRejected`: Intent was rejected by device. No further updates.
+* `IntentOverridden`: Intent was overridden by another device's intent. No further updates.
+* `IntentApplied`: Intent was applied successfully. No further updates.
 
 ## Technical Discussions
 
@@ -899,32 +915,4 @@ to 0, and then back again when it actually needs it.
 This also means that device vendors and implementers do not need to guess proper timing and message
 rates for downstream devices.
 Devices need only define *how* and *what* to measure and then let the SCAN network take care of proper timing and intervals adaptively.
-
-### Life-cycle of an Intent
-
-An `Intent` is a description to change the state of a given modality on an Authoritative device, issued by a Non-Authoritative device. An `Intent`
-has a well-defined life-cycle which both sides can track without ambiguity.
-
-This life-cycle has following states:
-* **Created**: Initially an `Intent` is created on a Non-Authoritative device, either as a consequence of user input or automated rules.
-* **Accepted**: When the Intent is sent to the Authoritative device, it may respond immediately by accepting it. This is a non-terminal state,
-  and just means that the Intent is now tracked on the Authoritative side.
-* **Rejected**: The intent was rejected and will not be applied.
-* **Overwritten**: There was a newer Intent received, so this intent will not be applied nor tracked anymore.
-* **Applied**: The Intent was applied. This may happen at any time either by a state message containing the requested state,
-  or by the intent update.
-* **Late**: If there is no "immediate" response for an Intent. This may indicate network congestion or some device issues. At this point there's no
-  errors yet, but there's something definitely wrong.
-* **Lost**: If there are any communication issues, either because of network or device issues, the Intent should be considered lost and not applied.
-
-#### How to wait for an Intent to be Applied
-
-If the Non-Authoritative device needs to wait for the Intent to complete, this is the algorithm to do that:
-* Send the `Intent`
-* If *at any point* after the Intent is sent, a `State` is received with the requested value, the Intent should be regarded as Applied.
-* If *at any point* before a terminal state, a network error occurs, the connection is re-established, all pending Intents to that device
-  should be regarded as Lost.
-* Wait for an `IntentAccepted` update. If received, Intent is in an Accepted state.
-* If Intent is not Accepted or Applied immediately after sending, it is Late.
-* If the Intent is Accepted, wait for one of the terminal states indefinitely (Rejected, Overwritten or Applied).
 
