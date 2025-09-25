@@ -562,7 +562,7 @@ all must connect to the one authoritative device.
 ### Non-Authoritative Device Messages
 
 ```
-NonAuthoritativeMessages = Union(Join, Leave, Intent)
+NonAuthoritativeMessage = Union(Join, Leave, Intent)
 ```
 
 #### Join
@@ -605,7 +605,7 @@ Leave = Struct(
 The Authoritative Device must immediately stop sending state updates, and interrupt any outstanding streams.
 
 If the Non-Authoritative Device does not use the state updates for anything (for example the data is not on screen),
-it may request the Authoritative Device to stop sending them.
+it may use this message to make the Authoritative device stop sending them.
 
 #### Intent 
 
@@ -625,14 +625,14 @@ id in the update message.
 
 The sender should strive to keep this id number low and reuse ids as far as possible. One strategy is to use increasing id numbers
 and reset them to 0 when an update is received and there is no in-flight intent. Another strategy would be to track used ids and their
-ordering on the sender, so the full batch of sent intent ids can be identified when receiving an update.
+ordering on the sender, so the full batch of sent intent ids can be identified and freed when receiving an update.
 
 The exact type of the `value` should be the `intentType` in the modality definition.
 
 ### Authoritative Device Messages
 
 ```
-AuthoritativeMessages = Union(Capabilities, State, IntentUpdate)
+AuthoritativeMessage = Union(Capabilities, State, IntentUpdate)
 ```
 
 #### Capabilities
@@ -655,18 +655,19 @@ DeviceDefinition = {
 }
 
 Modality = Struct(
-   name:            Text,
-   description:     MarkdownText,
-   readable:        Boolean,
-   writable:        Boolean,
-   minimumSetWait:  Duration,              // Minimum time to wait between Set requests
-   keyType:         String,                // The type identifying modality instances
-   stateType:       String,                // The type to describe State
-   intentType:      String,                // The type to describe an Intent to change State
+   id:                 String,                // Identifier of this modality on this device
+   name:               Text,
+   description:        MarkdownText,
+   readable:           Boolean,
+   writable:           Boolean,
+   minimumIntentWait:  Duration,              // Minimum time to wait between Set requests
+   keyType:            String,                // The type identifying modality instances
+   stateType:          String,                // The type to describe State
+   intentType:         String,                // The type to describe an Intent to change State
 )
 ```
 
-The `protocolVersion` describes the exact structure of the `AuthoritativeMessages` type and all included types as well. If the
+The `protocolVersion` describes the exact structure of the `AuthoritativeMessage` type and all included types as well. If the
 Non-Authoritative Device can not handle this version, it must close the connection.
 
 The `deviceDefinition` offers a description of the device. Almost all of this descriptive power is
@@ -680,7 +681,7 @@ may display this to the user to interact with.
 All modalities may be `readable`, `writable`, both or none. Since these flags should reflect the connected device's rights,
 it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
 readable, to get its state, although that state may be "empty" (Unit). A writable modality is one that can change its authoritative state programmatically, hence it
-can accept a `ChangeState` message.
+can accept `Intent` messages.
 
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
 needs to be physically toggled to change state.
@@ -690,7 +691,7 @@ may be no corresponding reading of the firmware image.
 
 Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
 capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
-stream, while a simple switch may set this to `Unit`, to indicate that there is only one instance of this modality actually
+stream, while a simple switch may set this type to `Unit`, to indicate that there is only one instance of this modality actually
 available.
 
 #### State
@@ -747,8 +748,8 @@ IntentOverridden = Struct(
 IntentApplied = Unit
 ```
 
-Intent updates are only sent to the device whose intent is currently being processed, so they are not
-broadcasted. Updates are not sent for each and every intent message necessarily.
+Intent updates are only sent to the device whose intent is currently being processed. Each modality instance
+processes at most one intent at any given time. Updates are not sent for each and every intent message necessarily.
 
 An intent must receive an update at most 100 milliseconds after received, unless there is a new intent
 received from the same device for the same modality instance. If there's a continuous stream of intents
@@ -756,11 +757,10 @@ overriding the previous intent, the sending of updates may be delayed indefinite
 errors. Errors must be sent immediately.
 
 The updates include the `intentId` identifying exactly what intent is updated. The sending device should
-strive to keep this number as low as possible to keep it in one byte. A good point to reset this number is
-when an intent is acknowledged and there's no in-flight intents.
+strive to keep this number as low as possible to keep it in one byte. 
 
 Note, that the Resolution Principle does not apply to these messages, they will always be
-sent, so the device may rely on getting them eventually.
+sent, so the device may rely on getting them eventually, if no network errors occur.
 
 The different status indicators are:
 * `IntentAccepted`: Intent was accepted by the device, but it is still being applied. A further update will
@@ -768,6 +768,10 @@ The different status indicators are:
 * `IntentRejected`: Intent was rejected by device. No further updates.
 * `IntentOverridden`: Intent was overridden by another device's intent. No further updates.
 * `IntentApplied`: Intent was applied successfully. No further updates.
+
+## Application Layer
+
+TODO
 
 ## Technical Discussions
 
