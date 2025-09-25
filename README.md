@@ -659,7 +659,7 @@ Modality = Struct(
    name:               Text,
    description:        MarkdownText,
    readable:           Boolean,
-   writable:           Boolean,
+   changable:          Boolean,
    minimumIntentWait:  Duration,              // Minimum time to wait between Set requests
    keyType:            String,                // The type identifying modality instances
    stateType:          String,                // The type to describe State
@@ -678,9 +678,9 @@ be mostly used by the administrative interface.
 The `modalities` field describes all the modalities available on this device. The administrative interface
 may display this to the user to interact with. 
 
-All modalities may be `readable`, `writable`, both or none. Since these flags should reflect the connected device's rights,
+All modalities may be `readable`, `changable`, both or none. Since these flags should reflect the connected device's rights,
 it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
-readable, to get its state, although that state may be "empty" (Unit). A writable modality is one that can change its authoritative state programmatically, hence it
+readable, to get its state, although that state may be "empty" (Unit). A changable modality is one that can change its authoritative state programmatically, hence it
 can accept `Intent` messages.
 
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
@@ -771,7 +771,123 @@ The different status indicators are:
 
 ## Application Layer
 
-TODO
+This layer defines what modalities devices must implement. It also defines some optional modalities
+and some common data types that devices should use whenever appropriate.
+
+### Mandatory Modalities
+
+These are modalities every device must implement.
+
+#### Enroll
+
+Enroll a device to an administrative application. This function must only be possible with the initial enrollment
+key and no other keys. Even with this key, this enrollment must be protected by some other means as well to disallow
+completely remote enrollment. Ideally enrollment should only be possible with physical access to the device. To make sure this
+is a case, a device may use buttons, or a simple timer to disallow using this function after a given amount of time after
+power-on.
+
+As part of the enrollment the device must delete all settings and all information potentially stored on the device. The device
+must be set back to factory state. This guarantees that in the case of re-sale or changing owners, the device will not leak
+any confidential data.
+
+```
+Modality(
+   id:                 "scan.enroll",
+   keyType:            "Unit",
+   stateType:          "Unit",
+   intentType:         "PSK"
+)
+```
+
+The intent is called with the proposed administrative ("root") PSK. If the intent is applied, that PSK is accepted, active and allowed
+to use all modalities on the device except this enrollment modality.
+
+#### Reset
+
+Reset the device to factory settings, including removing any and all user settings and data.
+
+```
+Modality(
+   id:                 "scan.reset",
+   keyType:            "Unit",
+   stateType:          "Unit",
+   intentType:         "Unit"
+)
+```
+
+Usable only with the administrative PSK. Note: After the call that administrative PSK is not valid anymore. Device must terminate
+all connections.
+
+#### Rights
+
+All the PSKs and associated rights on this device.
+
+```
+Modality(
+   id:                 "scan.grant",
+   keyType:            "Unit",
+   stateType:          "Rights",
+   intentType:         "Rights"
+)
+
+Rights = DynamicArray(PskRight)
+
+PskRight = Struct(
+   psk:           PSK,
+   rights:        DynamicArray(Right)
+)
+
+Right = Struct(
+   modalityId:    String,
+   read:          Boolean,
+   change:        Boolean
+)
+```
+
+Each PSK must have only one entry in the array and list all rights associated with that PSK.
+
+Usable only with administrative PSK.
+
+#### Keys
+
+All the keys to other devices this device possesses.
+
+```
+Modality(
+   id:                 "scan.keys",
+   keyType:            "Unit",
+   stateType:          "Keys",
+   intentType:         "Keys"
+)
+
+Keys = DynamicArray(Key)
+
+Key = Struct(
+   device:        PeerAddress,
+   psk:           PSK
+)
+```
+
+When the device connects to another device, it must use the registered PSK to do so. There can be only one PSK for each
+target device, to which all the rights necessary are granted on the target device.
+
+### Optional Modalities
+
+These modalities are otional. If the device offers similar functionality, it should use these instead of defining
+new ones from scratch.
+
+### Common Type Definitions
+
+```
+// A reference to a modality defined in the Capabilities.
+ModalityReference = Struct(
+   modalityIndex:       VariableLengthInteger(8), // The index in Capabilities modality array
+   modalityInstanceKey: DynamicValue              // The key of the modality instance
+)
+
+// PSK (Pre-Shared Key), used for authorization
+PSK = String(minLength = 32, maxLength = 32)
+```
 
 ## Technical Discussions
 
