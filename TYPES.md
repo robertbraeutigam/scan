@@ -202,3 +202,11 @@ fitting small microcontrollers.
 
 TODO
 
+## Appendix A: Common Type Definitions
+
+```
+ModalityReference = Struct(
+   modalityIndex:       VariableLengthInteger(8),
+   modalityKey:         DynamicValue
+)
+```

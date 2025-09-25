@@ -562,7 +562,7 @@ all must connect to the one authoritative device.
 ### Non-Authoritative Device Messages
 
 ```
-NonAuthoritativeMessages = Union(Join, Intent)
+NonAuthoritativeMessages = Union(Join, Leave, Intent)
 ```
 
 #### Join
@@ -571,8 +571,7 @@ Request the Authoritative Device to send state values indefinitely.
 
 ```
 Join = Struct(
-   modalityIndex:       VariableLengthInteger(8),
-   modalityKey:         DynamicValue,
+   modality:            ModalityReference,
    minimumSendWait:     Duration
 )
 ```
@@ -596,15 +595,29 @@ be used to request one data message, essentially imitate a pull-based approach.
 The Authoritative Device must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
+#### Leave
+
+Request the Authoritative Device to stop sending state values.
+
+```
+Leave = Struct(
+   modality: ModalityReference
+)
+```
+
+The Authoritative Device must immediately stop sending state updates, and interrupt any outstanding streams.
+
+If the Non-Authoritative Device does not use the state updates for anything (for example the data is not on screen),
+it may request the Authoritative Device to stop sending them.
+
 #### Intent 
 
 Signal an intent to change the state of a modality on the Authoritative Device.
 
 ```
 Intent = Struct(
-   modalityIndex: VariableLengthInteger(8),
-   modalityKey:   DynamicValue,
-   value:       : DynamicValue
+   modality:      ModalityReference
+   value:         DynamicValue
 )
 ```
 
