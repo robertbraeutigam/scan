@@ -260,14 +260,9 @@ Noise Protocol Name and version of the logical layer.
 ```
 InitiateHandshake = {
    noiseProtocolName: String
-   protocolVersion:   ProtocolVersion
+   protocolVersion:   Version             // 1.0 for this specification
    handshake:         DynamicArray(Byte)
 }
-
-ProtocolVersion = Struct(
-   major: Byte,  // 1 for this document, increased on incompatible changes
-   minor: Byte   // 1 for this document, increased only on backwards compatible change
-)
 ```
 
 The Noise Protocol Name is the exact protocol used for the following handshake
@@ -641,7 +636,7 @@ Authoritative Devices send this message as soon as a connection is established, 
 
 ```
 Capabilities = {
-   protocolVersion:    ProtocolVersion,    // Version of these messages
+   protocolVersion:    Version,             // Version of these messages
    deviceDefinition:   DeviceDefinition
    typesDefinitions:   DynamicArray(Byte)  // Compiled type definitions
    modalities:         DynamicArray(Modality)
@@ -776,7 +771,7 @@ and some common data types that devices should use whenever appropriate.
 
 ### Mandatory Modalities
 
-These are modalities every device must implement.
+Modalities every device must implement.
 
 #### Enroll
 
@@ -871,9 +866,41 @@ Key = Struct(
 When the device connects to another device, it must use the registered PSK to do so. There can be only one PSK for each
 target device, to which all the rights necessary are granted on the target device.
 
+#### Firmware
+
+Represents the firmware on the device. All devices must support firmware updates dynamically.
+
+```
+Modality(
+   id:                 "scan.firmware",
+   keyType:            "Unit",
+   stateType:          "FirmwareDescription",
+   intentType:         "FirmwareImage"
+)
+
+FirmwareDescription = Struct(
+   currentVersion:     String,   // Vendor specific version string
+   updateSource:       URI
+)
+
+FirmwareImage = DynamicArray(Byte)
+```
+
+The readable state of the firmware is not the firmware image itself, but information about the firmware, such as
+the currently deployed version number, and where to download updates. The change
+however does include the full firmware image update in a format specified by the device vendor.
+
+The update source must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
+will need to likely include the current version number, as the server will need to determine whether a new version is available.
+If the server returns anything other than `200` for the GET, the admin interface (or whatever software is doing the downloading)
+should assume there are no updates available.
+
+It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, even
+if offline.
+
 ### Optional Modalities
 
-These modalities are otional. If the device offers similar functionality, it should use these instead of defining
+Optional modalities. If the device offers similar functionality, it should use these instead of defining
 new ones from scratch.
 
 ### Common Type Definitions
@@ -887,6 +914,14 @@ ModalityReference = Struct(
 
 // PSK (Pre-Shared Key), used for authorization
 PSK = String(minLength = 32, maxLength = 32)
+
+// Version
+Version = Struct(
+   major: Byte,
+   minor: Byte
+)
+
+URI = String
 ```
 
 ## Technical Discussions
