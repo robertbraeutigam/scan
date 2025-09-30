@@ -931,9 +931,35 @@ All devices must implement these modalities.
 
 Define virtual modalities that aggregate and/or transform other ones into a single modality.
 
-TODO
+```
+Modality(
+   id:                 "scan.vmods",
+   keyType:            "Unit",
+   stateType:          "VirtualModalities",
+   intentType:         "VirtualModalities"
+)
+
+VirtualModalities = DynamicArray(VirtualModality)
+
+VirtualModality = Struct(
+   additionalTypes:    DynamicArray(Byte),    // Compiled type definitions
+   modality:           Modality,
+   inputModalities:    DynamicArray(RemoteModalityReference),
+   stateTransform:     DynamicArray(Byte),    // Compiled transformation program
+   intentTransform:    DynamicArray(Byte),    // Compiled transformation program
+)
+```
 
 Note, that if one or more remote modalities are used, those need to be wired first in order for them to be available.
+
+The state transformation will transform all the incoming states of the modalities to a single resulting state that should match
+the type specified in the modality definition. The incoming values will be places as input in the order they are defined here.
+
+The intent transformation transforms the one intent received by this virtual modality (if changeable) and transform it to an array
+of optional intents for each of the modalities connected in sequence. Where the optional value is None, no intent will be sent. The
+incoming intent will be considered applied, if _all_ outgoing intents were applied. Any errors will be immediately forwarded.
+
+The intent transformation can throw an error too, in which case the incoming intent will be rejected with the given error message.
 
 #### Wiring
 
@@ -950,15 +976,14 @@ Modality(
 Wiring = DynamicArray(Wire)
 
 Wire = Struct(
-   remotePeer:        PeerAddress,
-   remoteModality:    String,
-   remoteModalityKey: DynamicValue,
-   localModality:     String,
-   localModalityKey : DynamicValue,
+   remoteModality:     RemoteModalityReference,
+   localModality:      RemoteModalityReference,  // Has to reference local peer
 )
 ```
 
 Note, that in order for these wirings to work, the necessary PSKs to contact the remote devices must be registered first.
+
+Note, that the remote device will be the authoritative device for this wiring.
 
 ### Common Type Definitions
 
@@ -967,6 +992,13 @@ Note, that in order for these wirings to work, the necessary PSKs to contact the
 LocalModalityReference = Struct(
    modalityIndex:       VariableLengthInteger(8), // The index in Capabilities modality array
    modalityInstanceKey: DynamicValue              // The key of the modality instance
+)
+
+// A reference to a modality in the whole system, potentially local
+RemoteModalityReference = Struct(
+   peer:                 PeerAddress,
+   modality:             String,
+   modalityInstanceKey:  DynamicValue,
 )
 
 // PSK (Pre-Shared Key), used for authorization
