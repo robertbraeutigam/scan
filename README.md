@@ -907,7 +907,7 @@ Reboot the device.
 
 ```
 Modality(
-   id:                 "scan.reset",
+   id:                 "scan.reboot",
    keyType:            "Unit",
    stateType:          "Unit",
    intentType:         "Unit"
