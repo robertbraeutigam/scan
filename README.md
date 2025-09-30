@@ -566,7 +566,7 @@ Request the Authoritative Device to send state values indefinitely.
 
 ```
 Join = Struct(
-   modality:            ModalityReference,
+   modality:            LocalModalityReference,
    minimumSendWait:     Duration
 )
 ```
@@ -593,7 +593,7 @@ Request the Authoritative Device to stop sending state values.
 
 ```
 Leave = Struct(
-   modality: ModalityReference
+   modality: LocalModalityReference
 )
 ```
 
@@ -609,7 +609,7 @@ Signal an intent to change the state of a modality on the Authoritative Device.
 ```
 Intent = Struct(
    id:            VariableLengthInteger(8),
-   modality:      ModalityReference,
+   modality:      LocalModalityReference,
    value:         DynamicValue,
 )
 ```
@@ -695,7 +695,7 @@ Send state values to a Non-Authoritative Device that is joined to the modality.
 
 ```
 State = Struct(
-   modality:      ModalityReference,
+   modality:      LocalModalityReference,
    value:         DynamicValue
 )
 ```
@@ -717,7 +717,7 @@ A direct response to an `Intent` to only the sending device.
 ```
 IntentUpdate = Struct(
    intentId: VariableLengthInteger(8),
-   modality: ModalityReference,
+   modality: LocalModalityReference,
    status:   IntentStatus
 )
 
@@ -769,9 +769,9 @@ The different status indicators are:
 This layer defines what modalities devices must implement. It also defines some optional modalities
 and some common data types that devices should use whenever appropriate.
 
-### Mandatory Modalities
+### Administrative Modalities
 
-Modalities every device must implement.
+Modalities to administer the device. All of these must be implemented by all devices.
 
 #### Enroll
 
@@ -815,7 +815,7 @@ all connections.
 
 #### Rights
 
-All the PSKs and associated rights on this device.
+All the PSKs and associated rights on this device, expect the master adminitration key used for enrolling.
 
 ```
 Modality(
@@ -841,7 +841,9 @@ Right = Struct(
 
 Each PSK must have only one entry in the array and list all rights associated with that PSK.
 
-Usable only with administrative PSK.
+Usable only with administrative PSK. Note, that the administrative PSK is not listed here. If this list is empty,
+the master administrative key stays valid. Additional "administrative" keys may be created, if needed,  through this interface,
+not through enrollment.
 
 #### Keys
 
@@ -893,22 +895,76 @@ will need to likely include the current version number, as the server will need 
 If the server returns anything other than `200` for the GET, the admin interface (or whatever software is doing the downloading)
 should assume there are no updates available.
 
-It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, even
-if offline.
+It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, and it should
+be capable of doing this completely offline.
 
 It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
 should not assume that they have, or will eventually have access to the internet.
 
-### Optional Modalities
+#### Reboot
 
-Optional modalities. If the device offers similar functionality, it should use these instead of defining
-new ones from scratch.
+Reboot the device.
+
+```
+Modality(
+   id:                 "scan.reset",
+   keyType:            "Unit",
+   stateType:          "Unit",
+   intentType:         "Unit"
+)
+```
+
+### Transformation & Wiring Modalities
+
+Modalities responsible for creating interoperability between devices.
+
+This specification does not define what devices may connect to this network or how exactly their modalities must look like. Every vendor may create any
+device with any interface it may deem best for its use-case. Instead of agreeing on modality formats, this
+specification offers mechanisms by which to transform modalities (single ones, or even aggregate many) to make them compatible
+with any other device in a similar domain at the usage site.
+
+In other words, instead of statically fixing formats, this specification enables dynamic transformations to achieve compatibility.
+
+All devices must implement these modalities.
+
+#### Virtual Modalities
+
+Define virtual modalities that aggregate and/or transform other ones into a single modality.
+
+TODO
+
+Note, that if one or more remote modalities are used, those need to be wired first in order for them to be available.
+
+#### Wiring
+
+Define what modalities on this device is wired to what modalities at other devices.
+
+```
+Modality(
+   id:                 "scan.wiring",
+   keyType:            "Unit",
+   stateType:          "Wiring",
+   intentType:         "Wiring"
+)
+
+Wiring = DynamicArray(Wire)
+
+Wire = Struct(
+   remotePeer:        PeerAddress,
+   remoteModality:    String,
+   remoteModalityKey: DynamicValue,
+   localModality:     String,
+   localModalityKey : DynamicValue,
+)
+```
+
+Note, that in order for these wirings to work, the necessary PSKs to contact the remote devices must be registered first.
 
 ### Common Type Definitions
 
 ```
 // A reference to a modality defined in the Capabilities.
-ModalityReference = Struct(
+LocalModalityReference = Struct(
    modalityIndex:       VariableLengthInteger(8), // The index in Capabilities modality array
    modalityInstanceKey: DynamicValue              // The key of the modality instance
 )
