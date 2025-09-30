@@ -952,14 +952,21 @@ VirtualModality = Struct(
 
 Note, that if one or more remote modalities are used, those need to be wired first in order for them to be available.
 
-The state transformation will transform all the incoming states of the modalities to a single resulting state that should match
-the type specified in the modality definition. The incoming values will be places as input in the order they are defined here.
+Transformations are compiled platform-independent, interpreted programs, whose interpreter is described with the SCAN Type System.
 
-The intent transformation transforms the one intent received by this virtual modality (if changeable) and transform it to an array
+The state transformation will transform all the incoming states of the modalities to a single resulting state that should match
+the type specified in the modality definition. The incoming values will be placed as input to the program in the order they are defined here.
+
+The intent transformation transforms the one intent received by this virtual modality (if changeable) and transforms it to an array
 of optional intents for each of the modalities connected in sequence. Where the optional value is None, no intent will be sent. The
-incoming intent will be considered applied, if _all_ outgoing intents were applied. Any errors will be immediately forwarded.
+incoming intent will be considered applied, if _all_ outgoing intents were applied. Any errors will immediately cause the incoming intent
+to be failed as well.
 
 The intent transformation can throw an error too, in which case the incoming intent will be rejected with the given error message.
+
+TODO: what rules apply for multiple authoritative sources, etc.?
+
+TODO: describe how does rate limiting apply?
 
 #### Wiring
 
