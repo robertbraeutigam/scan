@@ -954,7 +954,6 @@ Logs = Stream(Log)
 
 Log = Struct(
    severity:      Severity,
-   sourceDevice:  PeerAddress,
    message:       Text
 )
 ```
@@ -965,7 +964,7 @@ so "Error" would return "Fatal" and "Error", while "Debug" would return every lo
 A `Fatal` severity should be used if the log entry indicates a problem not just related to a single operation or function,
 but is some global error in the device that would likely prevent one or more functions to permanently fail.
 
-An `Error` is something if a specific function was not able to be executed at all, or will not be able to be executed in the future.
+An `Error` is issued if a specific function was not able to be executed at all, or will not be able to be executed in the future.
 
 A `Warn`ing indicates that a function is executing, but not as fully intended. For example a degradation of performance of a motor because
 of heat, or disabling of charging because temperature is too cold, etc.
@@ -999,7 +998,7 @@ TODO
 
 TODO
 
-### Transformation & Wiring Modalities
+### Interoperability Modalities
 
 Modalities responsible for creating interoperability between devices.
 
