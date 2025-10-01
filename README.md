@@ -914,6 +914,91 @@ Modality(
 )
 ```
 
+### Operational Modalities
+
+Modalities supporting the day-to-day operations of the device.
+
+All devices must implement all of these.
+
+#### Device Information
+
+TODO
+
+#### Health
+
+TODO
+
+#### Logs
+
+Stream the logs from the device.
+
+```
+Modality(
+   id:                 "scan.logs",
+   keyType:            "Severity",
+   stateType:          "Unit",
+   intentType:         "Logs",
+   changable:          false
+)
+
+// Categorization of log entries
+Severity = Union(
+   Fatal,  // Entry indicates a device-wide error condition
+   Error,  // Entry indicates function specific error condition
+   Warn,   // Function may be degraded or did not execute fully as intended by user
+   Info,   // No errors, but user may want to know this
+   Debug   // Messages helpful for tracking problems
+)
+
+Logs = Stream(Log)
+
+Log = Struct(
+   severity:      Severity,
+   sourceDevice:  PeerAddress,
+   message:       Text
+)
+```
+
+This modality is keyed by severity. Each modality instance returns log entries at least the severity given in the key,
+so "Error" would return "Fatal" and "Error", while "Debug" would return every log entry.
+
+A `Fatal` severity should be used if the log entry indicates a problem not just related to a single operation or function,
+but is some global error in the device that would likely prevent one or more functions to permanently fail.
+
+An `Error` is something if a specific function was not able to be executed at all, or will not be able to be executed in the future.
+
+A `Warn`ing indicates that a function is executing, but not as fully intended. For example a degradation of performance of a motor because
+of heat, or disabling of charging because temperature is too cold, etc.
+
+The `Info` severity should be considered a default level on which a user is expected to watch the whole system. It should only be
+used for events that would require the user's attention and not for events that would occur under normal daily operations. It is
+expected that under normal operations this level would only produce at most a couple of entries per day for the whole system.
+
+For example a light shouldn't log when its switched on and off at level `Info`, but at level `Debug`. However, a device that is expected
+to be online uninterrupted may use level `Info` to indicate that it is coming online. Such an event may indicate power problems or unreliable network
+connections, so its something the user might want to know, but is not an error or warning in itself.
+
+A device switching some internal modes, that would be not evident to the user, but would require different handling from the user may also require `Info`
+messages.
+
+The `Debug` level is for everything else. Received intents, execution steps, communications, etc.
+
+#### Backup
+
+TODO
+
+#### Restore
+
+TODO
+
+#### Network Statistics
+
+TODO
+
+#### Network Settings
+
+TODO
+
 ### Transformation & Wiring Modalities
 
 Modalities responsible for creating interoperability between devices.
@@ -991,6 +1076,14 @@ Wire = Struct(
 Note, that in order for these wirings to work, the necessary PSKs to contact the remote devices must be registered first.
 
 Note, that the remote device will be the authoritative device for this wiring.
+
+### Miscellaneous Modalities
+
+There are optional modalities devices may choose to implement.
+
+#### Locate Device
+
+TODO
 
 ### Common Type Definitions
 
