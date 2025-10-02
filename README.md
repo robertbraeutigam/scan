@@ -936,8 +936,8 @@ Stream the logs from the device.
 Modality(
    id:                 "scan.logs",
    keyType:            "Severity",
-   stateType:          "Unit",
-   intentType:         "Logs",
+   stateType:          "Logs",
+   intentType:         "Unit",
    changable:          false
 )
 
@@ -982,19 +982,43 @@ messages.
 
 The `Debug` level is for everything else. Received intents, execution steps, communications, etc.
 
-#### Backup
+#### Backup/Restore
 
-TODO
+Backup or Restore the device's internal state.
 
-#### Restore
+```
+Modality(
+   id:                 "scan.backup",
+   keyType:            "Unit",
+   stateType:          "Media",
+   intentType:         "Media",
+   changable:          true
+)
+```
 
-TODO
+This modality has the complete, consistent snapshot state of the device as state.
+It is expected that this will modality will be used from an administrative interface that will want to receive only
+one copy of the state (using infinite maximum wait) or will want to set the state only once.
+
+The state should include all administrative settings as well as any application level data saved on the device. Ideally
+it should be a dump of the non-volatile persistence on the device (or equivalent).
+
+The vendor can use any format suitable for storage, but it must at least accept the same media type in the intent as it produces in
+the state.
 
 #### Network Statistics
+
+Report network statistics periodically.
 
 TODO
 
 #### Network Settings
+
+TODO
+
+#### Network Messages
+
+Listen in into all the messages this device is sending, both state and intents.
 
 TODO
 
