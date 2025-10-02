@@ -1036,9 +1036,29 @@ TODO
 
 #### Network Messages
 
-Listen in into all the messages this device is sending, both state and intents.
+Listen in into all the messages this device is sending and receiving.
 
-TODO
+```
+Modality(
+   id:                 "scan.messages",
+   keyType:            "Unit",
+   stateType:          "Messages",
+   intentType:         "Unit",
+   changable:          false
+)
+
+Messages = Stream(Message)
+
+Message = Struct(
+   authoritativeModality:     RemoteModalityReference,
+   nonAuthoritativeModality:  RemoteModalityReference,
+   message:                   Union(Intent, State)   
+)
+```
+
+Either the authoritative or the non-authoritative modality must point to the current device. Note, that
+`Intent` messages always originate on the non-authoritative side, and `State` only on the authoritative
+side.
 
 ### Interoperability Modalities
 
