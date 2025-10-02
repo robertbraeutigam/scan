@@ -1008,9 +1008,27 @@ the state.
 
 #### Network Statistics
 
-Report network statistics periodically.
+Report network statistics since startup.
 
-TODO
+```
+Modality(
+   id:                 "scan.netstat",
+   keyType:            "Unit",
+   stateType:          "NetworkStatistics",
+   intentType:         "Unit",
+   changable:          false
+)
+
+NetworkStatistics = DynamicArray(NetworkPeerStatistics)
+
+NetworkPeerStatistics = Struct(
+   remotePeer:         PeerAddress,
+   sentCount:          Long,
+   sentBytes:          Long,
+   receivedCount:      Long,
+   receivedBytes:      Long
+)
+```
 
 #### Network Settings
 
