@@ -1144,7 +1144,24 @@ There are optional modalities devices may choose to implement.
 
 #### Locate Device
 
-TODO
+Help locate the device physically.
+
+```
+Modality(
+   id:                 "scan.locate",
+   keyType:            "Unit",
+   stateType:          "Boolean",
+   intentType:         "Boolean",
+   changable:          true
+)
+```
+
+Devices that are potentially not visible to the user may need a way to be located. For example switching devices
+built into furniture or walls, etc. These devices should provide a physical way to locate them. This can be anything
+from a blinking light, a buzzer, radio location using Bluetooth, triangulation, etc.
+
+This generic modality can be used to switch on the locating function of the device, whatever it may be. Note, that
+this locator function may switch itself off after a given time period.
 
 ### Common Type Definitions
 
