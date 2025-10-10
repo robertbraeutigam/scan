@@ -59,8 +59,8 @@ for communications between devices. Devices are identified, addressed based on s
 of hardware addresses and communicate point to point using a packet-based protocol that supports easy
 multiplexing as well as unlimited length streaming messages.
 
-The Modalities Layer adds minimal quasi-request-response based interface that enables *joining* modalities to act as one consistent unit,
-enabling an error-resistant, eventually consistent, intent-based system.
+The Modalities Layer adds minimal quasi-request-response based interface that enables connecting modalities to act as one consistent unit,
+enabling an error-resistant, eventually consistent network of devices.
 
 The application layer defines common modalities that are either optional
 or required for every device, such as setting up roles, resetting, unified software update,
@@ -647,12 +647,10 @@ Modality = Struct(
    id:                 String,                // Identifier of this modality on this device
    name:               Text,
    description:        MarkdownText,
-   readable:           Boolean, // TODO: remove these in favor of Nothing type
-   changable:          Boolean,
    minimumIntentWait:  Duration,              // Minimum time to wait between Set requests
    keyType:            String,                // The type identifying modality instances
-   stateType:          String,                // The type to describe State
-   intentType:         String,                // The type to describe an Intent to change State
+   outputType:         String,                // The type of the visible state of this modality
+   inputType:          String,                // The type of the changeable part of the state
 )
 ```
 
@@ -667,21 +665,19 @@ be mostly used by the administrative interface.
 The `modalities` field describes all the modalities available on this device. The administrative interface
 may display this to the user to interact with. 
 
-All modalities may be `readable`, `changable`, both or none. Since these flags should reflect the connected device's rights,
-it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
-readable, to get its state, although that state may be "empty" (Unit). A changeable modality is one that can change its authoritative state programmatically, hence it
-can accept `Intent` messages.
-
+The input and output types may be `Nothing` to indicate that there is no input or output respectively.
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
 needs to be physically toggled to change state.
-
 There also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
 may be no corresponding reading of the firmware image.
 
 Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
 capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
-stream, while a simple switch may set this type to `Unit`, to indicate that there is only one instance of this modality actually
+stream, while a simple switch may set this type to `Unit`, to indicate that there is only one instance of this modality
 available.
+
+The returned structure must take the caller's rights into account. It must only list modalities to which the caller
+has at least some rights, but then it must list the modality in its entirety.
 
 #### State
 
@@ -730,13 +726,15 @@ any confidential data.
 Modality(
    id:                 "scan.enroll",
    keyType:            "Unit",
-   stateType:          "Unit",
-   intentType:         "PSK"
+   outputType:         "Nothing",
+   inputType:          "PSK"
 )
 ```
 
-The intent is called with the proposed administrative ("root") PSK. If the intent is applied, that PSK is accepted, active and allowed
-to use all modalities on the device except this enrollment modality.
+The modality is called with the proposed administrative ("root") PSK. There is no output state, but if the call succeeded, the PSK can be used to connect to the
+device and receive all Capabilities.
+
+The device may reboot as part of the enrollment.
 
 #### Reset
 
@@ -746,10 +744,13 @@ Reset the device to factory settings, including removing any and all user settin
 Modality(
    id:                 "scan.reset",
    keyType:            "Unit",
-   stateType:          "Unit",
-   intentType:         "Unit"
+   outputType:         "Nothing",
+   inputType:          "Boolean"
 )
 ```
+
+Input is whether the device should reset. There is no output, it is expected the input will be kept `true` until the device resets, i.e.
+the connection is lost.
 
 Usable only with the administrative PSK. Note: After the call that administrative PSK is not valid anymore. Device must terminate
 all connections.
@@ -762,8 +763,8 @@ All the PSKs and associated rights on this device, expect the master adminitrati
 Modality(
    id:                 "scan.grant",
    keyType:            "Unit",
-   stateType:          "Rights",
-   intentType:         "Rights"
+   outputType:         "Rights",
+   inputType:          "Rights"
 )
 
 Rights = DynamicArray(PskRight)
@@ -783,8 +784,8 @@ Right = Struct(
 Each PSK must have only one entry in the array and list all rights associated with that PSK.
 
 Usable only with administrative PSK. Note, that the administrative PSK is not listed here. If this list is empty,
-the master administrative key stays valid. Additional "administrative" keys may be created, if needed,  through this interface,
-not through enrollment.
+the master administrative key stays valid. Additional "administrative" keys may be created, if needed, through this interface,
+not through enrollment, by assigning rights to all relevant modalities.
 
 #### Keys
 
@@ -794,8 +795,8 @@ All the keys to other devices this device possesses.
 Modality(
    id:                 "scan.keys",
    keyType:            "Unit",
-   stateType:          "Keys",
-   intentType:         "Keys"
+   outputType:         "Keys",
+   inputType:          "Keys"
 )
 
 Keys = DynamicArray(Key)
@@ -817,19 +818,20 @@ Represents the firmware on the device. All devices must support firmware updates
 Modality(
    id:                 "scan.firmware",
    keyType:            "Unit",
-   stateType:          "FirmwareDescription",
-   intentType:         "Media"
+   outputType:         "FirmwareDescription",
+   inputType:          "Media"
 )
 
+// TODO: pull updateSource into device details!
 FirmwareDescription = Struct(
    currentVersion:     String,   // Vendor specific version string
-   updateSource:       URI
 )
 ```
 
-The readable state of the firmware is not the firmware image itself, but information about the firmware, such as
-the currently deployed version number, and where to download updates. The change intent itself
-however does include the full firmware image update in a format specified by the device vendor.
+The readable state of the firmware is not the firmware image itself, but information about the firmware, the
+currently deployed version number. The input does however include the full firmware image in a format specified by the device vendor.
+
+// TODO: move this description to device details
 
 The update source must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
 will need to likely include the current version number, as the server will need to determine whether a new version is available.
@@ -842,6 +844,10 @@ be capable of doing this completely offline.
 It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
 should not assume that they have, or will eventually have access to the internet.
 
+The call should be considered successful, if the reported firmware version updates. Note, that the device may reboot as part of the update
+to finish installing. Callers might also use the firmware details of the device (see appropriate modality) to see whether additional updates
+are available. If no updates are available the caller may conclude, that the update process was successful.
+
 #### Reboot
 
 Reboot the device.
@@ -850,10 +856,12 @@ Reboot the device.
 Modality(
    id:                 "scan.reboot",
    keyType:            "Unit",
-   stateType:          "Unit",
-   intentType:         "Unit"
+   outputType:         "Nothing",
+   inputType:          "Boolean"
 )
 ```
+
+Keep input `true`, until device reboots. Process should be considered successful if connection is terminated.
 
 ### Operational Modalities
 
@@ -877,9 +885,8 @@ Stream the logs from the device.
 Modality(
    id:                 "scan.logs",
    keyType:            "Severity",
-   stateType:          "Logs",
-   intentType:         "Unit",
-   changable:          false
+   outputType:         "Logs",
+   inputType:          "Nothing",
 )
 
 // Categorization of log entries
@@ -931,9 +938,8 @@ Backup or Restore the device's internal state.
 Modality(
    id:                 "scan.backup",
    keyType:            "Unit",
-   stateType:          "Media",
-   intentType:         "Media",
-   changable:          true
+   outputType:         "Media",
+   inputType:          "Media",
 )
 ```
 
@@ -955,9 +961,8 @@ Report network statistics since startup.
 Modality(
    id:                 "scan.netstat",
    keyType:            "Unit",
-   stateType:          "NetworkStatistics",
-   intentType:         "Unit",
-   changable:          false
+   outputType:         "NetworkStatistics",
+   inputType:          "Nothing",
 )
 
 NetworkStatistics = DynamicArray(NetworkPeerStatistics)
@@ -983,9 +988,8 @@ Listen in into all the messages this device is sending and receiving.
 Modality(
    id:                 "scan.messages",
    keyType:            "Unit",
-   stateType:          "Messages",
-   intentType:         "Unit",
-   changable:          false
+   outputType:         "Messages",
+   inputType:          "Nothing",
 )
 
 Messages = Stream(Message)
@@ -1022,8 +1026,8 @@ Define virtual modalities that aggregate and/or transform other ones into a sing
 Modality(
    id:                 "scan.vmods",
    keyType:            "Unit",
-   stateType:          "VirtualModalities",
-   intentType:         "VirtualModalities"
+   outputType:         "VirtualModalities",
+   inputType:          "VirtualModalities"
 )
 
 VirtualModalities = DynamicArray(VirtualModality)
@@ -1063,8 +1067,8 @@ Define what modalities on this device is wired to what modalities at other devic
 Modality(
    id:                 "scan.wiring",
    keyType:            "Unit",
-   stateType:          "Wiring",
-   intentType:         "Wiring"
+   outputType:         "Wiring",
+   inputType:          "Wiring"
 )
 
 Wiring = DynamicArray(Wire)
@@ -1091,9 +1095,8 @@ Help locate the device physically.
 Modality(
    id:                 "scan.locate",
    keyType:            "Unit",
-   stateType:          "Boolean",
-   intentType:         "Boolean",
-   changable:          true
+   outputType:         "Boolean",
+   inputType:          "Boolean",
 )
 ```
 
