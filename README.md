@@ -521,8 +521,8 @@ other logical connections.
 
 ## Modalities Layer
 
-All devices expose one or more *modalities*. Modalities are the only way to interact with a device
-and represent isolated aspects of its state or behavior. 
+All devices expose one or more *modalities*. Modalities represent isolated aspects of the devices' state or behavior and
+are the only way to interact with them.
 
 Examples include:
 * Light on/off
@@ -533,22 +533,23 @@ Examples include:
 
 Modalities may have an input and an output, where both could be any types from simple scalars to complex values. The input and output types
 do not have to be the same, the modality may have more or even less state to report than can be set externally.
-The input changes the state represented by the modality, while the output streams the states as they change.
+The input changes the state represented by the modality, while the output streams the visible parts of the states as they change.
 
 A network of devices is created by "connecting" modalities together. A connection involves directing the output of one modality to the
-input of the other and directing the output of the other back to the input of the first one. This means devices don't really "control"
-each other, as much as report their own state to them continuously.
+input of the other and directing the output of the other back to the input of the first one, assuming they have matching types.
+This means devices don't really "control" each other, as much as report their own state to them continuously.
 
 This concept differs from the traditional "data and commands" or "read/write attributes" concept in several ways. Modalities don't
 "control" each other and don't even "set" the state of each other directly. Since there are no "commands", there's also no applicable concept
-of "acknowledgements". Note however, that devices may implement use-case specific acknowledgement strategies when this is required for
+of "acknowledgements" and no reason to "reject" states the other device reports.
+Note however, that devices may implement use-case specific acknowledgement strategies when this is required for
 their correct operations. For example waiting for the state to be reflected by the remote device, or the device to indicate in some use-case
 specific way that the operation is in progress.
 
 Modalities are designed to resist temporary errors and mirror all relevant remote states reliably to a device, based on which the device
 makes decisions to set its own state.
 
-The "Resolution Principle" applies to both directions of data flow. Data in flight is always replaceable by newer versions of the same.
+The "Resolution Principle" applies to both directions of data flow. Data is always replaceable by newer versions of the same.
 Devices can not expect to receive _all_ state transitions from a remote device. The only guarantee is, that they will receive the newest
 one at the earliest time possible. Devices therefore don't need a sending queue for modalities, they only need to keep the currently
 transmitting and the newest state for each modality in memory at most, if needed.
@@ -561,7 +562,7 @@ make requests, not the other way around.
 ### Initiator Messages
 
 ```
-InitiatorMessages = Union(Subscribe, Unsubscribe, State)
+InitiatorMessage = Union(Subscribe, Unsubscribe, State)
 ```
 
 #### Subscribe
