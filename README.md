@@ -521,48 +521,52 @@ other logical connections.
 
 ## Modalities Layer
 
-All devices expose one or more *modalities*. A modality is the primary way to interact with a device
-and represents an isolated aspect of its state or behavior. 
+All devices expose one or more *modalities*. Modalities are the only way to interact with a device
+and represent isolated aspects of its state or behavior. 
 
 Examples include:
 * Light on/off
 * Switch on/off (up/down)
 * Volume knob position (0-100)
+* Firmware update
+* Reboot
 
-Modalities can also carry complex or streaming data (e.g., a camera’s video stream) and
-administrative functions (e.g., firmware, roles). A modality’s value may be a single scalar, a structured type, and may include a stream.
+Modalities may have an input and an output, where both could be any types from simple scalars to complex values. The input and output types
+do not have to be the same, the modality may have more or even less state to report than can be set externally.
+The input changes the state represented by the modality, while the output streams the states as they change.
 
-Modalities that should share one logical state can be *joined* by the administrator of the network into a *modality group*.
-A modality group represents a single, canonical state that is shared among its members.
-Exactly one device in the group acts as the authoritative source: it publishes the canonical state.
-All other devices connect to this authority and mirror that state for their corresponding modalities.
+A network of devices is created by "connecting" modalities together. A connection involves directing the output of one modality to the
+input of the other and directing the output of the other back to the input of the first one. This means devices don't really "control"
+each other, as much as report their own state to them continuously.
 
-Non-authoritative devices may request changes on this canonical state on the authoritative device. All accepted changes are applied by the authority
-and then reflected to the group as the new canonical state. Which device is authoritative is a deployment/use-case decision and may change over time.
+This concept differs from the traditional "data and commands" or "read/write attributes" concept in several ways. Modalities don't
+"control" each other and don't even "set" the state of each other directly. Since there are no "commands", there's also no applicable concept
+of "acknowledgements". Note however, that devices may implement use-case specific acknowledgement strategies when this is required for
+their correct operations. For example waiting for the state to be reflected by the remote device, or the device to indicate in some use-case
+specific way that the operation is in progress.
 
-The concept of modalities differs from the traditional "data and commands" or "read/write attributes" concept in several ways. Commands 
-or writing attributes are one-off instructions between devices, which are not capable of representing the system in a consistent way. If
-any intermittent errors happen, the state of the whole system, even after the error is resolved, is basically random and it may or
-may not be consistent. For example a switch might indicate the light should be on, but the light is not on.
+Modalities are designed to resist temporary errors and mirror all relevant remote states reliably to a device, based on which the device
+makes decisions to set its own state.
 
-The modality group concept guarantees that the system is *eventually consistent*. The switch does not just send
-a command to the light to be on, instead the protocol guarantees a *synchronization* of the shared state to all
-members of the group. This synchronization is stable and is effectively running continuously, so if all errors are resolved,
-the system automatically arrives at a consistent state eventually.
+The "Resolution Principle" applies to both directions of data flow. Data in flight is always replaceable by newer versions of the same.
+Devices can not expect to receive _all_ state transitions from a remote device. The only guarantee is, that they will receive the newest
+one at the earliest time possible. Devices therefore don't need a sending queue for modalities, they only need to keep the currently
+transmitting and the newest state for each modality in memory at most, if needed.
 
-The Initiator of the logical connection is the non-authoritative device, and the Responder is the authoritative device for
-all join operations on this connection. In any modality group there is exactly one authoritative device and one or more non-authoritative devices, which
-all must connect to the one authoritative device.
+While connecting modalities is semantically symmetric, as data is moving back and forth the same way between devices, with exactly same rules, the
+connection itself is not symmetric. One device, the *Initiator*, connects to the other device, the *Responder*. The Initiator will make requests
+to the Responder, which will reply. Note also, that the Initiator will present the PSK, therefore the Responder will authorize the Initiator to
+make requests, not the other way around.
 
-### Non-Authoritative Device Messages
+### Initiator Messages
 
 ```
-NonAuthoritativeMessage = Union(Join, Leave, Intent)
+InitiatorMessages = Union(Subscribe, Unsubscribe, State)
 ```
 
-#### Join
+#### Subscribe
 
-Request the Authoritative Device to send state values indefinitely.
+Request the Responder to send state values indefinitely for the specified modality.
 
 ```
 Join = Struct(
@@ -571,68 +575,56 @@ Join = Struct(
 )
 ```
 
-Minimum send wait specifies how much time the Authoritative Device should wait between sending data. Zero
-means as fast as possible, without any waiting. The Authoritative Device must honor this wait
+Minimum send wait specifies how much time the Responder should wait between sending data. Zero
+means as fast as possible, without any waiting. The Responder must honor this wait
 in every case, even if the data is generated by manual input. It must never send data more
 frequently than specified. It may however send data less frequently. If the data is produced more
-often than specified proactively, the Authoritative Device must make sure the most current data is submitted
+often than specified proactively, the Responder must make sure the most current data is submitted
 when the next communication window arrives, even by potentially dropping or overwriting earlier data points.
 
-The Controller may repeat this message if the waiting period changes for some reason.
+The Initiator may repeat this message if the waiting period changes for some reason.
 
-The Controlled Device should send the most current data as soon as possible when receiving this request,
-and re-calculate the time for the next message. Sending this request with an "infinite" wait can therefore
-be used to request one data message, essentially imitate a pull-based approach.
-
-The Authoritative Device must not send messages for the same data packet in parallel. It must always send messages
+The Responder must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
 
-#### Leave
+#### Unsubscribe
 
-Request the Authoritative Device to stop sending state values.
+Request the Responder to stop sending state values.
 
 ```
-Leave = Struct(
+Unsubscribe = Struct(
    modality: LocalModalityReference
 )
 ```
 
-The Authoritative Device must immediately stop sending state updates, and interrupt any outstanding streams.
+The Responder must immediately stop sending state updates, and interrupt any outstanding streams.
 
-If the Non-Authoritative Device does not use the state updates for anything (for example the data is not on screen),
-it may use this message to make the Authoritative device stop sending them.
+The Initiator may send this message, if it does not use the state updates anymore (for example the data is not on screen).
 
-#### Intent 
+#### State 
 
-Signal an intent to change the state of a modality on the Authoritative Device.
+Signal a change of the visible state of a modality.
 
 ```
-Intent = Struct(
-   id:            VariableLengthInteger(8),
+State = Struct(
    modality:      LocalModalityReference,
    value:         DynamicValue,
 )
 ```
 
-The intent Id identifies this intent for this modality instance. The Authoritative modality does not acknowledge each intent
-individually, only in batches. When it does, it must always acknowledge the latest intent from the device and must include its
-id in the update message.
+The `modality` must reference the target modality on the Responder device.
 
-The sender should strive to keep this id number low and reuse ids as far as possible. One strategy is to use increasing id numbers
-and reset them to 0 when an update is received and there is no in-flight intent. Another strategy would be to track used ids and their
-ordering on the sender, so the full batch of sent intent ids can be identified and freed when receiving an update.
+The exact type of the `value` should be the `inputType` of the target modality.
 
-The exact type of the `value` should be the `intentType` in the modality definition.
-
-### Authoritative Device Messages
+### Responder Messages
 
 ```
-AuthoritativeMessage = Union(Capabilities, State, IntentUpdate)
+ResponderMessage = Union(Capabilities, State)
 ```
 
 #### Capabilities
 
-Authoritative Devices send this message as soon as a connection is established, unsolicited.
+Responders send this message as soon as a connection is established, unsolicited.
 
 ```
 Capabilities = {
@@ -643,6 +635,7 @@ Capabilities = {
 }
 
 // Describes device specific information to identify the device.
+// TODO: move this to device info, not needed here
 DeviceDefinition = {
    name:         Text,
    description:  MarkdownText,
@@ -653,7 +646,7 @@ Modality = Struct(
    id:                 String,                // Identifier of this modality on this device
    name:               Text,
    description:        MarkdownText,
-   readable:           Boolean,
+   readable:           Boolean, // TODO: remove these in favor of Nothing type
    changable:          Boolean,
    minimumIntentWait:  Duration,              // Minimum time to wait between Set requests
    keyType:            String,                // The type identifying modality instances
@@ -662,8 +655,8 @@ Modality = Struct(
 )
 ```
 
-The `protocolVersion` describes the exact structure of the `AuthoritativeMessage` type and all included types as well. If the
-Non-Authoritative Device can not handle this version, it must close the connection.
+The `protocolVersion` describes the exact structure of the `ResponderMessage` type and all included types as well. If the
+Non-Responder can not handle this version, it must close the connection.
 
 The `deviceDefinition` offers a description of the device. Almost all of this descriptive power is
 delegated to the web page, which each device must have. Note that the device link *should* link to the
@@ -675,7 +668,7 @@ may display this to the user to interact with.
 
 All modalities may be `readable`, `changable`, both or none. Since these flags should reflect the connected device's rights,
 it may have no rights at all, hence none of the flags would be true. Otherwise, a modality should be always at least
-readable, to get its state, although that state may be "empty" (Unit). A changable modality is one that can change its authoritative state programmatically, hence it
+readable, to get its state, although that state may be "empty" (Unit). A changeable modality is one that can change its authoritative state programmatically, hence it
 can accept `Intent` messages.
 
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
@@ -691,7 +684,8 @@ available.
 
 #### State
 
-Send state values to a Non-Authoritative Device that is joined to the modality.
+Send state values to a subscribed Initiator. This is the same `State` type the Initiator uses, but references the local
+modality not the target modality.
 
 ```
 State = Struct(
@@ -701,68 +695,14 @@ State = Struct(
 ```
 
 Note, that because of the Resolution Principle the Device must immediately
-send the newest data value upon receiving a Join. This may involve taking
+send the newest data value upon receiving a Subscribe. This may involve taking
 an immediate measurement, or may involve sending a cached value from memory, but
 the value must always be the most current one in the given semantics.
 
 Note also, that this semantic may include a month-end meter value for example. "Historical"
 values are allowed as long as its defined that way.
 
-The value must be of type `stateType` defined in the modality.
-
-#### Intent Update
-
-A direct response to an `Intent` to only the sending device.
-
-```
-IntentUpdate = Struct(
-   intentId: VariableLengthInteger(8),
-   modality: LocalModalityReference,
-   status:   IntentStatus
-)
-
-IntentStatus = Union(IntentAccepted, IntentRejected, IntentOverridden, IntentApplied)
-
-IntentAccepted = Unit
-
-IntentRejected = Struct(
-   rejectionType: RejectionType,
-   reason:        Text
-)
-
-RejectionType = Union(
-   IntentApplyError,    // The intent should have been applicable, but there was some unexpected error applying it
-   IntentMalformed,     // Intent malformed or values out of bound
-   IntentNotApplicable, // Intent is ok, but not applicable at this time because of some rules or logic constraints
-)
-
-IntentOverridden = Struct(
-   value: DynamicValue  // The override value
-)
-
-IntentApplied = Unit
-```
-
-Intent updates are only sent to the device whose intent is currently being processed. Each modality instance
-processes at most one intent at any given time. Updates are not sent for each and every intent message necessarily.
-
-An intent must receive an update at most 100 milliseconds after received, unless there is a new intent
-received from the same device for the same modality instance. If there's a continuous stream of intents
-overriding the previous intent, the sending of updates may be delayed indefinitely, provided there's no
-errors. Errors must be sent immediately.
-
-The updates include the `intentId` identifying exactly what intent is updated. The sending device should
-strive to keep this number as low as possible to keep it in one byte. 
-
-Note, that the Resolution Principle does not apply to these messages, they will always be
-sent, so the device may rely on getting them eventually, if no network errors occur.
-
-The different status indicators are:
-* `IntentAccepted`: Intent was accepted by the device, but it is still being applied. A further update will
-   occur, if no new intents by the device override it.
-* `IntentRejected`: Intent was rejected by device. No further updates.
-* `IntentOverridden`: Intent was overridden by another device's intent. No further updates.
-* `IntentApplied`: Intent was applied successfully. No further updates.
+The value must be of type `outputType` defined in the modality.
 
 ## Application Layer
 
@@ -1201,8 +1141,7 @@ Media = Struct(
 
 ### The Resolution Principle
 
-In SCAN any piece of data or control must be replaceable by newer versions
-of the same data or control setting.
+In SCAN any piece of state must be replaceable by newer versions of the same.
 
 This means that any stream of data or control *for the same thing*
 may be simply substituted by the last (newest) element. In other words, losing messages
