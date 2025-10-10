@@ -647,7 +647,8 @@ Modality = Struct(
    id:                 String,                // Identifier of this modality on this device
    name:               Text,
    description:        MarkdownText,
-   minimumIntentWait:  Duration,              // Minimum time to wait between Set requests
+   localTypes:         DynamicArray(Byte),    // Local types for this modality
+   minimumIntentWait:  Duration,              // Minimum time to wait between inputs
    keyType:            String,                // The type identifying modality instances
    outputType:         String,                // The type of the visible state of this modality
    inputType:          String,                // The type of the changeable part of the state
@@ -1020,7 +1021,7 @@ All devices must implement these modalities.
 
 #### Virtual Modalities
 
-Define virtual modalities that aggregate and/or transform other ones into a single modality.
+Define virtual modalities that transform other ones into another modality.
 
 ```
 Modality(
@@ -1033,11 +1034,9 @@ Modality(
 VirtualModalities = DynamicArray(VirtualModality)
 
 VirtualModality = Struct(
-   additionalTypes:    DynamicArray(Byte),    // Compiled type definitions
    modality:           Modality,
-   inputModalities:    DynamicArray(RemoteModalityReference),
-   stateTransform:     DynamicArray(Byte),    // Compiled transformation program
-   intentTransform:    DynamicArray(Byte),    // Compiled transformation program
+   outputTransform:    DynamicArray(Byte),    // Compiled transformation program
+   inputTransform:     DynamicArray(Byte),    // Compiled transformation program
 )
 ```
 
