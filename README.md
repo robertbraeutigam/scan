@@ -621,50 +621,27 @@ The exact type of the `value` should be the `inputType` of the target modality.
 ### Responder Messages
 
 ```
-ResponderMessage = Union(Capabilities, State)
+ResponderMessage = Union(Modalities, State)
 ```
 
-#### Capabilities
+#### Modalities
 
 Responders send this message as soon as a connection is established, unsolicited.
 
 ```
-Capabilities = {
-   protocolVersion:    Version,             // Version of these messages
-   deviceDefinition:   DeviceDefinition
-   typesDefinitions:   DynamicArray(Byte)  // Compiled type definitions
-   modalities:         DynamicArray(Modality)
-}
-
-// Describes device specific information to identify the device.
-// TODO: move this to device info, not needed here
-DeviceDefinition = {
-   name:         Text,
-   description:  MarkdownText,
-   icon:         Icon
-}
+Modalities = DynamicArray(Modality)
 
 Modality = Struct(
    id:                 String,                // Identifier of this modality on this device
    name:               Text,
    description:        MarkdownText,
-   localTypes:         DynamicArray(Byte),    // Local types for this modality
+   localTypes:         DynamicArray(Byte),    // Types for this modality
    minimumIntentWait:  Duration,              // Minimum time to wait between inputs
    keyType:            String,                // The type identifying modality instances
    outputType:         String,                // The type of the visible state of this modality
    inputType:          String,                // The type of the changeable part of the state
 )
 ```
-
-The `protocolVersion` describes the exact structure of the `ResponderMessage` type and all included types as well. If the
-Initiator can not handle this version, it must close the connection.
-
-The `deviceDefinition` offers a description of the device. Almost all of this descriptive power is
-delegated to the web page, which each device must have. Note that the device link *should* link to the
-exact page for this hardware and software/firmware version. It is expected that this description will
-be mostly used by the administrative interface.
-
-The `modalities` field describes all the modalities available on this device. 
 
 The input and output types may be `Nothing` to indicate that there is no input or output respectively.
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
@@ -873,6 +850,17 @@ All devices must implement all of these.
 #### Device Information
 
 TODO
+
+```
+// Describes device specific information to identify the device.
+// TODO: move this to device info, not needed here
+DeviceDefinition = {
+   name:         Text,
+   description:  MarkdownText,
+   icon:         Icon
+}
+```
+
 
 #### Health
 
