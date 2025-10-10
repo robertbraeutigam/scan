@@ -937,10 +937,10 @@ It is expected that this will modality will be used from an administrative inter
 one copy of the state (using infinite maximum wait) or will want to set the state only once.
 
 The state should include all administrative settings as well as any application level data saved on the device. Ideally
-it should be a dump of the non-volatile persistence on the device (or equivalent).
+it should be a dump of the non-volatile store on the device (or equivalent).
 
 The vendor can use any format suitable for storage, but it must at least accept the same media type in the intent as it produces in
-the state.
+the state. Ideally this format should include checksums or authentication info making sure it is valid and can be applied.
 
 #### Network Statistics
 
