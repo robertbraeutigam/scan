@@ -533,7 +533,8 @@ Examples include:
 
 Modalities may have an input and an output, where both could be any types from simple scalars to complex values. The input and output types
 do not have to be the same, the modality may have more or even less state to report than can be set externally.
-The input changes the state represented by the modality, while the output streams the visible parts of the states as they change.
+The input changes the state represented by the modality, while the output streams the visible parts of the states as they change. The modality
+may have hidden state that is not visible nor changable.
 
 A network of devices is created by "connecting" modalities together. A connection involves directing the output of one modality to the
 input of the other and directing the output of the other back to the input of the first one, assuming they have matching types.
@@ -544,7 +545,7 @@ This concept differs from the traditional "data and commands" or "read/write att
 of "acknowledgements" and no reason to "reject" states the other device reports.
 Note however, that devices may implement use-case specific acknowledgement strategies when this is required for
 their correct operations. For example waiting for the state to be reflected by the remote device, or the device to indicate in some use-case
-specific way that the operation is in progress.
+specific way that the operation is in progress / completed / failed.
 
 Modalities are designed to resist temporary errors and mirror all relevant remote states reliably to a device, based on which the device
 makes decisions to set its own state.
@@ -656,20 +657,19 @@ Modality = Struct(
 ```
 
 The `protocolVersion` describes the exact structure of the `ResponderMessage` type and all included types as well. If the
-Non-Responder can not handle this version, it must close the connection.
+Initiator can not handle this version, it must close the connection.
 
 The `deviceDefinition` offers a description of the device. Almost all of this descriptive power is
 delegated to the web page, which each device must have. Note that the device link *should* link to the
 exact page for this hardware and software/firmware version. It is expected that this description will
 be mostly used by the administrative interface.
 
-The `modalities` field describes all the modalities available on this device. The administrative interface
-may display this to the user to interact with. 
+The `modalities` field describes all the modalities available on this device. 
 
 The input and output types may be `Nothing` to indicate that there is no input or output respectively.
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
 needs to be physically toggled to change state.
-There also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
+There can also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
 may be no corresponding reading of the firmware image.
 
 Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
