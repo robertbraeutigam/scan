@@ -47,7 +47,7 @@ The SCAN protocol is divided into four layers:
 
 - Internet Layer (Packet Communication and Announcement over IP)
 - Logical Layer (Security, Multiplexing, Fragmenting, Logical Connections, Messaging)
-- Modalities Layer (Defining the Capabilities of the Device)
+- Modalities Layer (Defining the actual interface of the Device)
 - Application Layer (Required and common modality definitions, including Wiring)
 
 The Internet Layer is the actual transport infrastructure on top of IP that facilitates the transport of single
@@ -710,7 +710,7 @@ Modality(
 ```
 
 The modality is called with the proposed administrative ("root") PSK. There is no output state, but if the call succeeded, the PSK can be used to connect to the
-device and receive all Capabilities.
+device and receive all modalities.
 
 The device may reboot as part of the enrollment.
 
@@ -1097,9 +1097,9 @@ this locator function may switch itself off after a given time period.
 ### Common Type Definitions
 
 ```
-// A reference to a modality defined in the Capabilities.
+// A reference to a modality's index in the Modalities message.
 LocalModalityReference = Struct(
-   modalityIndex:       VariableLengthInteger(8), // The index in Capabilities modality array
+   modalityIndex:       VariableLengthInteger(8), // The index in Modalities modality array
    modalityInstanceKey: DynamicValue              // The key of the modality instance
 )
 
