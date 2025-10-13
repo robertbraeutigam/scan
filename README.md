@@ -843,27 +843,78 @@ All devices must implement all of these.
 
 #### Device Information
 
+Provide mostly static information about the device.
+
 ```
 Modality(
    id:                 "scan.info",
    keyType:            "Unit",
    outputType:         "DeviceInformation",
-   inputType:          "DeviceInformationUpdate"
+   inputType:          "UserDefinedData"
 )
 
 DeviceInformation = Struct(
-   name:         Text,
-   description:  MarkdownText,
-   icon:         Icon
+   deviceData:        DeviceData,
+   runtimeData:       RuntimeData,
+   versionData:       VersionData,
+   userData:          UserDefinedData
+)
+
+DeviceData = Struct(
+   name:              Text,                  // Name of the device
+   description:       MarkdownText,          // Description of the device and its operation
+   icon:              Icon,                  // Embedded icon for the device
+   vendor:            String,                // The vendor's readable (non-localized) name
+   web:               Optional(URI),         // The product's web page, if given
+)
+
+VersionData = Struct(
+   hardwareVersion:   Optional(String),      // The vendor's own hardware version
+   firmwareVersion:   Optional(String),      // The vendor's own firmware version
+   serialNumber:      Optional(String)       // The vendor's identifier for this exact product instance
+)
+
+UserDefinedData = Struct(
+   applicationName:   Optional(String),      // User editable name for the current application / environment
+   location:          Optional(String),      // User editable location
+   tags:              DynamicArray(String)   // User editable set of tags
 )
 
 ```
 
-TODO
+The `DeviceData` fields are for display purposes to the user, mainly for the administrative
+interface, but can be used for other use-cases as well.
+
+The `VersionData` fields are for the vendor to be able
+to identify products for defects, updates or other information to the users.
+
+The `UserDefinedData` fields are completely user supplied and the user can decide how to use them. The
+`applicationName` is supposed to be an application specific designator given by the user, like "Hall Light". The location might be used to help locate
+the device in larger installations, like marking the room number the device is in, which compartment on a boat, etc. The tags can be
+used to group devices, like all lighting fixtures, or all devices in a certain room, etc.
 
 #### Health
 
-TODO
+Provide runtime health information about the device.
+
+```
+Modality(
+   id:                 "scan.info",
+   keyType:            "Unit",
+   outputType:         "RuntimeInformation",
+   inputType:          "Nothing"
+)
+
+// TODO: come up with more health related information for this structure (also how to use them)
+RuntimeInformation = Struct(
+   totalNonVolatileMemory:  DataSize,
+   freeNonVolatileMemory:   DataSize,
+)
+```
+
+The non-volatile memory information can be used to check how much information the device can hold. It should be checked before
+any calls to update roles, tags, virtual modalities with transformation programs, etc. While the exact storage space requirements
+of all those may not be exactly known, a ballpark calculation should be made.
 
 #### Logs
 
