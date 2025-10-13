@@ -790,31 +790,26 @@ target device, to which all the rights necessary are granted on the target devic
 
 #### Firmware
 
-Represents the firmware on the device. All devices must support firmware updates dynamically.
+Represents the firmware on the device. All devices must support firmware updates.
 
 ```
 Modality(
    id:                 "scan.firmware",
    keyType:            "Unit",
-   outputType:         "FirmwareDescription",
+   outputType:         "NextFirmware",
    inputType:          "Media"
 )
 
-// TODO: pull updateSource into device details!
-FirmwareDescription = Struct(
-   currentVersion:     String,   // Vendor specific version string
+NextFirmware = Struct(
+   updateSource:       URI   // Vendor specific version string
 )
 ```
 
-The readable state of the firmware is not the firmware image itself, but information about the firmware, the
-currently deployed version number. The input does however include the full firmware image in a format specified by the device vendor.
-
-// TODO: move this description to device details
-
-The update source must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
-will need to likely include the current version number, as the server will need to determine whether a new version is available.
-If the server returns anything other than `200` for the GET, the admin interface (or whatever software is doing the downloading)
-should assume there are no updates available.
+The `updateSource` must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
+will need to likely include the current (or the next) version number, as the server will need to determine whether a new version is available.
+If the server returns HTTP status code `200` for the GET, the admin interface (or whatever software is doing the downloading)
+should assume there is a firmware update available for this device with the current firmware. If it returns `404`, it should assume
+no update is available, i.e. the device is up to date.
 
 It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, and it should
 be capable of doing this completely offline.
@@ -822,9 +817,8 @@ be capable of doing this completely offline.
 It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
 should not assume that they have, or will eventually have access to the internet.
 
-The call should be considered successful, if the reported firmware version updates. Note, that the device may reboot as part of the update
-to finish installing. Callers might also use the firmware details of the device (see appropriate modality) to see whether additional updates
-are available. If no updates are available the caller may conclude, that the update process was successful.
+The call should be considered successful, if the reported URI changes. Note, that the device may reboot as part of the update
+to finish installing. If no updates are available the caller may conclude, that the update process was successful.
 
 #### Reboot
 
@@ -849,18 +843,23 @@ All devices must implement all of these.
 
 #### Device Information
 
-TODO
-
 ```
-// Describes device specific information to identify the device.
-// TODO: move this to device info, not needed here
-DeviceDefinition = {
+Modality(
+   id:                 "scan.info",
+   keyType:            "Unit",
+   outputType:         "DeviceInformation",
+   inputType:          "DeviceInformationUpdate"
+)
+
+DeviceInformation = Struct(
    name:         Text,
    description:  MarkdownText,
    icon:         Icon
-}
+)
+
 ```
 
+TODO
 
 #### Health
 
@@ -983,6 +982,7 @@ Modality(
 
 Messages = Stream(Message)
 
+// TODO: fix this
 Message = Struct(
    authoritativeModality:     RemoteModalityReference,
    nonAuthoritativeModality:  RemoteModalityReference,
