@@ -855,7 +855,6 @@ Modality(
 
 DeviceInformation = Struct(
    deviceData:        DeviceData,
-   runtimeData:       RuntimeData,
    versionData:       VersionData,
    userData:          UserDefinedData
 )
@@ -901,20 +900,76 @@ Provide runtime health information about the device.
 Modality(
    id:                 "scan.info",
    keyType:            "Unit",
-   outputType:         "RuntimeInformation",
+   outputType:         "DeviceHealth",
    inputType:          "Nothing"
 )
 
-// TODO: come up with more health related information for this structure (also how to use them)
-RuntimeInformation = Struct(
-   totalNonVolatileMemory:  DataSize,
-   freeNonVolatileMemory:   DataSize,
+DeviceHealth = Struct(
+   status: HealthStatus,                     // Overall health summing everything up
+
+   uptime: TimeInterval,
+   lastBootReason: BootReason,
+
+   temperature: Optional(HardSoftLimited(Temperature)),
+   voltage: Optional(HardSoftLimited(Voltage)),
+   current: Optional(HardSoftLimited(Current)),
+   battery: Optional(HardSoftLimited(Percent)),
+
+   nonVolatileMemory: HardSoftLimited(Information),
+   volatileMemory: HardSoftLimited(Information),
+   cpuUsage: HardSoftLimited(Percent),
+
+   networkErrors: HardSoftLimited(Long),
+   networkLatency: HardSoftLimited(TimeInterval),
+
+   modalityStatus: HealthStatus,             // Sum status of all modalities
+   modalityHealths: DynamicArray(ModalityHealth)
+)
+
+HealthStatus = Union(Ok, Degraded, Error)
+
+Ok = Unit
+
+Degraded = Reasoned(Unit)
+
+Error = Reasoned(Unit)
+
+BootReason = Union(PowerOn, SoftwareReset, Watchdog, Brownout, Crash, Other)
+
+Other = Reasoned(Unit)
+
+ModalityHealth = Struct(
+   modalityId: String,
+   status: HealthStatus,
+   outgoingCount: Long,
+   incomingCount: Long,
+   failedIncomingCount: Long,
+   connectedCount: Long
 )
 ```
 
-The non-volatile memory information can be used to check how much information the device can hold. It should be checked before
-any calls to update roles, tags, virtual modalities with transformation programs, etc. While the exact storage space requirements
-of all those may not be exactly known, a ballpark calculation should be made.
+The overall health status reflects all of the given data and also potentially internal attributes not visible through this interface.
+If the health status is "Ok", it means all parameters are within acceptable ranges and all modalities are performing as desired.
+
+Uptime and last boot reason reflect reboot behavior. Seeing low uptimes may indicate problems, as well as boot reasons, especially
+brownouts or crashes.
+
+Temperature, voltage, current and battery information are all optional and depends on whether the hardware is capable of measuring them,
+or whether a battery is even present. If they are measure, the device will always supply acceptable operating ranges. Values exceeding soft limits
+may be considered cause for warnings or user intervention. Exceeding "hard" limits must be considered an error state.
+
+The non-volatile memory information can be used to check how much information the device can hold. It is used by all persistent information,
+such as network settings, virtual modalities, roles, keys, etc. If those modalities start to fail, one reason might be that non-volatile memory
+is not available.
+
+Depending on the device and its use, volatile memory and CPU limits may be defined.
+
+Network errors are either protocol-level or network-level errors that usually lead to connection termination. Ideally there should be no errors
+of this kind at all. Network latency is the average time packets are acknowledges by TCP/IP.
+
+The health of modalities can be individually inspected, where each modality is represented exactly once. A modality is considered healthy if it
+did not log errors or warnings recently. If it did, but only warnings, it is considered degraded. The `failedIncomingCount` represents the number
+of incoming messages that were handled with at least one error logged. While `connectedCount` is the number of remote modalities connected to this one.
 
 #### Logs
 
