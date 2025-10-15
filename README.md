@@ -572,7 +572,7 @@ Request the Responder to send state values indefinitely for the specified modali
 
 ```
 Join = Struct(
-   modality:            LocalModalityReference,
+   modality:            IndexedModalityReference,
    minimumSendWait:     Duration
 )
 ```
@@ -595,7 +595,7 @@ Request the Responder to stop sending state values.
 
 ```
 Unsubscribe = Struct(
-   modality: LocalModalityReference
+   modality: IndexedModalityReference
 )
 ```
 
@@ -609,7 +609,7 @@ Signal a change of the visible state of a modality.
 
 ```
 State = Struct(
-   modality:      LocalModalityReference,
+   modality:      IndexedModalityReference,
    value:         DynamicValue,
 )
 ```
@@ -664,7 +664,7 @@ modality not the target modality.
 
 ```
 State = Struct(
-   modality:      LocalModalityReference,
+   modality:      IndexedModalityReference,
    value:         DynamicValue
 )
 ```
@@ -955,7 +955,7 @@ Uptime and last boot reason reflect reboot behavior. Seeing low uptimes may indi
 brownouts or crashes.
 
 Temperature, voltage, current and battery information are all optional and depends on whether the hardware is capable of measuring them,
-or whether a battery is even present. If they are measure, the device will always supply acceptable operating ranges. Values exceeding soft limits
+or whether a battery is even present. If they are measured, the device will always supply acceptable operating ranges. Values exceeding soft limits
 may be considered cause for warnings or user intervention. Exceeding "hard" limits must be considered an error state.
 
 The non-volatile memory information can be used to check how much information the device can hold. It is used by all persistent information,
@@ -1074,9 +1074,10 @@ NetworkPeerStatistics = Struct(
 
 TODO
 
-#### Network Messages
+#### State Messages
 
-Listen in into all the messages this device is sending and receiving.
+Listen in into all the state messages this device is sending and receiving. Intended to be
+able to debug which remote states the device is receiving and what it reacts in turn.
 
 ```
 Modality(
@@ -1086,19 +1087,20 @@ Modality(
    inputType:          "Nothing",
 )
 
-Messages = Stream(Message)
+Messages = Stream(SentState, ReceivedState)
 
-// TODO: fix this
-Message = Struct(
-   authoritativeModality:     RemoteModalityReference,
-   nonAuthoritativeModality:  RemoteModalityReference,
-   message:                   Union(Intent, State)   
+SentState = Struct(
+   localModality:             LocalModalityReference,
+   remoteModality:            RemoteModalityReference,
+   state:                     State
+)
+
+ReceivedState = Struct(
+   localModality:             LocalModalityReference,
+   remotePeer:                PeerAddress,
+   state:                     State
 )
 ```
-
-Either the authoritative or the non-authoritative modality must point to the current device. Note, that
-`Intent` messages always originate on the non-authoritative side, and `State` only on the authoritative
-side.
 
 ### Interoperability Modalities
 
@@ -1204,7 +1206,7 @@ this locator function may switch itself off after a given time period.
 
 ```
 // A reference to a modality's index in the Modalities message.
-LocalModalityReference = Struct(
+IndexedModalityReference = Struct(
    modalityIndex:       VariableLengthInteger(8), // The index in Modalities modality array
    modalityInstanceKey: DynamicValue              // The key of the modality instance
 )
@@ -1212,6 +1214,11 @@ LocalModalityReference = Struct(
 // A reference to a modality in the whole system, potentially local
 RemoteModalityReference = Struct(
    peer:                 PeerAddress,
+   modalityReference:    LocalModalityReference,
+)
+
+// A reference to a local modality, relative a peer
+LocalModalityReference = Struct(
    modality:             String,
    modalityInstanceKey:  DynamicValue,
 )
