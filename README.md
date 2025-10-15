@@ -754,8 +754,8 @@ PskRight = Struct(
 
 Right = Struct(
    modalityId:    String,
-   read:          Boolean,
-   change:        Boolean
+   readOutput:    Boolean,
+   writeInput:    Boolean
 )
 ```
 
