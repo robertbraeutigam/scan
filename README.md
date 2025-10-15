@@ -709,10 +709,10 @@ Modality(
 )
 ```
 
-The modality is called with the proposed administrative ("root") PSK. There is no output state, but if the call succeeded, the PSK can be used to connect to the
-device and receive all modalities.
+The modality is "called" with the proposed administrative ("root") PSK. There is no output state, but if the call succeeded, 
+the connection will be terminated, and the PSK can be used to connect to the device and receive all modalities.
 
-The device may reboot as part of the enrollment.
+The device must disconnect all connections as part of the enrollment and must not allow new connections until the new PSK is registered. The device may reboot as part of the enrollment.
 
 #### Reset
 
