@@ -1551,6 +1551,16 @@ if present, otherwise the modality's default priority. The mapping is:
 
 Control messages (handshake, close) and advertisements should use the Normal DSCP marking.
 
+Since DSCP is set per-socket, not per-packet, and a single TCP connection may carry multiple
+subscriptions with different priorities, implementations must set the DSCP value of the TCP
+connection to the highest effective priority among all active subscriptions on that connection.
+
+In practice this is not a limitation, because a TCP connection exists between two specific devices,
+and a given device pair typically has a narrow relationship. For example, an autopilot connecting to
+a rudder sensor will only exchange steering data (Critical). The administrative interface connecting
+to the same sensor for firmware updates is a separate device with its own TCP connection (Bulk).
+The priority separation follows naturally from the device topology.
+
 #### Tier 2: Bounded Latency (Credit-Based Shaper)
 
 IEEE 802.1Qav (Credit-Based Shaper) provides formally bounded worst-case latency without
