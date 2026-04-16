@@ -44,7 +44,11 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:jcom1939.com)",
       "WebFetch(domain:maplesystems.com)",
-      "WebFetch(domain:www.proboat.com)"
+      "WebFetch(domain:www.proboat.com)",
+      "WebFetch(domain:www.reichelt.com)",
+      "WebFetch(domain:www.moxa.com)",
+      "WebFetch(domain:www.cisco.com)",
+      "WebFetch(domain:www.hirschmann.com)"
     ]
   }
 }

@@ -1445,102 +1445,71 @@ Devices need only define *how* and *what* to measure and then let the SCAN netwo
 
 ### Physical Layer Recommendations
 
-SCAN is a logical protocol over TCP/IP and does not mandate a specific physical layer. However,
-for installations in electrically demanding environments such as marine, automotive, or industrial settings,
-the following recommendations apply.
+SCAN runs over TCP/IP and does not mandate a physical layer. For electrically demanding
+environments (marine, automotive, industrial) the following recommendations apply.
 
 #### Wired Ethernet
 
-For wired installations, the baseline physical layer should be:
+Baseline for wired installations:
 
-* **Cable**: Shielded Cat5e or better (S/FTP or F/UTP), with UV-resistant, oil/fuel-resistant jacket rated for
-the installation environment. Cat5e supports up to 1 Gbps at 100m, which is sufficient for the vast
-majority of SCAN deployments.
-* **Connectors**: M12 D-coded (4-pin) for 100 Mbps devices, M12 X-coded (8-pin) for Gigabit and above.
-M12 connectors are IP67 rated (dust-tight, immersion-resistant), vibration-resistant, and are the
-same physical form factor used by NMEA 2000 (A-coded) and most industrial Ethernet installations. In
-protected indoor environments, standard RJ-45 connectors are acceptable.
-* **Power**: IEEE 802.3at Power over Ethernet (PoE), providing up to 25.5W per device. PoE eliminates
-separate power cabling and is delivered over the same Cat5e cable. For devices requiring more power,
-IEEE 802.3bt (PoE++) provides up to 90W.
+* **Cable**: Shielded Cat5e or better (S/FTP or F/UTP), with a jacket rated for the environment
+(UV, oil, fuel). Cat5e carries 1 Gbps at 100m.
+* **Connectors**: M12 D-coded (4-pin) for 100 Mbps, M12 X-coded (8-pin) for Gigabit. M12 is
+IP67-rated and vibration-resistant, matching NMEA 2000 and industrial Ethernet practice. RJ-45
+is acceptable in protected indoor environments.
+* **Power**: IEEE 802.3at PoE delivers up to 25.5W per device over the same cable; 802.3bt
+(PoE++) up to 90W.
 
-Ethernet has a built-in advantage for marine and other environments susceptible to ground loops:
-IEEE 802.3 mandates 1,500 Vrms galvanic isolation (magnetic transformer coupling) between every port
-and chassis ground. This is inherent in every standard Ethernet port and directly addresses stray
-current corrosion problems without additional components.
+IEEE 802.3 mandates 1,500 Vrms galvanic isolation (transformer coupling) between every port and
+chassis ground. This is inherent in every standard Ethernet port and directly addresses
+stray-current corrosion in marine and other ground-loop-prone installations.
 
-For simple sensors and actuators where a multi-drop bus topology is preferred (similar to CAN bus),
-10BASE-T1S (IEEE 802.3cg) is an optional physical layer. 10BASE-T1S provides 10 Mbps half-duplex
-over a single twisted pair with up to 8 nodes on a shared bus segment. Its Physical Layer Collision
-Avoidance (PLCA) mechanism provides deterministic round-robin bus access. 10BASE-T1S bus segments
-connect to the wider SCAN network through a standard Ethernet switch. This topology is suitable
-for clusters of low-bandwidth devices (temperature sensors, tank level sensors, simple switches) where
-running individual Ethernet drops to each device is impractical.
+For multi-drop clusters of low-bandwidth devices (temperature sensors, tank levels, simple
+switches) where individual Ethernet drops are impractical, 10BASE-T1S (IEEE 802.3cg) provides
+10 Mbps half-duplex over a single twisted pair, up to 8 nodes per bus segment, with PLCA giving
+deterministic round-robin access. Bus segments join the wider network through a standard switch.
 
 #### WiFi
 
-WiFi (IEEE 802.11) is a suitable transport for SCAN devices that benefit from wireless connectivity,
-such as mobile displays, tablets, handheld controllers, and devices in locations where cabling
-is difficult.
+WiFi suits mobile devices (displays, tablets, handheld controllers) and locations where cabling
+is difficult. WiFi 6 (802.11ax) or later is recommended; OFDMA keeps local roundtrip latency in
+the 2-5ms range in multi-device environments.
 
-WiFi 6 (802.11ax) or later is recommended. OFDMA (Orthogonal Frequency-Division Multiple Access)
-provides 2-5ms local roundtrip latency with improved performance in multi-device environments.
-
-For installations requiring full wireless coverage (e.g., across a vessel or building), mesh WiFi
-systems from marine-proven vendors provide seamless roaming. Running a wired Ethernet backbone
-alongside a WiFi overlay is standard practice and recommended: wired for fixed devices, WiFi
-for mobile devices and as a redundant path.
-
-WiFi should not be the sole communication path for safety-critical control loops. See the
-section on deterministic delivery below.
+A wired backbone with a WiFi overlay is standard practice: wired for fixed devices, WiFi for
+mobile and redundancy. WiFi must not be the sole path for safety-critical control loops - see
+Deterministic Delivery below.
 
 #### Mixed and Redundant Topologies
 
-SCAN's gateway and logical connection model supports mixed physical topologies transparently. A
-single SCAN network may span wired Ethernet segments, WiFi zones, 10BASE-T1S bus segments, and
-internet-connected gateways. The logical layer operates identically regardless of the underlying
-physical transport, and end-to-end encryption is preserved across all boundaries.
+A single network may span wired Ethernet, WiFi, 10BASE-T1S, and internet-connected gateways.
+The logical layer behaves identically across all of them and end-to-end encryption is preserved.
 
-For high-availability installations, IEEE 802.1CB (Frame Replication and Elimination for Reliability)
-can provide seamless redundancy at the Ethernet layer by duplicating frames across two disjoint
-physical paths (e.g., wired + wireless, or two separate cable runs) with automatic deduplication
-at the receiver. This provides zero-failover-time redundancy without any changes to the SCAN protocol.
+For high-availability installations, IEEE 802.1CB (Frame Replication and Elimination for
+Reliability) duplicates frames across two disjoint physical paths (wired + wireless, or two
+separate cable runs) with automatic deduplication at the receiver, providing zero-failover-time
+redundancy at the Ethernet layer.
 
 ### Deterministic Delivery
 
-SCAN operates over TCP/IP, which does not inherently provide hard real-time delivery guarantees.
-For the vast majority of SCAN use cases -- sensor data, device management, user interfaces,
-streaming -- this is not a concern. TCP/IP on a local network delivers messages in well under
-a millisecond through a single switch hop.
+TCP/IP does not inherently provide hard real-time delivery. For most use cases -- sensor data,
+management, user interfaces, streaming -- this is a non-issue: TCP/IP on a local network delivers
+messages in well under a millisecond through a single switch hop.
 
-However, certain safety-critical applications (e.g., helm-to-rudder autopilot control in marine,
-brake-by-wire in automotive) may require formally bounded worst-case latency. This section
-describes how the underlying network infrastructure can provide such guarantees beneath SCAN
-without any changes to the protocol itself.
+Safety-critical applications (helm-to-rudder autopilot, brake-by-wire) may require formally
+bounded worst-case latency. Marine autopilot loops run at 10-50 Hz; a one-way communication
+budget under 10ms with sub-1ms jitter is well within requirements. For comparison, NMEA 2000
+over CAN bus has a worst-case frame time around 0.5ms. Three infrastructure tiers can meet such
+requirements; each is driven by the DSCP markings defined in Tier 1.
 
-#### Context: What Applications Actually Need
+#### Tier 1: Managed Switch with DSCP
 
-Marine autopilot control loops typically run at 10-50 Hz (20-100ms cycle time). The rudder actuator
-itself takes approximately 10 seconds for hardover-to-hardover. A network communication budget
-of less than 10ms end-to-end (one-way) is well within these requirements, with jitter below 1ms
-to avoid disturbing PID controller stability.
+Any managed Ethernet switch uses DSCP markings in the IP header (or IEEE 802.1p tags in the VLAN
+header) for strict-priority queuing, so high-priority traffic is always served before bulk
+traffic. On a lightly loaded local network this gives sub-millisecond latency for prioritized
+traffic with no special hardware.
 
-For comparison, NMEA 2000 over CAN bus at 250 kbit/s has a worst-case frame transmission time
-of approximately 0.5ms and worst-case arbitration delay of approximately 0.135ms at 1 Mbit/s.
-
-#### Tier 1: Standard Ethernet with QoS (No Special Hardware)
-
-On any managed Ethernet switch, DSCP (Differentiated Services Code Point) markings in the IP header
-and IEEE 802.1p Class of Service tags in the VLAN header enable priority queuing. With strict
-priority scheduling, high-priority control traffic is always served before lower-priority bulk traffic.
-
-On a lightly loaded local network -- typical for a boat, building, or vehicle -- this provides
-effective sub-millisecond latency for prioritized traffic. No special hardware is needed beyond
-a standard managed switch.
-
-SCAN implementations must mark outgoing IP packets with DSCP values corresponding to the effective
-priority of the traffic. The effective priority is determined by the subscription's priority override
-if present, otherwise the modality's default priority. The mapping is:
+Devices must mark outgoing IP packets with DSCP values based on the effective priority of the
+traffic (the subscription override if present, otherwise the modality default):
 
 | Priority | DSCP | Value | Intended Use |
 |----------|------|-------|-------------|
@@ -1549,66 +1518,49 @@ if present, otherwise the modality's default priority. The mapping is:
 | Management | AF21 (Assured Forwarding) | 18 | Device management (health, logs, configuration) |
 | Bulk | BE (Best Effort) | 0 | Large transfers (firmware, backup, media streams) |
 
-Control messages (handshake, close) and advertisements should use the Normal DSCP marking.
-
-Since DSCP is set per-socket, not per-packet, and a single TCP connection may carry multiple
-subscriptions with different priorities, implementations must set the DSCP value of the TCP
-connection to the highest effective priority among all active subscriptions on that connection.
-
-In practice this is not a limitation, because a TCP connection exists between two specific devices,
-and a given device pair typically has a narrow relationship. For example, an autopilot connecting to
-a rudder sensor will only exchange steering data (Critical). The administrative interface connecting
-to the same sensor for firmware updates is a separate device with its own TCP connection (Bulk).
-The priority separation follows naturally from the device topology.
+DSCP is set per-socket, not per-packet. When a TCP connection carries subscriptions with
+different priorities, devices must set the connection's DSCP to the highest effective priority
+among its active subscriptions. In practice device pairs have narrow relationships -- an
+autopilot exchanges only steering data (Critical) with a rudder sensor; firmware updates come
+from a separate administrative device on a separate connection (Bulk) -- so priority separation
+follows naturally from the topology.
 
 #### Tier 2: Bounded Latency (Credit-Based Shaper)
 
-IEEE 802.1Qav (Credit-Based Shaper) provides formally bounded worst-case latency without
-requiring global time synchronization:
+IEEE 802.1Qav (Credit-Based Shaper) provides formally bounded worst-case latency without global
+time synchronization:
 
-* Class A: maximum 2ms worst-case latency over 7 network hops.
-* Class B: maximum 50ms worst-case latency over 7 network hops.
+* Class A: ≤2ms over 7 hops.
+* Class B: ≤50ms over 7 hops.
 
-This is available on industrial managed switches and requires no clock synchronization between
-devices. It is sufficient for all marine, building, and most automotive control applications.
-Switches assign traffic to stream reservation classes based on the DSCP markings defined above.
+Available on industrial managed switches, which map traffic to stream-reservation classes using
+the DSCP markings above. Sufficient for marine, building, and most automotive control.
 
 #### Tier 3: Hard Real-Time (Time-Sensitive Networking)
 
-For applications requiring hard real-time guarantees with formal certification, IEEE 802.1 Time-Sensitive
-Networking (TSN) provides deterministic delivery over standard Ethernet:
+For hard real-time guarantees with formal certification, IEEE 802.1 Time-Sensitive Networking
+(TSN) provides deterministic delivery at Layer 2:
 
-* **IEEE 802.1AS** (Timing and Synchronization): Sub-microsecond clock synchronization across all
-network nodes.
-* **IEEE 802.1Qbv** (Time-Aware Shaper): Divides time into scheduled slots. High-priority traffic
-gets exclusive access during its time window. Worst-case latency of approximately 100 microseconds
-over 5 hops with sub-microsecond jitter. This matches or exceeds CAN bus determinism.
-* **IEEE 802.1CB** (Frame Replication and Elimination for Reliability): Seamless redundancy
-with zero failover time, as described above.
+* **IEEE 802.1AS**: sub-microsecond clock synchronization across all nodes.
+* **IEEE 802.1Qbv** (Time-Aware Shaper): scheduled time slots with exclusive access for
+high-priority traffic; worst-case latency ~100µs over 5 hops with sub-µs jitter, matching or
+exceeding CAN bus determinism.
+* **IEEE 802.1CB**: seamless redundancy with zero failover time (see above).
 
-TSN operates at Layer 2 (Ethernet) and is transparent to TCP/IP and therefore to SCAN. No protocol
-changes are needed. As with Tier 2, switches use the DSCP markings defined above to classify
-traffic into the appropriate time-scheduled slots. The network infrastructure (switches and device
-Ethernet controllers) must support the relevant TSN profiles.
+TSN switches classify traffic into time-scheduled slots using the DSCP markings above. Both
+the switches and device Ethernet controllers must support the relevant TSN profiles. 
 
-TSN-capable embedded hardware is available today. For example, the NXP i.MX RT1180 integrates a
-5-port Gigabit TSN switch with a dual-core MCU in a 10mm package at industrial temperature range.
-Industrial TSN switches with marine type approvals (DNV, Lloyd's) are available from manufacturers
-such as Moxa and Hirschmann.
-
-TSN is recommended for installations where regulatory certification requires formal proof of
-bounded communication latency, such as safety-critical steering or engine control systems.
+Recommended where regulatory certification requires formal proof of bounded latency (safety-critical
+steering, engine control).
 
 #### Summary
 
 | Tier | Mechanism | Worst-Case Latency | Hardware Required | Use Case |
 |------|-----------|-------------------|-------------------|----------|
-| 1 | DSCP/802.1p strict priority | Statistical (sub-ms typical) | Any managed switch | Most SCAN deployments |
+| 1 | DSCP/802.1p strict priority | Statistical (sub-ms typical) | Any managed switch | Most deployments |
 | 2 | IEEE 802.1Qav (CBS) | 2ms over 7 hops (Class A) | Industrial managed switch | Control loops, building automation |
-| 3 | IEEE 802.1Qbv (TAS) + 802.1AS | ~100us over 5 hops | TSN switch + TSN-capable NICs | Safety-critical, certified systems |
+| 3 | IEEE 802.1Qbv (TAS) + 802.1AS | ~100µs over 5 hops | TSN switch + TSN-capable NICs | Safety-critical, certified systems |
 
-SCAN's design is compatible with all three tiers. The protocol itself does not need to change,
-only the underlying network infrastructure. This allows a single SCAN network to carry both
-best-effort bulk data and safety-critical control traffic simultaneously, differentiated by
-the infrastructure rather than the protocol.
+All three tiers carry best-effort bulk data and safety-critical control on the same network,
+differentiated by the DSCP markings defined in Tier 1.
 
