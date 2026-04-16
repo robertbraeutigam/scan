@@ -100,76 +100,154 @@ These functionalities are:
 * Open and receive a "physical" TCP/IP connection to/from a peer to send and receive data.
 * Send and receive data to/from all connected devices.
 
-This layer mimics IP closely. Meaning connections support streaming-based data exchange
-with no packet demarcations, while communication with the whole network supports stateless
-packet based communication.
+This layer mimics IP closely. Connections support streaming-based data exchange with no
+packet demarcations (frame boundaries are defined in the Logical Layer), while communication
+with the whole network supports stateless packet based communication.
 
-Addressing uses native IP addresses.
+### Terminology
 
-There can be multiple ways of configuring a device. However
-this configuration should be completely transparent for the layers above.
+Two notions of "peer" appear in this specification. At the Internet Layer a *physical peer*
+is an IP address at which a SCAN stack is reachable on port 11372. At the Logical Layer and
+above a *logical peer* is a 32-byte static public key (`PeerAddress`). A single physical peer
+may represent multiple logical peers (the gateway case), and a single logical peer may be
+reachable through multiple physical peers (a multi-homed device). Unless otherwise qualified,
+"peer" in this section means physical peer.
 
-Devices must reuse TCP connections, therefore
-at most one TCP connection must be present between two given peers at all times.
+### Addressing
+
+Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implementations must
+support at least one family and should support both where the environment permits.
+
+There can be multiple ways of configuring a device. However, this configuration should be
+completely transparent for the layers above.
+
+Devices must reuse TCP connections. At most one TCP connection must be present between any
+two physical peers at any time; multiple logical connections multiplex over that single TCP
+(see Logical Layer). When both sides dial each other and two TCP connections briefly exist
+between the same pair of physical peers (simultaneous open), both sides must close the
+connection whose initiator's 32-byte logical peer address, compared as a big-endian
+unsigned integer, is numerically larger. Both sides observe the initiator identity in the
+`Initiate Handshake` frame and therefore converge on the same decision without coordination.
 
 ### Local Network Configuration
 
 Every device must be capable of operating in a local network, where other devices are directly
 addressable and all devices can be contacted by multicast packets. In this scenario:
 
-* Connections are made / received using TCP/IP on port 11372.
-* All devices are addressed over UDP, at the address 239.255.255.244:11372.
+* Connections are made to, and received on, TCP port 11372. Source ports for outgoing
+  connections are ephemeral.
+* All devices are addressed over UDP on port 11372, at multicast group:
+  * `239.255.255.244` for IPv4 (RFC 2365 "IPv4 Local Scope").
+  * `ff05::2c6c` for IPv6 (site-local scope; `0x2c6c` = 11372 decimal).
+* Multicast datagrams must be sent with IPv4 TTL 32 or IPv6 hop-limit 32.
+* Devices must join the relevant multicast group via IGMPv2+ on IPv4 and MLDv2 on IPv6
+  on every interface over which they participate. Switches should enable IGMP/MLD snooping
+  to prevent multicast flooding, but the protocol does not require it.
 
-Note, that this "local network" does not necessarily need to be a "physical" local network,
-it can be a virtual local network that connects multiple devices, possibly through VPNs or other means.
+The `Advertisement` frame (see Logical Layer) is capped at 16 `PeerAddress` entries per
+frame. With frame overhead this fits comfortably within 1280 bytes (the IPv6 minimum MTU),
+so implementations must not rely on IP fragmentation for advertisements. Devices representing
+more than 16 logical identities send multiple frames.
+
+Note that this "local network" does not necessarily need to be a "physical" local network;
+it can be a virtual local network that connects multiple devices, possibly through VPNs or
+other means.
+
+**Privacy note.** Multicast advertisements carry 32-byte static public keys in the clear.
+Any device on the same broadcast segment can enumerate SCAN identities and correlate them
+across time. SCAN assumes the local segment is semi-trusted; for hostile networks use a
+gateway reachable over a trusted tunnel.
+
+Port 11372 is not currently registered with IANA; registration is intended.
 
 ### Gateway-based Configuration
 
-Devices may support connecting through "Gateways". A "Gateway" is a "Logical Layer" level software or hardware
-device that does not necessarily have an "Application Layer" presence, i.e. it may be invisible
-to the network, but can present all the devices that connect to it.
+Devices may support connecting through "Gateways". A Gateway is a Logical Layer-level
+software or hardware device that does not necessarily have an Application Layer presence —
+it may be invisible to the network, but presents all the devices that connect to it.
 
-In this scenario the software stack on the device that connects through a Gateway maps  operations thusly:
+A device may be configured with any number of gateways concurrently. Each gateway represents
+a distinct set of logical peers reachable through it, typically on a different network
+segment. There is no ordering, failover, or primary/secondary relationship among gateways:
+the device maintains an independent TCP connection to each, and treats the union of their
+advertised identities, plus any locally multicast identities, as its view of the network.
 
-* Connections are always made with the Gateway on port 11372 (the same port as above).
-* All devices are addressed over TCP through the same connection as above.
+Operations through a gateway map thusly:
 
-In this case all communication is directed at the Gateway, which in turn reflects all information 
-present on the "other side" of the Gateway.
+* The device opens a TCP connection to each configured gateway at the gateway's IP on
+  port 11372.
+* All traffic to logical peers reachable through a gateway flows over that gateway's
+  TCP connection.
+* The gateway emits standard `Advertisement` frames over that same TCP connection at
+  approximately the same ~1 Hz cadence as local multicast, each carrying up to 16
+  `PeerAddress` entries. Devices process advertisements received over TCP identically
+  to those received over UDP multicast. Gateways with more than 16 identities behind
+  them send multiple frames; the identity set is eventually consistent.
+
+Gateways have no cryptographic access to payloads — end-to-end encryption is preserved at
+the Logical Layer. A gateway can, however, observe metadata (identity keys, packet timing,
+traffic volumes) and can drop traffic. Users should treat a gateway as untrusted transit,
+equivalent to any other network intermediary.
+
+### Address Change Handling
+
+The mapping from logical peer to physical peer is maintained by processing `Advertisement`
+frames. When a new advertisement reports an IP address for a currently-connected logical
+peer that differs from the one the existing TCP connection is bound to, the device must
+close the existing TCP connection and establish a new one to the newly advertised address.
+The logical connection (Noise keys, subscription state) is not affected and resumes per the
+reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
+access points, and interface changes on multi-homed peers.
 
 ### Network Configuration
 
-Devices are expected to be available through a variety of network topologies and configurations,
-including through static or non-static IP addresses, through WiFi, with or without DHCP, through VPN,
-or through multiple network segments each with its own network zones or firewalls.
+Devices are expected to be available through a variety of network topologies and
+configurations, including through static or non-static IP addresses, through WiFi, with or
+without DHCP, through VPN, or through multiple network segments each with its own network
+zones or firewalls.
 
-Devices therefore must support low level network configuration options to enable them to participate
-in the SCAN network. These must at least include the following options:
-* Direct connection to SCAN network. Discovery and address resolution through broadcast UDP.
-* Connection through a gateway or gateways. Discovery and address resolution through gateway directly.
+Devices therefore must support low-level network configuration options to enable them to
+participate in the SCAN network. These must at least include the following options:
 
-Gateways present a way to configure a static set of IP addresses to speak to, where the gateway is
-essentially a stand-in for all devices that are behind it.
-This may be necessary for devices that are not on any "local" network. Connected through
-untrusted networks, such as cellular networks or other host networks.
+* Direct connection to SCAN network. Discovery and address resolution through multicast UDP.
+* Connection through one or more gateways. Discovery and address resolution through each
+  gateway directly.
 
-Devices should do anything and everything that can be reasonably done to not have to configure
-the network to use the device. This should include the following:
-* Support WPS to join a WiFi network without configuration.
-* Support, detect and use DHCP if available.
-* Support local-link IP address auto-selection when DHCP not available, to support ad-hoc
-wired networks.
+Gateways present a way to configure a static set of IP addresses to speak to, where each
+gateway is essentially a stand-in for all devices that are behind it. This may be necessary
+for devices that are not on any local network, connected through untrusted networks such
+as cellular networks or other host networks.
+
+Devices should do anything and everything that can be reasonably done to not have to
+configure the network to use the device. This should include the following:
+
+* Support Wi-Fi Easy Connect (Wi-Fi Alliance DPP) for WiFi onboarding where available.
+  Devices without DPP support should offer BLE-based provisioning or a temporary captive
+  portal. WPS is discouraged and should not be relied on, as WPS PIN is considered
+  insecure and has been deprecated by the Wi-Fi Alliance.
+* Support, detect and use DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
+* Support link-local IP address auto-selection (RFC 3927 for IPv4, RFC 4862 for IPv6)
+  when DHCP is not available, to support ad-hoc wired networks.
 * Potentially cycle through multiple strategies if one is not available.
 
-Devices may support other methods to connect to a SCAN network, like VPN, Proxies, or other custom tunnelling
-methods.
+Devices with multiple network interfaces treat each interface independently: they listen
+for TCP on 11372 on each interface, join the multicast group on each interface, and track
+the (interface, source IP) tuple of each received advertisement. A logical peer reachable
+via several physical peers (e.g. wired + WiFi) will have multiple IP-to-key mappings; the
+device may use any of them to establish a TCP connection, subject to the one-TCP-per-
+physical-peer-pair rule above.
 
-At the end of the network configuration devices must be able to send and receive frames to and from
-the rest of the network or parts thereof, so that the user can connect to it with an administrative device.
+Devices may support other methods to connect to a SCAN network, like VPN, proxies, or other
+custom tunnelling methods.
 
-Note that joining a network is not a security sensitive operation. The layers above are designed to handle
-communication through unsecure networks just fine. The point of this layer is to make the device
-available to talk to, in the most convenient way possible for the user.
+At the end of network configuration, devices must be able to send and receive frames to
+and from the rest of the network or parts thereof, so that the user can connect to it
+with an administrative device.
+
+Note that joining a network is not a security-sensitive operation. The layers above are
+designed to handle communication through insecure networks just fine. The point of this
+layer is to make the device available to talk to, in the most convenient way possible for
+the user.
 
 ## Logical Layer
 
