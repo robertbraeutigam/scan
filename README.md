@@ -153,7 +153,7 @@ essentially a stand-in for all devices that are behind it.
 This may be necessary for devices that are not on any "local" network. Connected through
 untrusted networks, such as cellular networks or other host networks.
 
-Devices should do anything and everything that can be securely done to not have to configure
+Devices should do anything and everything that can be reasonably done to not have to configure
 the network to use the device. This should include the following:
 * Support WPS to join a WiFi network without configuration.
 * Support, detect and use DHCP if available.
@@ -165,7 +165,7 @@ Devices may support other methods to connect to a SCAN network, like VPN, Proxie
 methods.
 
 At the end of the network configuration devices must be able to send and receive frames to and from
-the rest of the SCAN network.
+the rest of the network or parts thereof, so that the user can connect to it with an administrative device.
 
 Note that joining a network is not a security sensitive operation. The layers above are designed to handle
 communication through unsecure networks just fine. The point of this layer is to make the device

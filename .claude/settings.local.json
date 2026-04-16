@@ -48,7 +48,9 @@
       "WebFetch(domain:www.reichelt.com)",
       "WebFetch(domain:www.moxa.com)",
       "WebFetch(domain:www.cisco.com)",
-      "WebFetch(domain:www.hirschmann.com)"
+      "WebFetch(domain:www.hirschmann.com)",
+      "WebFetch(domain:www.iana.org)",
+      "WebFetch(domain:www.rfc-editor.org)"
     ]
   }
 }
