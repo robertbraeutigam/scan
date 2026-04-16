@@ -571,9 +571,10 @@ InitiatorMessage = Union(Subscribe, Unsubscribe, State)
 Request the Responder to send state values indefinitely for the specified modality.
 
 ```
-Join = Struct(
+Subscribe = Struct(
    modality:            IndexedModalityReference,
-   minimumSendWait:     Duration
+   minimumSendWait:     Duration,
+   priority:            Optional(Priority)
 )
 ```
 
@@ -584,7 +585,17 @@ frequently than specified. It may however send data less frequently. If the data
 often than specified proactively, the Responder must make sure the most current data is submitted
 when the next communication window arrives, even by potentially dropping or overwriting earlier data points.
 
-The Initiator may repeat this message if the waiting period changes for some reason.
+The `priority` field, if present, overrides the modality's default priority for this subscription.
+This allows the Initiator to request a priority appropriate to its own use of the data. For example,
+a rudder angle sensor may declare `Normal` priority by default, but an autopilot subscribing to it
+should set `Critical`, while a display showing the same data on a dashboard would leave it at the default.
+The Responder must use the effective priority (override if present, otherwise the modality default)
+when marking outgoing packets for this subscription.
+
+For State messages sent by the Initiator to the Responder, the Initiator applies the effective
+priority itself.
+
+The Initiator may repeat this message if the waiting period or priority changes for some reason.
 
 The Responder must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
@@ -637,11 +648,16 @@ Modality = Struct(
    description:        MarkdownText,
    localTypes:         DynamicArray(Byte),    // Types for this modality
    minimumIntentWait:  Duration,              // Minimum time to wait between inputs
+   priority:           Priority,              // Default traffic priority for this modality
    keyType:            String,                // The type identifying modality instances
    outputType:         String,                // The type of the visible state of this modality
    inputType:          String,                // The type of the changeable part of the state
 )
 ```
+
+The `priority` field declares the default traffic priority for this modality. It indicates the importance
+of the data for network-level quality of service. See the Priority type definition and the Deterministic
+Delivery discussion for details. Initiators may override this priority when subscribing.
 
 The input and output types may be `Nothing` to indicate that there is no input or output respectively.
 There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
@@ -703,6 +719,7 @@ any confidential data.
 ```
 Modality(
    id:                 "scan.enroll",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Nothing",
    inputType:          "PSK"
@@ -721,6 +738,7 @@ Reset the device to factory settings, including removing any and all user settin
 ```
 Modality(
    id:                 "scan.reset",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Nothing",
    inputType:          "Boolean"
@@ -740,6 +758,7 @@ All the PSKs and associated rights on this device, expect the master adminitrati
 ```
 Modality(
    id:                 "scan.grant",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Rights",
    inputType:          "Rights"
@@ -772,6 +791,7 @@ All the keys to other devices this device possesses.
 ```
 Modality(
    id:                 "scan.keys",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Keys",
    inputType:          "Keys"
@@ -795,6 +815,7 @@ Represents the firmware on the device. All devices must support firmware updates
 ```
 Modality(
    id:                 "scan.firmware",
+   priority:           Bulk,
    keyType:            "Unit",
    outputType:         "NextFirmware",
    inputType:          "Media"
@@ -827,6 +848,7 @@ Reboot the device.
 ```
 Modality(
    id:                 "scan.reboot",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Nothing",
    inputType:          "Boolean"
@@ -848,6 +870,7 @@ Provide mostly static information about the device.
 ```
 Modality(
    id:                 "scan.info",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "DeviceInformation",
    inputType:          "UserDefinedData"
@@ -899,6 +922,7 @@ Provide runtime health information about the device.
 ```
 Modality(
    id:                 "scan.health",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "DeviceHealth",
    inputType:          "Nothing"
@@ -978,6 +1002,7 @@ Stream the logs from the device.
 ```
 Modality(
    id:                 "scan.logs",
+   priority:           Management,
    keyType:            "Severity",
    outputType:         "Logs",
    inputType:          "Nothing",
@@ -1031,6 +1056,7 @@ Backup or Restore the device's internal state or parts thereof.
 ```
 Modality(
    id:                 "scan.backup",
+   priority:           Bulk,
    keyType:            "StateType",
    outputType:         "Media",
    inputType:          "Media",
@@ -1076,6 +1102,7 @@ Report network statistics since startup.
 ```
 Modality(
    id:                 "scan.netstat",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "NetworkStatistics",
    inputType:          "Nothing",
@@ -1104,6 +1131,7 @@ able to debug which remote states the device is receiving and what it reacts in 
 ```
 Modality(
    id:                 "scan.messages",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Messages",
    inputType:          "Nothing",
@@ -1144,6 +1172,7 @@ Define virtual modalities that transform other ones into another modality.
 ```
 Modality(
    id:                 "scan.vmods",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "VirtualModalities",
    inputType:          "VirtualModalities"
@@ -1183,6 +1212,7 @@ Define what modalities on this device is wired to what modalities at other devic
 ```
 Modality(
    id:                 "scan.wiring",
+   priority:           Management,
    keyType:            "Unit",
    outputType:         "Wiring",
    inputType:          "Wiring"
@@ -1211,6 +1241,7 @@ Help locate the device physically.
 ```
 Modality(
    id:                 "scan.locate",
+   priority:           Normal,
    keyType:            "Unit",
    outputType:         "Boolean",
    inputType:          "Boolean",
@@ -1244,6 +1275,9 @@ LocalModalityReference = Struct(
    modality:             String,
    modalityInstanceKey:  DynamicValue,
 )
+
+// Traffic priority for network-level quality of service
+Priority = Union(Critical, Normal, Management, Bulk)
 
 // PSK (Pre-Shared Key), used for authorization
 PSK = String(minLength = 32, maxLength = 32)
@@ -1504,13 +1538,18 @@ On a lightly loaded local network -- typical for a boat, building, or vehicle --
 effective sub-millisecond latency for prioritized traffic. No special hardware is needed beyond
 a standard managed switch.
 
-SCAN implementations should mark traffic with appropriate DSCP values to enable this. The
-recommended markings are:
+SCAN implementations must mark outgoing IP packets with DSCP values corresponding to the effective
+priority of the traffic. The effective priority is determined by the subscription's priority override
+if present, otherwise the modality's default priority. The mapping is:
 
-* **EF (Expedited Forwarding, DSCP 46)**: Safety-critical control state messages where low latency matters.
-* **AF41 (Assured Forwarding, DSCP 34)**: Normal modality state messages.
-* **AF21 (Assured Forwarding, DSCP 18)**: Device management traffic (health, logs, firmware).
-* **BE (Best Effort, DSCP 0)**: Bulk data (backup, large streams).
+| Priority | DSCP | Value | Intended Use |
+|----------|------|-------|-------------|
+| Critical | EF (Expedited Forwarding) | 46 | Safety-critical control (autopilot, steering, engine) |
+| Normal | AF41 (Assured Forwarding) | 34 | Regular modality state (sensors, switches, displays) |
+| Management | AF21 (Assured Forwarding) | 18 | Device management (health, logs, configuration) |
+| Bulk | BE (Best Effort) | 0 | Large transfers (firmware, backup, media streams) |
+
+Control messages (handshake, close) and advertisements should use the Normal DSCP marking.
 
 #### Tier 2: Bounded Latency (Credit-Based Shaper)
 
