@@ -1571,6 +1571,7 @@ requiring global time synchronization:
 
 This is available on industrial managed switches and requires no clock synchronization between
 devices. It is sufficient for all marine, building, and most automotive control applications.
+Switches assign traffic to stream reservation classes based on the DSCP markings defined above.
 
 #### Tier 3: Hard Real-Time (Time-Sensitive Networking)
 
@@ -1586,8 +1587,9 @@ over 5 hops with sub-microsecond jitter. This matches or exceeds CAN bus determi
 with zero failover time, as described above.
 
 TSN operates at Layer 2 (Ethernet) and is transparent to TCP/IP and therefore to SCAN. No protocol
-changes are needed. The network infrastructure (switches and device Ethernet controllers) must
-support the relevant TSN profiles.
+changes are needed. As with Tier 2, switches use the DSCP markings defined above to classify
+traffic into the appropriate time-scheduled slots. The network infrastructure (switches and device
+Ethernet controllers) must support the relevant TSN profiles.
 
 TSN-capable embedded hardware is available today. For example, the NXP i.MX RT1180 integrates a
 5-port Gigabit TSN switch with a dual-core MCU in a 10mm package at industrial temperature range.
