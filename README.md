@@ -898,7 +898,7 @@ Provide runtime health information about the device.
 
 ```
 Modality(
-   id:                 "scan.info",
+   id:                 "scan.health",
    keyType:            "Unit",
    outputType:         "DeviceHealth",
    inputType:          "Nothing"
@@ -1026,18 +1026,40 @@ The `Debug` level is for everything else. Received intents, execution steps, com
 
 #### Backup/Restore
 
-Backup or Restore the device's internal state.
+Backup or Restore the device's internal state or parts thereof.
 
 ```
 Modality(
    id:                 "scan.backup",
-   keyType:            "Unit",
+   keyType:            "StateType",
    outputType:         "Media",
    inputType:          "Media",
 )
+
+StateType = Union(FunctionState, ConfigurationState, FullState)
 ```
 
-This modality has the complete, consistent snapshot state of the device as state.
+// TODO: how to pull a consistent state from all devices?
+
+// TODO: how does restore actually work, since it should be a single time call, and then it may diverge
+
+This modality can be used to backup and restore parts or all of the state of the device.
+
+The `FunctionState` of the device is the state associated with its business logic and is usually volatile, although
+it can have non-volatile parts. Example: A light may have a simple on/off business state. Restoring the `FunctionState`
+on a device can be used to set a known snapshot of state. Example: Recall "Evening" settings from a scheduler for devices, or
+set all lights to "Mooring" mode on a boat.
+
+The `ConfigurationState` is all the other, usually non-volatile settings on the device. This can be used to restore a known, working configuration
+after a configuration goes wrong. It does not include the administration PSK the device was enrolled with.
+
+All outputs must be encrypted by a device internal key (generated at enrollment) that is not published. All input media needs to be
+decrypted by the same key and validated to be intact. This encryption must allow for earlier backups to be resubmitted, so it can't use
+key rotation, but it must use different initial vectors for all encryption operations.
+
+// TODO
+
+This modality has the consistent snapshot state of the device as state.
 It is expected that this will modality will be used from an administrative interface that will want to receive only
 one copy of the state (using infinite maximum wait) or will want to set the state only once.
 
