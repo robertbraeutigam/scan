@@ -118,12 +118,19 @@ Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implement
 support at least one family and should support both where the environment permits.
 
 A device must have observed an `Advertisement` from a peer before opening a TCP
-connection to it. The connection is attempted at the source address of that
-advertisement, on the interface on which it was received. If the same peer has been
-observed on more than one interface (or via both address families on one interface),
-an IPv6-capable path is preferred; otherwise any of them may be picked. There is no
-fallback to another path or another address family, and no concurrent connect-race
-(e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path that is used.
+connection to it — the advertisement is how its IP is learned in the first place.
+Gateways are the exception: a gateway's address is configured out-of-band, so no prior
+advertisement is required to open TCP to it. The connection is attempted at the source
+address of that advertisement, on the interface on which it was received. If the same
+peer has been observed on more than one interface (or via both address families on one
+interface), an IPv6-capable path is preferred; otherwise any of them may be picked.
+There is no fallback to another path or another address family, and no concurrent
+connect-race (e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path
+that is used. If the connect attempt fails, the device retries the same advertised
+address; a subsequent advertisement may change the address used, but connect failure
+alone does not cause a switch. Retry attempts, whether to a logical peer or to a
+gateway, are capped at 10 per minute per target; any scheduling algorithm within that
+cap is permitted.
 
 IPv6 link-local addresses (`fe80::/10`) are only meaningful when paired with the receiving
 interface's zone identifier. Devices that learn or advertise a link-local address must
@@ -156,8 +163,8 @@ directly addressable and all devices can be contacted by multicast packets. In t
 * Source ports for outgoing TCP connections are ephemeral.
 * All devices are addressed over UDP on port 11372, at multicast group:
   * `239.255.255.244` for IPv4 (RFC 2365 "IPv4 Local Scope").
-  * `ff15::2c6c` for IPv6 (admin-scoped site-local; transient bit set, scope = 5;
-    `0x2c6c` = 11372 decimal). The transient flag (`ff15` rather than `ff05`) reflects
+  * `ff12::2c6c` for IPv6 (transient, link-local scope; flags = `1` (transient),
+    scope = `2` (link-local); `0x2c6c` = 11372 decimal). The transient flag reflects
     that this address is not yet IANA-registered.
 * Multicast datagrams must be sent with IPv4 TTL 1 and IPv6 hop-limit 1. SCAN discovery
   is scoped to the directly-attached L2 segment; routed multicast is out of scope, and
@@ -214,8 +221,8 @@ Operations through a gateway map thusly:
   configured TCP port (11372 by default).
 * All traffic to logical peers reachable through a gateway flows over that gateway's
   TCP connection.
-* On TCP loss to a gateway, the device should reconnect with bounded exponential backoff
-  (no specific schedule mandated here).
+* On TCP loss to a gateway, the device reconnects under the same 10-attempts-per-minute
+  cap as in §Addressing; any scheduling algorithm within that cap is permitted.
 * The gateway emits `Advertisement` frames over that TCP connection on the same event
   triggers as local multicast (initial connect, change, solicited reply), each carrying
   up to 16 `PeerAddress` entries. Because TCP is reliable, each event emits a single
@@ -303,10 +310,10 @@ The following allocations are intended but not yet registered:
 
 * TCP/UDP port **11372** as the default SCAN port.
 * IPv4 multicast group **239.255.255.244** within "IPv4 Local Scope" (RFC 2365).
-* IPv6 multicast group **ff15::2c6c** (admin-scoped site-local, transient).
+* IPv6 multicast group **ff12::2c6c** (transient, link-local scope).
 
-Until registration is complete, the IPv6 group uses the transient flag (`ff15` rather
-than `ff05`).
+Until registration is complete, the IPv6 group uses the transient flag (`ff12` rather
+than `ff02`).
 
 ## Logical Layer
 
