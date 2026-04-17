@@ -300,10 +300,11 @@ as cellular networks or other host networks.
 
 Zero-configuration bring-up is a goal; devices should combine the following mechanisms:
 
-* Wi-Fi Easy Connect (Wi-Fi Alliance DPP) for WiFi onboarding where available. Devices
-  without DPP support should offer BLE-based provisioning or a temporary captive portal.
-  WPS is discouraged and should not be relied on, as the WPS PIN method is considered
-  insecure and has been deprecated by the Wi-Fi Alliance.
+* Wi-Fi Easy Connect (Wi-Fi Alliance DPP) or WPS for WiFi onboarding where available.
+  Devices without either should offer BLE-based provisioning or a temporary captive
+  portal. The weaknesses of the WPS PIN method are not a concern here, since SCAN does
+  not rely on WiFi-level security — confidentiality and integrity are established by
+  the Logical Layer handshake regardless of how the device joined the network.
 * DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
 * IPv4 link-local auto-selection (RFC 3927) when DHCP is not available, to support
   ad-hoc wired networks. IPv6 nodes always have a link-local address by construction.
