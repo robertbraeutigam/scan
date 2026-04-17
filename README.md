@@ -476,14 +476,13 @@ InitiateHandshake = {
 ```
 
 The Noise Protocol Name is the exact protocol used for the following handshake
-and data exchange. If the recipient disagrees with the protocol it must close the
-logical connection.
+and data exchange. 
 
 The protocol name, as well as the versions have to be included in the *prologue* of the Noise Handshake to
 make sure it has not been tampered with.
 
 If the responder disagrees with the version or the Noise protocol, it may respond with and Initial Handshake
-of its own with the counter proposal. If the initiator does not agree, the handshake failed.
+of its own with the counter proposal. If the initiator does not agree to that, the handshake failed.
 
 All devices must support the following protocols:
 
@@ -528,10 +527,11 @@ Devices must implement some form of control to guarantee that factory resets can
 implement some measure to check whether the user doing the factory reset has physical access to the device. For example
 a device may offer factory reset only for 1 minute after power-on, or require a button to be pushed, etc.
 
-Note, that the handshake does not identify the PSK used explicitly. The responder
-might therefore need to try multiple PSKs to know which one the initiator is using.
+Note, that the handshake does not identify the PSK used explicitly, it is only part of the hash calculations implicitly. The responder
+might therefore need to try multiple of its configured PSKs to know which one the initiator is using.
 The protocol is designed so a single try takes a single hashing operation only. Still,
-this mechanism is designed with a limited set of possible PSKs in mind.
+in the worst case, the responder may need to execute as many hashing operations as the
+number of configured PSKs it knows about.
 
 Devices must implement some throttling mechanism for authenticating connecting devices, to
 prevent brute-forcing PSKs. Introducing delays when an unsuccessful connection was attempted,
