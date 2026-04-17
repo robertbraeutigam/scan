@@ -401,8 +401,7 @@ each device is free to directly communicate with any number of other devices. Th
 To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
-The communication on this layer is packet based. The largest possible frame is a payload frame with the
-maximum payload of 16383 bytes.
+The communication on this layer is packet based. All frames are designed to fit comfortably in a 2048 byte buffer.
 
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
@@ -468,9 +467,9 @@ Noise Protocol Name and version of the logical layer.
 
 ```
 InitiateHandshake = {
-   noiseProtocolName: String
+   noiseProtocolName: String(max=128)
    protocolVersion:   Version             // 1.0 for this specification
-   handshake:         DynamicArray(Byte)
+   handshake:         DynamicArray(Byte, max=128)
 }
 ```
 
@@ -547,7 +546,7 @@ protocol variant.
 
 ```
 ContinueHandshake = {
-   handshake: DynamicArray(Byte)
+   handshake: DynamicArray(Byte, max=128)
 }
 ```
 
@@ -558,7 +557,7 @@ all keys and state information about the connection can be discarded.
 
 ```
 CloseConnection = Struct(
-   reason: String
+   reason: String(max=128)
 )
 ```
 
@@ -571,7 +570,7 @@ Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
 
 // Used later
 EncryptedPayload = Struct(
-   payload:   DynamicArray(Byte, max=16383),
+   payload:   DynamicArray(Byte, max=1958), // This is to fit in 2048 under all circumstances
    mac:       Array(16, Byte)
 )
 ```
