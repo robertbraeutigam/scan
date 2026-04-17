@@ -118,13 +118,14 @@ Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implement
 support at least one family and should support both where the environment permits.
 
 A device opens TCP only to a peer whose IP it has learned, either from a recent
-`Advertisement` or from its persistent address cache. Cached addresses are
-speculative; the device sends an `AdvertisementRequest` (see Logical Layer) in
-parallel and refreshes the cache from the reply. If the cache entry is stale and the
-IP has been reassigned to a different SCAN device, the Noise handshake fails because
-the responder will not hold the matching static key, and the entry is evicted on the
-next refresh. Gateways are the exception: a gateway's address is configured
-out-of-band, so no prior advertisement is required to open TCP to it.
+`Advertisement` or from its persistent address cache. A device sends
+`AdvertisementRequest` frames (see Logical Layer) for the peers it needs an IP for.
+If a cached entry turns out to be stale because the IP has been reassigned to a
+different SCAN device, the Noise handshake fails because the responder will not hold
+the matching static key, and the device evicts the entry. Cache sizing and entry
+lifetime are implementation-defined; the protocol does not mandate either.
+Gateways are the exception: a gateway's address is configured out-of-band, so no
+prior advertisement is required to open TCP to it.
 
 The mapping from a logical peer to its IP comes from `Advertisement` source addresses;
 latest advertisement wins, and older mappings for that family are discarded once a new
@@ -139,8 +140,9 @@ pair, or per configured gateway IP; any scheduling algorithm within that cap is
 permitted. Devices track only the IP that advertised the peer, not the interface on
 which it was received; the device's own routing table is assumed to pick a sensible
 interface for that IP. If the same source IP is observed on more than one local
-interface (e.g. bridged segments), behavior is undefined; SCAN does not attempt to
-disambiguate at L2.
+interface (e.g. bridged segments), implementations may treat the most recent
+observation as canonical and replace any prior interface association; SCAN does not
+attempt to disambiguate at L2.
 
 Devices should reuse an existing TCP connection between two physical peers rather than
 opening a second one; multiple logical connections multiplex over that single TCP (see
@@ -157,11 +159,8 @@ other connection.
 Every device must be capable of operating in a local network, where other devices are
 directly addressable and all devices can be contacted by multicast packets. In this scenario:
 
-* TCP listening port is 11372 by default. The initiator may connect to a non-default port
-  when it has out-of-band knowledge that the target listens elsewhere — typically for a
-  gateway, or for a peer that could not bind 11372 (for example, port already in use).
-  Multicast discovery does not communicate alternate ports, so non-default-port peers are
-  reachable only through configured paths or via a gateway.
+* TCP listening port is 11372. Gateways may use a different port, configured
+  out-of-band as part of the gateway configuration (see §Gateway-based Configuration).
 * Source ports for outgoing TCP connections are ephemeral.
 * All devices are addressed over UDP on port 11372, at multicast group:
   * `239.255.255.244` for IPv4, from the IPv4 administratively-scoped block
@@ -174,6 +173,9 @@ directly addressable and all devices can be contacted by multicast packets. In t
   scope, and cross-segment reachability is provided by gateways instead.
 * IPv4 senders should set the Don't-Fragment bit on advertisement datagrams so that an
   oversized frame fails visibly rather than fragmenting silently.
+* IPv6 senders must not include a Fragment Header on advertisement datagrams.
+  Advertisement frames are sized to fit within the IPv6 minimum MTU (1280 bytes) by
+  design, so end-host fragmentation is unnecessary.
 * Devices must join the relevant multicast group via IGMPv2 or v3 on IPv4 and MLDv1 or
   v2 on IPv6 on every interface over which they participate. Switches should enable
   IGMP/MLD snooping to suppress flooding, but the protocol does not require it.
@@ -255,17 +257,9 @@ The mapping from logical peer to physical peer is maintained by processing `Adve
 frames. New advertisements do not, on their own, trigger any change to an existing
 connection — not even the appearance of an additional IP for an already-reachable peer,
 nor the disappearance of the IP currently in use from a subsequent advertisement.
-Reconnection is driven only by detected failure of the current TCP connection: a TCP
-error (RST/timeout) or a heartbeat timeout (see Logical Layer). When that happens the
-device reconnects to a currently-advertised address for the peer, per §Addressing.
-
-Liveness is tracked by the `Heartbeat` frame (see Logical Layer), not by TCP keepalive.
-`Heartbeat` is a Logical-Layer frame but does not depend on the Noise handshake — it
-is unencrypted and does not advance the cipher state, so it flows in the clear from TCP
-establishment onward. The same liveness timeout therefore applies to a stalled
-handshake as to an established logical connection. Implementations may enable TCP
-keepalive as a defence in depth but must not rely on it for the timeliness of offline
-detection.
+Reconnection is driven only by closure of the current TCP connection. When the TCP
+connection closes for any reason, the device reconnects to a currently-advertised
+address for the peer, per §Addressing.
 
 The logical connection (Noise keys, subscription state) is not affected and resumes per the
 reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
@@ -303,17 +297,21 @@ Zero-configuration bring-up is a goal; devices should combine the following mech
 How and in what order these are tried is implementation-defined; the point is that
 joining a network should require zero manual configuration wherever possible.
 
-Devices with multiple network interfaces treat each interface independently: they listen
-for TCP on their TCP port (11372 by default) on each interface, join the multicast group
-on each interface, and emit their own advertisements on every interface they are active
-on. A logical peer reachable via several physical peers (e.g. wired + WiFi) will appear
-as multiple IP-to-key mappings; which one is used follows the path-selection rule in
-§Addressing.
+A device must complete network address acquisition and have a stable, scope-independent
+IP before joining the multicast group or emitting any advertisements. IPv6 link-local
+addresses (`fe80::/10`) must not be used as advertisement source addresses, since they
+require interface-scope information that the addressing model (§Addressing) does not
+carry; a device whose only IPv6 address is link-local omits IPv6 advertisements until
+SLAAC or DHCPv6 yields a non-link-local address. IPv4 link-local addresses
+(RFC 3927, `169.254.0.0/16`) may be advertised as-is.
 
-Devices may support other methods to connect to a SCAN network, like VPN, proxies, or
-other custom tunnelling methods. NAT/firewall traversal techniques (STUN, TURN, ICE) are
-not part of the SCAN protocol; a device behind NAT without an inbound path should reach
-the network by initiating a TCP connection outward to a gateway.
+Devices with multiple network interfaces treat each interface independently: they listen
+for TCP on port 11372 on each interface, join the multicast group on each interface,
+and emit their own advertisements on every interface they are active on.
+
+NAT/firewall traversal techniques (STUN, TURN, ICE) are not part of the SCAN
+protocol; a device behind NAT without an inbound path should reach the network by
+initiating a TCP connection outward to a gateway.
 
 At the end of network configuration, devices must be able to send and receive frames to
 and from the rest of the network or parts thereof, so that the user can connect to it
@@ -348,6 +346,11 @@ Two recommendations follow:
 * Operators of gateways carrying SCAN traffic over tunnels should configure TCP MSS
   clamping at tunnel ingress to the tunnel's effective MTU. This is operational
   guidance, not a protocol requirement.
+
+Beyond these recommendations, SCAN assumes that the path can carry TCP-segmented
+frames of arbitrary size. A path that silently degrades MTU below what SCAN traffic
+needs is a network-configuration problem, not something the protocol attempts to
+work around at the application layer.
 
 ### IANA Allocations
 
@@ -639,15 +642,17 @@ than that, it sends multiple frames; the identity set is eventually consistent.
 
 Advertisement is emitted only on events, never at a steady periodic rate:
 
-* **Birth burst.** A device sends three `Advertisement` frames over approximately two
-  seconds when it first becomes reachable on the network, with small random jitter
-  between frames (on the order of hundreds of milliseconds) so that segments of devices
-  booting together — e.g. after a power restore — do not burst in lockstep. This
-  tolerates multicast packet loss and makes the device visible to any already-present
-  peer.
-* **Re-burst on change.** The same burst (with the same jitter) is repeated on any
-  change that affects reachability or identity: IP address change, interface change, or
-  addition or removal of a represented logical key.
+* **Birth burst.** A device sends three `Advertisement` frames spaced 0-500 ms apart
+  (uniform random jitter per inter-frame gap) when it first becomes reachable on the
+  network, so that segments of devices booting together — e.g. after a power restore —
+  do not burst in lockstep. This tolerates multicast packet loss and makes the device
+  visible to any already-present peer.
+* **Re-burst on change.** The same burst is repeated on any change that affects
+  reachability or identity: IP address change, interface change, or addition or
+  removal of a represented logical key. Re-bursts are rate-limited to at most one
+  per 5-second window per device; multiple change events occurring within a window
+  are coalesced into a single re-burst at the window boundary, advertising the
+  state as it stands at that moment.
 * **Solicited reply.** A unicast reply to any `AdvertisementRequest` whose filter
   matches the device (or is empty), sent to the solicitor's IP with a small random
   jitter (0-500 ms) to spread response storms.
@@ -682,7 +687,9 @@ storms. The reply is the full `Advertisement` for the replying device (all ident
 it represents), not just the matching keys. The responder's receipt of the request
 (which carries the solicitor's `PeerAddress` in the Frame header, sourced from the
 solicitor's IP) satisfies the "must have observed an `Advertisement`" precondition for
-opening that TCP (see Internet Layer §Addressing).
+opening that TCP (see Internet Layer §Addressing). If no logical connection has been
+opened over the newly-established TCP after the reply has been sent, the replier
+closes it.
 
 Typical uses:
 
