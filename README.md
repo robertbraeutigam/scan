@@ -142,9 +142,13 @@ not cause a switch. Retries use exponential backoff per (logical-peer, IP) pair,
 per configured gateway IP: the first retry is attempted immediately on TCP close, and
 subsequent retries double from 1 s up to a 60 s ceiling, with ±25% random jitter on
 each delay. The backoff resets after a successful TCP establishment followed by a
-completed Noise handshake. Devices track only the IP that advertised the peer, not the interface on
-which it was received; the device's own routing table is assumed to pick a sensible
-interface for that IP. If the same source IP is observed on more than one local
+completed Noise handshake. For scope-independent source addresses, devices track only
+the IP that advertised the peer, not the interface on which it was received; the
+device's own routing table is assumed to pick a sensible interface for that IP. For
+link-local source addresses — `169.254.0.0/16` (IPv4, RFC 3927) and `fe80::/10`
+(IPv6) — devices additionally record the receiving interface and use that same
+interface for any outbound TCP to the peer (in IPv6 terms, the zoned form
+`fe80::addr%if`). If the same source IP is observed on more than one local
 interface (e.g. bridged segments), implementations may treat the most recent
 observation as canonical and replace any prior interface association; SCAN does not
 attempt to disambiguate at L2.
@@ -299,13 +303,13 @@ Zero-configuration bring-up is a goal; devices should combine the following mech
 How and in what order these are tried is implementation-defined; the point is that
 joining a network should require zero manual configuration wherever possible.
 
-A device must complete network address acquisition and have a stable, scope-independent
-IP before joining the multicast group or emitting any advertisements. IPv6 link-local
-addresses (`fe80::/10`) must not be used as advertisement source addresses, since they
-require interface-scope information that the addressing model (§Addressing) does not
-carry; a device whose only IPv6 address is link-local omits IPv6 advertisements until
-SLAAC or DHCPv6 yields a non-link-local address. IPv4 link-local addresses
-(RFC 3927, `169.254.0.0/16`) may be advertised as-is.
+A device must complete network address acquisition before joining the multicast group
+or emitting any advertisements. Link-local addresses — `169.254.0.0/16` (IPv4,
+RFC 3927) and `fe80::/10` (IPv6) — may be used as advertisement source addresses;
+§Addressing describes how receivers record the receiving interface alongside a
+link-local source so the zone is preserved for outbound TCP. Scope-independent
+addresses (SLAAC, DHCP/DHCPv6, static) are preferred when available and are used
+without an interface association.
 
 Devices with multiple network interfaces treat each interface independently: they listen
 for TCP on port 11372 on each interface, join the multicast group on each interface,
