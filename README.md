@@ -94,20 +94,19 @@ congestion, restarts, and other failure modes.
 
 ## Internet Layer
 
-The Internet Layer supports basic network primitives based on IP-native means for the next layer.
-These functionalities are:
+The Internet Layer is a thin wrapper over IP. It exposes two primitives to the layer above:
 
-* Open and receive a "physical" TCP/IP connection to/from a peer to send and receive data.
-* Send and receive data to/from all connected devices.
-
-This layer mimics IP closely. Connections support streaming-based data exchange with no
-packet demarcations (frame boundaries are defined in the Logical Layer), while communication
-with the whole network supports stateless packet based communication.
+* Open or accept a TCP connection to/from another physical peer, providing a stream of
+  bytes in each direction. Frame boundaries on that stream are defined in the Logical
+  Layer, not by IP packet boundaries.
+* Send or receive UDP multicast datagrams to/from all physical peers on the local segment,
+  used only for stateless segment-wide messages (advertisements and advertisement
+  requests).
 
 ### Terminology
 
 Two notions of "peer" appear in this specification. At the Internet Layer a *physical peer*
-is an IP address at which a SCAN stack is reachable on port 11372. At the Logical Layer and
+is an IP address (and TCP port) at which a SCAN stack is reachable. At the Logical Layer and
 above a *logical peer* is a 32-byte static public key (`PeerAddress`). A single physical peer
 may represent multiple logical peers (the gateway case), and a single logical peer may be
 reachable through multiple physical peers (a multi-homed device). Unless otherwise qualified,
@@ -118,47 +117,74 @@ reachable through multiple physical peers (a multi-homed device). Unless otherwi
 Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implementations must
 support at least one family and should support both where the environment permits.
 
-There can be multiple ways of configuring a device. However, this configuration should be
-completely transparent for the layers above.
+When an initiator has both an IPv4 and an IPv6 mapping for the same logical peer, it
+should prefer IPv6. On connection failure it tries the other family. Attempts are
+serialised; concurrent connect-races (e.g. RFC 8305 Happy Eyeballs) are not required and
+are discouraged on constrained devices where extra sockets are expensive.
 
-Devices must reuse TCP connections. At most one TCP connection must be present between any
-two physical peers at any time; multiple logical connections multiplex over that single TCP
-(see Logical Layer). When both sides dial each other and two TCP connections briefly exist
-between the same pair of physical peers (simultaneous open), both sides must close the
-connection whose initiator's 32-byte logical peer address, compared as a big-endian
-unsigned integer, is numerically larger. Both sides observe the initiator identity in the
-`Initiate Handshake` frame and therefore converge on the same decision without coordination.
+IPv6 link-local addresses (`fe80::/10`) are only meaningful when paired with the receiving
+interface's zone identifier. Devices that learn or advertise a link-local address must
+associate it with the interface on which it was observed; cross-interface use of a
+link-local address is undefined.
+
+Devices should reuse an existing TCP connection between two physical peers rather than
+opening a second one; multiple logical connections multiplex over that single TCP (see
+Logical Layer). When both sides happen to dial each other concurrently, or a race during
+reconnect produces two TCPs between the same pair, both connections are permitted to
+coexist. Logical connections may be carried over either TCP; the cost is wasted resources
+only, and these collisions are expected to be rare. No tie-break is defined; an
+implementation that wishes to close one of the duplicates may do so at its discretion.
+
+Liveness is detected at the application layer via the `Heartbeat` frame (see Logical
+Layer), not via TCP keepalive. Implementations may enable TCP keepalive as a defence in
+depth but must not rely on it for the timeliness of offline detection.
 
 ### Local Network Configuration
 
-Every device must be capable of operating in a local network, where other devices are directly
-addressable and all devices can be contacted by multicast packets. In this scenario:
+Every device must be capable of operating in a local network, where other devices are
+directly addressable and all devices can be contacted by multicast packets. In this scenario:
 
-* Connections are made to, and received on, TCP port 11372. Source ports for outgoing
-  connections are ephemeral.
+* TCP listening port is 11372 by default. The initiator may connect to a non-default port
+  when it has out-of-band knowledge that the target listens elsewhere — typically for a
+  gateway, or for a peer that could not bind 11372 (for example, port already in use).
+  Multicast discovery does not communicate alternate ports, so non-default-port peers are
+  reachable only through configured paths or via a gateway.
+* Source ports for outgoing TCP connections are ephemeral.
 * All devices are addressed over UDP on port 11372, at multicast group:
   * `239.255.255.244` for IPv4 (RFC 2365 "IPv4 Local Scope").
-  * `ff05::2c6c` for IPv6 (site-local scope; `0x2c6c` = 11372 decimal).
-* Multicast datagrams must be sent with IPv4 TTL 32 or IPv6 hop-limit 32.
-* Devices must join the relevant multicast group via IGMPv2+ on IPv4 and MLDv2 on IPv6
-  on every interface over which they participate. Switches should enable IGMP/MLD snooping
-  to prevent multicast flooding, but the protocol does not require it.
+  * `ff15::2c6c` for IPv6 (admin-scoped site-local; transient bit set, scope = 5;
+    `0x2c6c` = 11372 decimal). The transient flag (`ff15` rather than `ff05`) reflects
+    that this address is not yet IANA-registered.
+* Multicast datagrams must be sent with IPv4 TTL 32 or IPv6 hop-limit 32. This permits
+  propagation across small multi-switch sites without leaking onto wider routed
+  infrastructure.
+* IPv4 senders should set the Don't-Fragment bit on advertisement datagrams so that an
+  oversized frame fails visibly rather than fragmenting silently.
+* Devices must join the relevant multicast group via IGMPv2 or v3 on IPv4 and MLDv1 or
+  v2 on IPv6 on every interface over which they participate. Switches should enable
+  IGMP/MLD snooping to suppress flooding, but the protocol does not require it.
+* Devices must disable multicast loopback (`IP_MULTICAST_LOOP=0` or equivalent): a device
+  must not receive its own advertisements.
 
-The `Advertisement` frame (see Logical Layer) is capped at 16 `PeerAddress` entries per
-frame. With frame overhead this fits comfortably within 1280 bytes (the IPv6 minimum MTU),
-so implementations must not rely on IP fragmentation for advertisements. Devices representing
-more than 16 logical identities send multiple frames.
+The `Advertisement` frame (see Logical Layer) carries up to 16 `PeerAddress` entries
+(16 × 32 = 512 bytes of keys, plus a small frame header) and fits comfortably within
+1280 bytes (the IPv6 minimum MTU), so implementations must not rely on IP fragmentation
+for advertisements. Devices representing more than 16 logical identities send multiple
+frames. Advertisements are emitted only on events (birth burst, change re-burst,
+solicited reply); see the Logical Layer's `Advertisement` and `Heartbeat` sections for
+the cadence and liveness model.
 
 Note that this "local network" does not necessarily need to be a "physical" local network;
 it can be a virtual local network that connects multiple devices, possibly through VPNs or
 other means.
 
-**Privacy note.** Multicast advertisements carry 32-byte static public keys in the clear.
-Any device on the same broadcast segment can enumerate SCAN identities and correlate them
-across time. SCAN assumes the local segment is semi-trusted; for hostile networks use a
-gateway reachable over a trusted tunnel.
-
-Port 11372 is not currently registered with IANA; registration is intended.
+**Privacy and integrity note.** Multicast advertisements carry 32-byte static public keys
+in the clear. Any device on the same broadcast segment can enumerate SCAN identities and
+correlate them across time. They are also unauthenticated: an on-segment attacker can
+forge advertisements that point a known identity at an arbitrary IP. This is harmless to
+confidentiality — the Noise handshake to the wrong IP fails because the responder will
+not hold the matching static key — but it can deny service. SCAN assumes the local segment
+is semi-trusted; for hostile networks use a gateway reachable over a trusted tunnel.
 
 ### Gateway-based Configuration
 
@@ -172,17 +198,27 @@ segment. There is no ordering, failover, or primary/secondary relationship among
 the device maintains an independent TCP connection to each, and treats the union of their
 advertised identities, plus any locally multicast identities, as its view of the network.
 
+If the same logical peer is advertised by more than one gateway (or by both a gateway and
+the local segment), the device opens at most one logical connection to that peer and may
+freely choose which of the available paths to use. Failure of the chosen path may be
+retried over a different one.
+
 Operations through a gateway map thusly:
 
-* The device opens a TCP connection to each configured gateway at the gateway's IP on
-  port 11372.
+* The device opens a TCP connection to each configured gateway at the gateway's IP and
+  configured TCP port (11372 by default).
 * All traffic to logical peers reachable through a gateway flows over that gateway's
   TCP connection.
-* The gateway emits standard `Advertisement` frames over that same TCP connection at
-  approximately the same ~1 Hz cadence as local multicast, each carrying up to 16
-  `PeerAddress` entries. Devices process advertisements received over TCP identically
-  to those received over UDP multicast. Gateways with more than 16 identities behind
-  them send multiple frames; the identity set is eventually consistent.
+* On TCP loss to a gateway, the device should reconnect with bounded exponential backoff
+  (no specific schedule mandated here).
+* The gateway emits `Advertisement` frames over that TCP connection on the same event
+  triggers as local multicast (initial connect, change, solicited reply), each carrying
+  up to 16 `PeerAddress` entries. Devices process advertisements received over TCP
+  identically to those received over UDP multicast. Gateways with more than 16 identities
+  behind them send multiple frames; the identity set is eventually consistent.
+* On TCP establishment to a gateway, the device sends an `Advertisement` over that same
+  connection covering the logical identities the device itself represents, so the gateway
+  can route inbound traffic.
 
 Gateways have no cryptographic access to payloads — end-to-end encryption is preserved at
 the Logical Layer. A gateway can, however, observe metadata (identity keys, packet timing,
@@ -192,14 +228,19 @@ equivalent to any other network intermediary.
 ### Address Change Handling
 
 The mapping from logical peer to physical peer is maintained by processing `Advertisement`
-frames. When a new advertisement reports an IP address for a currently-connected logical
-peer that differs from the one the existing TCP connection is bound to, the device must
-close the existing TCP connection and establish a new one to the newly advertised address.
+frames. The IP an existing TCP connection is bound to is considered to have changed when
+that IP becomes unreachable — observed either as a TCP error (RST/timeout) or as the
+absence of that IP from any new advertisement for the same logical peer while a different
+IP is advertised for it. In that case the device must close the existing TCP connection
+and reconnect at one of the currently advertised addresses. The mere appearance of an
+additional advertised IP for an already-reachable peer (a multi-homed peer) does not, on
+its own, trigger reconnection.
+
 The logical connection (Noise keys, subscription state) is not affected and resumes per the
 reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
 access points, and interface changes on multi-homed peers.
 
-### Network Configuration
+### Bring-up and Onboarding
 
 Devices are expected to be available through a variety of network topologies and
 configurations, including through static or non-static IP addresses, through WiFi, with or
@@ -209,7 +250,7 @@ zones or firewalls.
 Devices therefore must support low-level network configuration options to enable them to
 participate in the SCAN network. These must at least include the following options:
 
-* Direct connection to SCAN network. Discovery and address resolution through multicast UDP.
+* Direct connection to a SCAN network. Discovery and address resolution through multicast UDP.
 * Connection through one or more gateways. Discovery and address resolution through each
   gateway directly.
 
@@ -218,27 +259,28 @@ gateway is essentially a stand-in for all devices that are behind it. This may b
 for devices that are not on any local network, connected through untrusted networks such
 as cellular networks or other host networks.
 
-Devices should do anything and everything that can be reasonably done to not have to
-configure the network to use the device. This should include the following:
+Zero-configuration bring-up is a goal; devices should combine the following mechanisms:
 
-* Support Wi-Fi Easy Connect (Wi-Fi Alliance DPP) for WiFi onboarding where available.
-  Devices without DPP support should offer BLE-based provisioning or a temporary captive
-  portal. WPS is discouraged and should not be relied on, as WPS PIN is considered
+* Wi-Fi Easy Connect (Wi-Fi Alliance DPP) for WiFi onboarding where available. Devices
+  without DPP support should offer BLE-based provisioning or a temporary captive portal.
+  WPS is discouraged and should not be relied on, as the WPS PIN method is considered
   insecure and has been deprecated by the Wi-Fi Alliance.
-* Support, detect and use DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
-* Support link-local IP address auto-selection (RFC 3927 for IPv4, RFC 4862 for IPv6)
-  when DHCP is not available, to support ad-hoc wired networks.
-* Potentially cycle through multiple strategies if one is not available.
+* DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
+* Link-local IP address auto-selection (RFC 3927 for IPv4, RFC 4862 for IPv6) when DHCP
+  is not available, to support ad-hoc wired networks.
+* Cycle through these strategies if one is not available.
 
 Devices with multiple network interfaces treat each interface independently: they listen
-for TCP on 11372 on each interface, join the multicast group on each interface, and track
-the (interface, source IP) tuple of each received advertisement. A logical peer reachable
-via several physical peers (e.g. wired + WiFi) will have multiple IP-to-key mappings; the
-device may use any of them to establish a TCP connection, subject to the one-TCP-per-
-physical-peer-pair rule above.
+for TCP on their TCP port (11372 by default) on each interface, join the multicast group
+on each interface, and track the (interface, source IP) tuple of each received
+advertisement. A logical peer reachable via several physical peers (e.g. wired + WiFi)
+will have multiple IP-to-key mappings; the device may use any of them to establish a TCP
+connection.
 
-Devices may support other methods to connect to a SCAN network, like VPN, proxies, or other
-custom tunnelling methods.
+Devices may support other methods to connect to a SCAN network, like VPN, proxies, or
+other custom tunnelling methods. NAT/firewall traversal techniques (STUN, TURN, ICE) are
+not part of the SCAN protocol; a device behind NAT without an inbound path should reach
+the network by initiating a TCP connection outward to a gateway.
 
 At the end of network configuration, devices must be able to send and receive frames to
 and from the rest of the network or parts thereof, so that the user can connect to it
@@ -248,6 +290,17 @@ Note that joining a network is not a security-sensitive operation. The layers ab
 designed to handle communication through insecure networks just fine. The point of this
 layer is to make the device available to talk to, in the most convenient way possible for
 the user.
+
+### IANA Allocations
+
+The following allocations are intended but not yet registered:
+
+* TCP/UDP port **11372** as the default SCAN port.
+* IPv4 multicast group **239.255.255.244** within "IPv4 Local Scope" (RFC 2365).
+* IPv6 multicast group **ff15::2c6c** (admin-scoped site-local, transient).
+
+Until registration is complete, the IPv6 group uses the transient flag (`ff15` rather
+than `ff05`).
 
 ## Logical Layer
 
