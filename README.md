@@ -262,6 +262,9 @@ the Logical Layer. A gateway can, however, observe metadata (identity keys, pack
 traffic volumes) and can drop traffic. Users should treat a gateway as untrusted transit,
 equivalent to any other network intermediary.
 
+Note, that a gateway may change metadata, specifically source and target peer address information,
+as part of its normal operations.
+
 ### Address Change Handling
 
 The mapping from logical peer to physical peer is maintained by processing `Advertisement`
