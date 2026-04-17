@@ -401,8 +401,8 @@ each device is free to directly communicate with any number of other devices. Th
 To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
-The communication on this layer is packet based, with each packet limited in size to a maximum of 32767 bytes
-excluding the frame header.
+The communication on this layer is packet based. The largest possible frame is a payload frame with the
+maximum payload of 16383 bytes.
 
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
@@ -450,7 +450,7 @@ Since a single logical connection may traverse multiple physical connections, wh
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
-There is no explicit content delimiting. All peers, as well as intermediaries must be able to parse
+Content delimiting is provided by the types parser. All peers, as well as intermediaries (like gateways) must be able to parse
 all message types on this layer. If a message type is unknown (parsing fails), a device must close the connection, although
 this shouldn't happen given the version number included in the handshake.
 
@@ -572,7 +572,7 @@ Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
 
 // Used later
 EncryptedPayload = Struct(
-   payload:   DynamicArray(Byte),
+   payload:   DynamicArray(Byte, max=16383),
    mac:       Array(16, Byte)
 )
 ```
