@@ -146,16 +146,19 @@ initiator may not immediately reconnect. A responder does not close TCP to go
 offline — it relies on the initiator's own disconnect or on network-level failure
 to release state.
 
-For scope-independent source addresses, devices track only
+For non-link-local source addresses, devices track only
 the IP that advertised the peer, not the interface on which it was received; the
 device's own routing table is assumed to pick a sensible interface for that IP. For
 link-local source addresses — `169.254.0.0/16` (IPv4, RFC 3927) and `fe80::/10`
 (IPv6) — devices additionally record the receiving interface and use that same
 interface for any outbound TCP to the peer (in IPv6 terms, the zoned form
-`fe80::addr%if`). If the same source IP is observed on more than one local
-interface (e.g. bridged segments), implementations may treat the most recent
-observation as canonical and replace any prior interface association; SCAN does not
-attempt to disambiguate at L2.
+`fe80::addr%if`; IPv4 passes the interface out-of-band to the socket API).
+Link-local addresses are interface-scoped by construction — the same address can
+legitimately refer to different hosts on different interfaces — so the interface
+is part of the identity of the address. If the same source IP is observed on more
+than one local interface (e.g. bridged segments), implementations may treat the
+most recent observation as canonical and replace any prior interface association;
+SCAN does not attempt to disambiguate at L2.
 
 Devices should reuse an existing TCP connection between two physical peers rather than
 opening a second one; multiple logical connections multiplex over that single TCP (see
@@ -310,7 +313,7 @@ A device must complete network address acquisition before joining the multicast 
 or emitting any advertisements. Link-local addresses — `169.254.0.0/16` (IPv4,
 RFC 3927) and `fe80::/10` (IPv6) — may be used as advertisement source addresses;
 §Addressing describes how receivers record the receiving interface alongside a
-link-local source so the zone is preserved for outbound TCP. Scope-independent
+link-local source so the zone is preserved for outbound TCP. Non-link-local
 addresses (SLAAC, DHCP/DHCPv6, static) are preferred when available and are used
 without an interface association.
 
