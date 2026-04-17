@@ -150,7 +150,7 @@ For home/marine/automotive use cases with diverse vendor devices, SCAN's model m
 
 | Protocol | Delivery Model | Backpressure | Rate Limiting | Consistency Guarantee |
 |----------|---------------|--------------|---------------|-----------------------|
-| **SCAN** | Resolution Principle (newest replaces old) | TCP propagation + drop policy | **Explicit** (minimumSendWait/minimumIntentWait) | **Eventual consistency** (formally argued) |
+| **SCAN** | Resolution Principle (newest replaces old) | TCP propagation + drop policy | **Explicit** (minimumSendWait/minimumIntentWait) | **Eventual consistency** (Lamport LWW across wired groups) |
 | MQTT | QoS 0/1/2 (at-most/least/exactly once) | None (broker absorbs) | None | None |
 | CoAP | CON/NON (reliable/unreliable) | NSTART limit only | None | None |
 | LwM2M | Inherited from CoAP | None | pmin/pmax notification attributes | None |
@@ -174,6 +174,12 @@ No other protocol unifies these concerns under one principle. DDS comes closest 
 NMEA 2000's CAN bus arbitration provides deterministic, priority-based delivery -- the highest-priority message is guaranteed to transmit even at 100% bus load. This hardware-level real-time guarantee is something TCP/IP fundamentally cannot match. However, NMEA 2000 has no application-level QoS, no backpressure signaling, no rate limiting, and no consistency model. Devices simply broadcast at their configured rates regardless of bus load or whether anyone is listening.
 
 The formal eventual consistency argument in the spec (messages are either delivered, intentionally dropped for newer ones, or trigger reconnection which retransmits state) is unique among IoT protocols.
+
+Beyond single-modality delivery, SCAN extends the Resolution Principle across *wired groups* -- sets of modality instances on different devices connected together to share one logical state. Every `State` frame carries a per-instance Lamport `counter` and the originating peer's address as `writer`, and replicas are merged lexicographically on `(counter, writer)`. All peers that have seen the same set of writes arrive at identical state, independent of ordering, duplication, disconnects, or restarts. No persistent Lamport storage is required on any device: a restarted participant reinitialises to its default and catches up from whichever peers still hold later replicas, including via `Nothing`-valued metadata-only frames on write-only sides of the group. The result is CRDT-style convergence for shared state, achieved with no broker, no coordinator, no durable peer storage, and no PKI.
+
+A key design property of this model is that writes are produced only by local physical events on the writing device -- a button press, a lever change, a sensor reading -- never in reaction to observing the group's current value. This structurally rules out the feedback-loop oscillation that otherwise emerges when multiple actuators react to each other's state: a SCAN toggle switch whose lever disagrees with the group value stays silent; it does not fight back, and only the next physical event produces a new write. The observable cost is familiar from traditional three-way wiring -- after an override by another writer, the first physical flip of a desynchronised switch is "consumed" resynchronising it -- but no high-frequency oscillation is possible, across any latency, topology, or partition.
+
+No other surveyed protocol specifies this combination. Z-Wave association groups and KNX group addresses allow multiple writers but rely on implicit bus ordering with no formal convergence or restart-recovery semantics. DDS's `OWNERSHIP` QoS resolves multi-writer conflict by electing a single exclusive writer from a strength lattice, not by merging contributions from all of them. MQTT retained messages are broker-side and have no peer-to-peer analogue. Matter, Zigbee, and OPC UA attributes live on a single owning device, so cross-device shared state simply is not expressible without external orchestration.
 
 ## 7. Device Management
 
@@ -338,7 +344,7 @@ This mirrors the current industry trajectory: NMEA OneNet (IPv6/Ethernet) is bei
 
 3. **Dynamic interoperability** -- Virtual modalities with transformation programs solve a real problem no other protocol addresses at the protocol level.
 
-4. **The Resolution Principle** -- A formally-argued eventual consistency model that unifies backpressure, rate limiting, failure recovery, and data freshness into one coherent semantic. Unique among IoT protocols.
+4. **The Resolution Principle + Lamport LWW** -- A formally-argued eventual consistency model that unifies backpressure, rate limiting, failure recovery, and data freshness into one coherent semantic, extended across wired multi-writer groups by per-instance Lamport `(counter, writer)` ordering that produces CRDT-style convergence without brokers, coordinators, or durable peer state. Because writes are produced only by local physical events and never in reaction to observing group state, the model is structurally immune to oscillation. Unique among IoT protocols.
 
 ### Where SCAN faces real challenges
 

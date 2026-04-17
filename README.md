@@ -876,6 +876,89 @@ connection itself is not symmetric. One device, the *Initiator*, connects to the
 to the Responder, which will reply. Note also, that the Initiator will present the PSK, therefore the Responder will authorize the Initiator to
 make requests, not the other way around.
 
+### Modality Instances, Groups, and State Convergence
+
+A *modality instance* is a concrete occurrence of a modality on a device, identified
+by a value of the modality's `keyType`. A device hosts one or more instances of every
+modality it declares; an instance lives on exactly one device and is the smallest
+unit that state is attached to.
+
+Two instances may be *wired* together if their types are complementarily compatible:
+
+* `A.outputType` equals `B.inputType`, and
+* `B.outputType` equals `A.inputType`.
+
+A symmetric modality (`inputType == outputType`) is the degenerate case. Asymmetric
+pairs are equally valid: one side's types may be `(X, Y)` while the other's are
+`(Y, X)`. Both sides of the connection agree on what the state *means*; they just
+encode it in the type appropriate to each direction.
+
+A *modality instance group* is the transitive closure of instances connected by
+wiring. The protocol has no group-level machinery -- no membership list, no
+coordinator, no group identifier. Groups emerge from the wiring graph and dissolve
+when it is removed.
+
+#### Last-Writer-Wins Ordering
+
+Every `State` message carries a `counter` and (optionally) a `writer`. Together
+these form a Lamport clock per instance that establishes a Last-Writer-Wins ordering
+across all participants:
+
+* Each peer maintains, per instance, a local `counter` (its own progress) and a
+`seenCounter` (the highest counter it has observed from anyone).
+* On local write: `counter := max(counter, seenCounter) + 1`. The frame is sent
+with `(counter, writer = self, value)`. The `writer` field is omitted on the wire
+because the sender of the frame is the writer.
+* On receive: `seenCounter := max(seenCounter, received.counter)`. The stored
+replica is replaced with the received tuple iff `(received.counter, received.writer)`
+is lexicographically greater than `(stored.counter, stored.writer)`. Counter ties
+are broken by lexicographic comparison of the 32-byte `PeerAddress` of the writer.
+
+All peers that have seen the same set of `State` messages converge to identical
+`(counter, writer, value)`. Message order, duplication, connection drops, and
+device restarts do not affect the result.
+
+When a peer relays a value it did not originate -- as happens naturally inside an
+instance group where writes from any participant may be reflected back by another
+participant -- it includes the original `writer` explicitly, so the Lamport data
+is preserved across any number of hops.
+
+#### Asymmetric Groups
+
+The `(counter, writer)` pair describes the group's state independent of direction.
+The `value` is that state's representation in the type the receiver expects. LWW
+merges on `(counter, writer)` alone; the value's wire representation is whatever the
+direction demands. This makes asymmetric groups work exactly the same way as
+symmetric ones -- the Lamport stream is uniform, only the value encoding varies.
+
+#### `Nothing` Value Types
+
+A value type of `Nothing` does not exclude an instance from a group. A `State`
+frame with `value` of type `Nothing` encodes as zero value bytes and carries only
+the Lamport metadata. These metadata-only frames are what allow write-only sides
+of a modality -- a pure sensor's input, a firmware receiver's output -- to
+participate in the group's convergence.
+
+They matter most for restart recovery. A subscriber that holds a replica written
+before a device crash can echo the Lamport pair back to the restarted device through
+a metadata-only `State`, even when the device's input type is `Nothing`. The
+restarted device's `seenCounter` catches up, its next write carries a strictly
+higher counter, and any lingering phantom replicas are overwritten everywhere.
+
+#### Restart Recovery
+
+On restart, a device reinitialises each of its instances to `(counter = 0, writer
+= self, value = configured default)` and rejoins its groups normally. Peers that
+hold later replicas send them back as part of the normal state exchange (in either
+direction, including via `Nothing`-valued frames). The restarted device's
+`seenCounter` updates from those messages, and subsequent writes carry strictly
+higher counters than any pre-crash ghost.
+
+No persistent Lamport state is required on the device. If no reachable peer holds
+a later replica, the restarted device is effectively alone in the group and its
+configured default is as authoritative as any -- which is the correct behaviour,
+as no external source of truth exists to contradict it.
+
 ### Initiator Messages
 
 ```
@@ -950,6 +1033,8 @@ Signal a change of the visible state of a modality.
 ```
 State = Struct(
    modality:      IndexedModalityReference,
+   counter:       VariableLengthInteger(8),
+   writer:        Optional(PeerAddress),
    value:         DynamicValue,
 )
 ```
@@ -957,6 +1042,21 @@ State = Struct(
 The `modality` must reference the target modality on the Responder device.
 
 The exact type of the `value` should be the `inputType` of the target modality.
+
+The `counter` is a monotonically increasing per-instance value that the writer
+advances on every state change. It lets receivers order updates deterministically
+across device restarts, reconnections, and forwarding through multiple paths.
+
+The `writer` is optional. When absent, the sender of the frame is taken as the
+writer. This is the common case -- a peer transmitting its own latest state --
+and eliminates the 32-byte address from every such frame. The `writer` field
+is only carried when the sending peer is relaying a state originally produced
+by a different participant, which is what happens when multiple peers contribute
+to the same modality instance through a group.
+
+What these fields are for, and how shared state behaves across a group, is
+described in the *Modality Instance Groups and Shared State* technical
+discussion.
 
 ### Responder Messages
 
@@ -1010,6 +1110,8 @@ modality not the target modality.
 ```
 State = Struct(
    modality:      IndexedModalityReference,
+   counter:       VariableLengthInteger(8),
+   writer:        Optional(PeerAddress),
    value:         DynamicValue
 )
 ```
@@ -1023,6 +1125,12 @@ Note also, that this semantic may include a month-end meter value for example. "
 values are allowed as long as its defined that way.
 
 The value must be of type `outputType` defined in the modality.
+
+The `counter` and `writer` fields follow the same rules as on the Initiator
+side: `counter` is always present and monotonically increasing per instance;
+`writer` is omitted when the sender is itself the writer of the current value.
+See the *Modality Instance Groups and Shared State* technical discussion for
+what these fields are for.
 
 ## Application Layer
 
@@ -1668,6 +1776,68 @@ in case of a crash or restart.
 
 As a side-effect messages are also repeatable. Since a stream of two messages with
 the same content would also mean the same thing as one of those messages.
+
+### Modality Instance Groups and Shared State
+
+This section describes how state is shared between connected modality instances.
+The protocol handles the mechanism transparently -- end users do not need to
+reason about it directly -- but understanding the model helps when designing
+more complex wirings.
+
+**Modality, instance, group.**
+
+A *modality* is a single semantic unit defined on a device. "On/off of a light",
+"position of a switch", "current temperature" are all modalities. Each modality
+has a type and a default behaviour.
+
+A *modality instance* is a concrete occurrence of a modality on a device.
+Modalities may have many instances, distinguished by a *key*. A power strip
+with eight independent channels defines one modality with eight instances
+(keyed by channel number); a simple light defines one modality with a single
+instance.
+
+A *modality instance group* is the set of modality instances that have been
+wired together. Wiring is how the user declares that instances are connected
+and should behave as a shared logical entity. A group has no central component;
+it is simply the transitive closure of instances reachable through wiring.
+
+**Shared state.**
+
+When instances are wired together, they share one logical state. Each
+participant holds its own replica of that state, and replicas converge to the
+same value over time. Any participant may write a new value; every other
+participant observes the change through its subscriptions.
+
+The user-observable consequences are:
+
+* Any button in a group can change the group's on/off state, and every light
+in the group follows.
+* Adding a third button or a tenth light requires no central configuration;
+the user just wires the new instance into the group.
+* Losing connectivity to some members does not disable the rest. Each
+remaining connection keeps working at full semantic correctness.
+* A device that restarts and rejoins the group recovers the current group
+state automatically from the other participants. No persistent storage of the
+shared state is required on the device itself.
+
+**Last-Writer-Wins.**
+
+Conflicting updates in a group are resolved by a rule called *Last-Writer-Wins*
+(LWW): when two participants write at nearly the same time, the group eventually
+settles on whichever write is considered most recent, with a deterministic
+tie-break so that every participant ends at the same value.
+
+The mechanism uses a per-instance monotonically increasing *counter* and
+records which peer produced the current value as the *writer*. These are the
+`counter` and `writer` fields carried on `State` messages. A peer's counter
+advances on every local write and whenever it observes a higher counter from
+anyone else, so newer writes always dominate older ones regardless of message
+order, duplication, reconnections, or device restarts.
+
+Users do not have to look at or set these fields. What matters is the
+observable behaviour: the group state is eventually consistent, the system
+tolerates partial failures gracefully, and any single device can be restarted,
+reconnected, or replaced without disrupting the rest of the group.
 
 ### Network Backpressure
 
