@@ -117,10 +117,13 @@ reachable through multiple physical peers (a multi-homed device). Unless otherwi
 Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implementations must
 support at least one family and should support both where the environment permits.
 
-When an initiator has both an IPv4 and an IPv6 mapping for the same logical peer, it
-should prefer IPv6. On connection failure it tries the other family. Attempts are
-serialised; concurrent connect-races (e.g. RFC 8305 Happy Eyeballs) are not required and
-are discouraged on constrained devices where extra sockets are expensive.
+A device must have observed an `Advertisement` from a peer before opening a TCP
+connection to it. The connection is attempted at the source address of that
+advertisement, on the interface on which it was received. If the same peer has been
+observed on more than one interface (or via both address families on one interface),
+an IPv6-capable path is preferred; otherwise any of them may be picked. There is no
+fallback to another path or another address family, and no concurrent connect-race
+(e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path that is used.
 
 IPv6 link-local addresses (`fe80::/10`) are only meaningful when paired with the receiving
 interface's zone identifier. Devices that learn or advertise a link-local address must
@@ -132,8 +135,9 @@ opening a second one; multiple logical connections multiplex over that single TC
 Logical Layer). When both sides happen to dial each other concurrently, or a race during
 reconnect produces two TCPs between the same pair, both connections are permitted to
 coexist. Logical connections may be carried over either TCP; the cost is wasted resources
-only, and these collisions are expected to be rare. No tie-break is defined; an
-implementation that wishes to close one of the duplicates may do so at its discretion.
+only, and these collisions are expected to be rare. Duplicate TCPs are not proactively
+closed to reclaim resources — each simply lives out its natural lifetime like any
+other connection.
 
 Liveness is detected at the application layer via the `Heartbeat` frame (see Logical
 Layer), not via TCP keepalive. Implementations may enable TCP keepalive as a defence in
@@ -155,16 +159,17 @@ directly addressable and all devices can be contacted by multicast packets. In t
   * `ff15::2c6c` for IPv6 (admin-scoped site-local; transient bit set, scope = 5;
     `0x2c6c` = 11372 decimal). The transient flag (`ff15` rather than `ff05`) reflects
     that this address is not yet IANA-registered.
-* Multicast datagrams must be sent with IPv4 TTL 32 or IPv6 hop-limit 32. This permits
-  propagation across small multi-switch sites without leaking onto wider routed
-  infrastructure.
+* Multicast datagrams must be sent with IPv4 TTL 1 and IPv6 hop-limit 1. SCAN discovery
+  is scoped to the directly-attached L2 segment; routed multicast is out of scope, and
+  cross-segment reachability is provided by gateways instead.
 * IPv4 senders should set the Don't-Fragment bit on advertisement datagrams so that an
   oversized frame fails visibly rather than fragmenting silently.
 * Devices must join the relevant multicast group via IGMPv2 or v3 on IPv4 and MLDv1 or
   v2 on IPv6 on every interface over which they participate. Switches should enable
   IGMP/MLD snooping to suppress flooding, but the protocol does not require it.
-* Devices must disable multicast loopback (`IP_MULTICAST_LOOP=0` or equivalent): a device
-  must not receive its own advertisements.
+* Multicast loopback (`IP_MULTICAST_LOOP=0` or equivalent) may be disabled as an
+  optimization; a device in any case ignores advertisements whose key set it already
+  represents.
 
 The `Advertisement` frame (see Logical Layer) carries up to 16 `PeerAddress` entries
 (16 × 32 = 512 bytes of keys, plus a small frame header) and fits comfortably within
@@ -213,9 +218,11 @@ Operations through a gateway map thusly:
   (no specific schedule mandated here).
 * The gateway emits `Advertisement` frames over that TCP connection on the same event
   triggers as local multicast (initial connect, change, solicited reply), each carrying
-  up to 16 `PeerAddress` entries. Devices process advertisements received over TCP
-  identically to those received over UDP multicast. Gateways with more than 16 identities
-  behind them send multiple frames; the identity set is eventually consistent.
+  up to 16 `PeerAddress` entries. Because TCP is reliable, each event emits a single
+  frame rather than the three-frame burst used for multicast. Devices process
+  advertisements received over TCP identically to those received over UDP multicast.
+  Gateways with more than 16 identities behind them send multiple frames; the identity
+  set is eventually consistent.
 * On TCP establishment to a gateway, the device sends an `Advertisement` over that same
   connection covering the logical identities the device itself represents, so the gateway
   can route inbound traffic.
@@ -228,13 +235,12 @@ equivalent to any other network intermediary.
 ### Address Change Handling
 
 The mapping from logical peer to physical peer is maintained by processing `Advertisement`
-frames. The IP an existing TCP connection is bound to is considered to have changed when
-that IP becomes unreachable — observed either as a TCP error (RST/timeout) or as the
-absence of that IP from any new advertisement for the same logical peer while a different
-IP is advertised for it. In that case the device must close the existing TCP connection
-and reconnect at one of the currently advertised addresses. The mere appearance of an
-additional advertised IP for an already-reachable peer (a multi-homed peer) does not, on
-its own, trigger reconnection.
+frames. New advertisements do not, on their own, trigger any change to an existing
+connection — not even the appearance of an additional IP for an already-reachable peer,
+nor the disappearance of the IP currently in use from a subsequent advertisement.
+Reconnection is driven only by detected failure of the current TCP connection: a TCP
+error (RST/timeout) or a heartbeat timeout (see Logical Layer). When that happens the
+device reconnects to a currently-advertised address for the peer, per §Addressing.
 
 The logical connection (Noise keys, subscription state) is not affected and resumes per the
 reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
@@ -272,10 +278,10 @@ Zero-configuration bring-up is a goal; devices should combine the following mech
 
 Devices with multiple network interfaces treat each interface independently: they listen
 for TCP on their TCP port (11372 by default) on each interface, join the multicast group
-on each interface, and track the (interface, source IP) tuple of each received
-advertisement. A logical peer reachable via several physical peers (e.g. wired + WiFi)
-will have multiple IP-to-key mappings; the device may use any of them to establish a TCP
-connection.
+on each interface, emit their own advertisements on every interface they are active on,
+and track the (interface, source IP) tuple of each received advertisement. A logical
+peer reachable via several physical peers (e.g. wired + WiFi) will appear as multiple
+IP-to-key mappings; which one is used follows the path-selection rule in §Addressing.
 
 Devices may support other methods to connect to a SCAN network, like VPN, proxies, or
 other custom tunnelling methods. NAT/firewall traversal techniques (STUN, TURN, ICE) are
@@ -595,7 +601,9 @@ When sending to a gateway, an `Advertisement` frame may be delivered over the TC
 connection to the gateway. A gateway must send `Advertisement` frames over its TCP
 connection to each connected device on the same event triggers (on TCP establishment,
 on change, in response to a solicitation arriving via that TCP connection), covering
-every logical identity reachable behind it.
+every logical identity reachable behind it. Because TCP is reliable, advertisements
+over a gateway TCP connection are emitted once per event rather than as a three-frame
+burst.
 
 #### AdvertisementRequest
 
