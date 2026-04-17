@@ -235,9 +235,8 @@ ignores any local-segment traffic; the configured gateways are then the sole sou
 identity-to-IP mappings.
 
 If the same logical peer is advertised by more than one gateway (or by both a gateway and
-the local segment), the device opens at most one logical connection to that peer and may
-freely choose which of the available paths to use. Failure of the chosen path may be
-retried over a different one.
+the local segment), the device opens at most one logical connection to that peer to the
+newest source gateway it had seen, with the same rules as in Addressing.
 
 Operations through a gateway map thusly:
 
