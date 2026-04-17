@@ -296,7 +296,7 @@ Frames are defined thusly:
 Frame = {
    sourcePeer:      Optional(PeerAddress)
    destinationPeer: Optional(PeerAddress)
-   content:         Union(Control, Payload, Advertisement)
+   content:         Union(Control, Payload, Presence)
 }
 
 PeerAddress = Array(32, Byte)
@@ -500,42 +500,122 @@ SingleChunkPayload = EncryptedPayload
 
 Encryption and key management is the same as for intermediate frames.
 
-### Advertisement
+### Presence Messages
 
-Announces the identity or identities represented by a device. Every device must send
-identity announcements approximately once per second.
+Presence frames manage the discovery and liveness of peers on the network. They are not
+encrypted and do not advance the Noise cipher state of any connection.
+
+```
+Presence = Union(Advertisement, AdvertisementRequest, Heartbeat)
+```
+
+#### Advertisement
+
+Announces the identity or identities represented by a device. Announces that these
+static keys are reachable at the address the frame is sent from. A device such as a
+gateway may represent multiple logical identities on behalf of other devices, which is
+why multiple static keys may reside at the same IP address.
 
 ```
 Advertisement = DynamicArray(PeerAddress, max=16)
 ```
 
-This message announces to all peers that these static keys are reachable at
-the address this frame is from. A device, such as a gateway,
-may represent multiple devices on the local network, that is why
-multiple static keys may reside at the same IP address.
+A frame may contain up to 16 static keys. If a device represents more logical identities
+than that, it sends multiple frames; the identity set is eventually consistent.
 
-The packet may contain up to 16 static keys. If a device represents more logical identities than that,
-it may send multiple packets of this frame.
+Advertisement is emitted only on events, never at a steady periodic rate:
 
-Devices must announce themselves when they become available, unless
-some restrictions (like low energy device) would make it impractical, or they are
-not online for more than a second.
+* **Birth burst.** A device sends three `Advertisement` frames over approximately two
+  seconds when it first becomes reachable on the network. This tolerates multicast
+  packet loss and makes the device visible to any already-present peer.
+* **Re-burst on change.** The same burst is repeated on any change that affects
+  reachability or identity: IP address change, interface change, or addition or removal
+  of a represented logical key.
+* **Solicited reply.** A unicast reply to any `AdvertisementRequest` whose filter
+  matches the device (or is empty), sent to the solicitor's IP with a small random
+  jitter (0-500 ms) to spread response storms.
 
-The identity announcement also doubles as keep-alive messages in addition to tracking the mapping
-between IP address and static public address of logical devices. If a device misses 3 identity announcements
-it must be considered *offline* from the network. Devices should not attempt to send anything to devices
-considered *offline*. Such a device may re-establish the internet connection at a later point in time 
-without initiating a new logical handshake. It may just continue to send messages normally, as if nothing had happened.
+Advertisement is not a periodic keep-alive. Liveness of an established connection is
+tracked on the TCP connection itself using `Heartbeat` (see below).
 
-Note however, devices are not required to be able to persist connection information, and may even handle
-offline devices with closing the connection and forgetting the keys altogether.
+When sending to a gateway, an `Advertisement` frame may be delivered over the TCP
+connection to the gateway. A gateway must send `Advertisement` frames over its TCP
+connection to each connected device on the same event triggers (on TCP establishment,
+on change, in response to a solicitation arriving via that TCP connection), covering
+every logical identity reachable behind it.
 
-If, after a device has been *offline*, cryptographic keys become out of sync, or those keys simply no longer exist, the connection must be closed,
-forcing the initiator to establish a new logical connection with new keys. This also means that a receiver must send a close
-connection frame on unsolicited application message frames.
+#### AdvertisementRequest
 
-When sending to a gateway, this packet may be sent over TCP/IP directly to the gateway. The gateway
-must announce itself to a connected device as all logical devices that are behind it.
+Solicits `Advertisement` replies from one or more specific peers, or from everyone on
+the segment.
+
+```
+AdvertisementRequest = DynamicArray(PeerAddress, max=16)
+```
+
+If the array is empty the request is a broad solicitation: every device on the segment
+replies with its own `Advertisement`. If the array is non-empty, only devices holding
+at least one of the listed logical keys reply.
+
+Replies are sent unicast to the solicitor's IP address with a small random jitter
+(0-500 ms). The reply is the full `Advertisement` for the replying device (all
+identities it represents), not just the matching keys.
+
+Typical uses:
+
+* A newly-booted device with wired peers sends one `AdvertisementRequest` listing the
+  32-byte keys of those peers and receives up to that many unicast replies, resolving
+  every needed IP mapping in a single round trip.
+* An administrative interface refreshing its view sends an empty
+  `AdvertisementRequest` and collects replies for a short window before updating the
+  UI.
+* A device that has lost the IP mapping for a peer (e.g. after its own reboot) sends
+  a filtered request for that one key.
+
+A request may be sent over UDP multicast (for a local segment) or over a gateway's TCP
+connection, in which case the gateway forwards it to its connected devices and relays
+the unicast replies back.
+
+#### Heartbeat
+
+An explicit liveness probe sent from the Responder to the Initiator on an established
+TCP connection.
+
+```
+Heartbeat = Unit
+```
+
+`Heartbeat` carries no payload, is not encrypted, and does not advance the Noise
+cipher state. 
+
+Heartbeats are one-directional. The Initiator is the party with a liveness interest —
+it is consuming state from the Responder and needs to know when that stream becomes
+stale — so only the Responder emits `Heartbeat`. The Responder learns of the
+Initiator's disappearance on its next `Heartbeat` or `State` send failing at the TCP
+layer, which reclaims subscription state with a slower but sufficient guarantee. This
+matches the Initiator/Responder asymmetry of the protocol overall.
+
+On an established connection, the Responder must send a `Heartbeat` if no other frame
+has gone out in `heartbeatInterval` (default 1 second). The Initiator considers the
+Responder offline if no frame has been received in `livenessTimeout` (default 3
+seconds). Any received frame — `Heartbeat`, `Payload`, `Advertisement`, or otherwise —
+resets the Initiator's liveness timer. The effective `livenessTimeout` may be tightened
+by active subscriptions (see `Subscribe` in the Modalities Layer); `heartbeatInterval`
+is always `livenessTimeout / 3`.
+
+A device that is "connected" (logical connection exists, keys retained) but has no
+current TCP connection is considered *offline*, whether it went silent intentionally,
+due to network conditions, or because the liveness timer expired. Other devices must
+not send to an offline device; the offline device may reconnect later using existing
+Noise keys and resume without a new handshake.
+
+If, after reconnect, cryptographic keys are out of sync or no longer exist, the
+connection must be closed, forcing the initiator to establish a new logical connection.
+Receivers must send a `CloseConnection` frame in response to unsolicited encrypted
+application frames whose keys they do not have.
+
+Devices are not required to persist connection information across reboots. An
+implementation may treat any offline event as a full disconnection and forget the keys.
 
 ### Message Choreography
 
@@ -582,20 +662,27 @@ Any party is also free to close the physical connection at any time to mark itse
 
 ### Address Resolution
 
-Each device must monitor identity announcements for two reasons:
-* To maintain a mapping of IP address to public static address key
-* To maintain "offline" status of devices
+A device learns the mapping from logical peer (32-byte key) to physical peer (IP
+address) by receiving `Advertisement` frames. These arrive in three ways: as part of
+another device's birth burst, as a re-burst after a change, or as a unicast reply to an
+`AdvertisementRequest` this device sent.
 
-A device is not required to cache the monitored announcements, in which case it may need to wait a couple of seconds
-to detect the identity announcement it is interested in. Maintaining a cache of announcements speeds
-up this discovery of course.
+There is no passive periodic announcement, so a device that needs a mapping must either
+wait for the peer's next event-driven burst or actively solicit it. A device should
+solicit whenever it needs a mapping it does not have cached — for example, on startup
+for every peer it has wiring for, or when the user of an administrative interface asks
+to see the network.
 
-Monitoring announcements is required to maintain offline status of at least the connected devices.
-Devices must not send messages to offline devices to maintain key synchronization.
+Caching of advertised mappings is recommended but not required. A cached mapping should
+be refreshed opportunistically whenever a new `Advertisement` is observed, and may be
+evicted when the corresponding logical connection closes.
 
-If an IP address can not be found for a given identity key, the connection can not be established.
-Devices may choose to display this to the user if capable, or may send specific error events through
-other logical connections.
+If no IP address can be found for a given identity key after a reasonable solicitation
+attempt, the connection cannot be established. Devices may surface this to the user if
+capable, or emit specific error events through other logical connections.
+
+Offline status of connected peers is tracked on the TCP connection itself, not by
+monitoring advertisements. See `Heartbeat` above.
 
 ## Modalities Layer
 
@@ -652,7 +739,8 @@ Request the Responder to send state values indefinitely for the specified modali
 Subscribe = Struct(
    modality:            IndexedModalityReference,
    minimumSendWait:     Duration,
-   priority:            Optional(Priority)
+   priority:            Optional(Priority),
+   livenessTimeout:     Optional(Duration)
 )
 ```
 
@@ -673,7 +761,19 @@ when marking outgoing packets for this subscription.
 For State messages sent by the Initiator to the Responder, the Initiator applies the effective
 priority itself.
 
-The Initiator may repeat this message if the waiting period or priority changes for some reason.
+The `livenessTimeout` field, if present, requests a tighter liveness guarantee for this
+subscription than the connection default of 3 seconds. While the subscription is active,
+the Responder must ensure that it sends a `State`, a `Heartbeat`, or some other frame
+at least every `livenessTimeout / 3`; the Initiator uses `livenessTimeout` as its
+offline-detection threshold for this subscription. When a connection carries multiple
+active subscriptions, the effective connection `livenessTimeout` is the minimum of
+3 seconds and all subscription overrides — the tightest requirement wins. Typical use:
+an autopilot subscribing to a rudder angle sensor sets this to 500 ms for prompt loss
+detection, while a dashboard displaying the same sensor leaves it unset and rides the
+3 s default.
+
+The Initiator may repeat this message if the waiting period, priority, or liveness
+timeout changes for some reason.
 
 The Responder must not send messages for the same data packet in parallel. It must always send messages
 for the same data sequentially.
