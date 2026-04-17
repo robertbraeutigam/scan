@@ -117,30 +117,37 @@ reachable through multiple physical peers (a multi-homed device). Unless otherwi
 Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implementations must
 support at least one family and should support both where the environment permits.
 
-A device must have observed an `Advertisement` from a peer before opening a TCP
-connection to it — the advertisement is how its IP is learned in the first place.
-Gateways are the exception: a gateway's address is configured out-of-band, so no prior
-advertisement is required to open TCP to it. A device may also cache previously-learned
-IPs across reboots and start reconnecting to a cached address immediately; it should
-still send an `AdvertisementRequest` (see Logical Layer) in parallel to refresh the
-mapping. The connection is attempted at the source address of that advertisement. If
-the same peer has been observed at more than one IP (or in both address families), an
-IPv6-capable path is preferred; otherwise any of them may be picked. There is no
-fallback to another path or another address family, and no concurrent connect-race
-(e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path that is used.
-If the connect attempt fails, the device retries the same advertised address; a
+A device opens TCP only to a peer whose IP it has learned, either from a recent
+`Advertisement` or from its persistent address cache. Cached addresses are
+speculative; the device sends an `AdvertisementRequest` (see Logical Layer) in
+parallel and refreshes the cache from the reply. If the cache entry is stale and the
+IP has been reassigned to a different SCAN device, the Noise handshake fails because
+the responder will not hold the matching static key, and the entry is evicted on the
+next refresh. Gateways are the exception: a gateway's address is configured
+out-of-band, so no prior advertisement is required to open TCP to it.
+
+The mapping from a logical peer to its IP comes from `Advertisement` source addresses;
+latest advertisement wins, and older mappings for that family are discarded once a new
+one is received. A logical peer may concurrently be known at one IPv4 and one IPv6
+address, since some peers may only observe one family and reply on it. If both families
+are known, IPv6 is preferred. There is no fallback to the other family and no
+concurrent connect-race (e.g. RFC 8305 Happy Eyeballs): the chosen path is the only
+path used. If the connect attempt fails, the device retries the same address; a
 subsequent advertisement may change the address used, but connect failure alone does
-not cause a switch. Retry attempts, whether to a logical peer or to a gateway, are
-capped at 10 per minute per target; any scheduling algorithm within that cap is
+not cause a switch. Retry attempts are capped at 10 per minute per (logical-peer, IP)
+pair, or per configured gateway IP; any scheduling algorithm within that cap is
 permitted. Devices track only the IP that advertised the peer, not the interface on
 which it was received; the device's own routing table is assumed to pick a sensible
-interface for that IP.
+interface for that IP. If the same source IP is observed on more than one local
+interface (e.g. bridged segments), behavior is undefined; SCAN does not attempt to
+disambiguate at L2.
 
 Devices should reuse an existing TCP connection between two physical peers rather than
 opening a second one; multiple logical connections multiplex over that single TCP (see
 Logical Layer). When both sides happen to dial each other concurrently, or a race during
 reconnect produces two TCPs between the same pair, both connections are permitted to
-coexist. Logical connections may be carried over either TCP; the cost is wasted resources
+coexist. Each logical connection is pinned to the TCP connection on which it was opened
+and its frames never split across TCPs; the cost of duplicate TCPs is wasted resources
 only, and these collisions are expected to be rare. Duplicate TCPs are not proactively
 closed to reclaim resources — each simply lives out its natural lifetime like any
 other connection.
@@ -157,13 +164,14 @@ directly addressable and all devices can be contacted by multicast packets. In t
   reachable only through configured paths or via a gateway.
 * Source ports for outgoing TCP connections are ephemeral.
 * All devices are addressed over UDP on port 11372, at multicast group:
-  * `239.255.255.244` for IPv4 (RFC 2365 "IPv4 Local Scope").
+  * `239.255.255.244` for IPv4, from the IPv4 administratively-scoped block
+    (`239.0.0.0/8`), restricted to the local L2 segment by TTL=1.
   * `ff12::2c6c` for IPv6 (transient, link-local scope; flags = `1` (transient),
     scope = `2` (link-local); `0x2c6c` = 11372 decimal). The transient flag reflects
     that this address is not yet IANA-registered.
 * Multicast datagrams must be sent with IPv4 TTL 1 and IPv6 hop-limit 1. SCAN discovery
-  is scoped to the directly-attached L2 segment; routed multicast is out of scope, and
-  cross-segment reachability is provided by gateways instead.
+  is scoped to the directly-attached L2 segment by design; routed multicast is out of
+  scope, and cross-segment reachability is provided by gateways instead.
 * IPv4 senders should set the Don't-Fragment bit on advertisement datagrams so that an
   oversized frame fails visibly rather than fragmenting silently.
 * Devices must join the relevant multicast group via IGMPv2 or v3 on IPv4 and MLDv1 or
@@ -173,15 +181,19 @@ directly addressable and all devices can be contacted by multicast packets. In t
   optimization; a device may in any case ignore its own advertisements, as they carry
   no useful information.
 
-The `Advertisement` frame (see Logical Layer) carries up to 16 `PeerAddress` entries
-and must fit in a single unfragmented datagram. Devices representing more than 16
-logical identities send multiple frames. Advertisements are emitted only on events
-(birth burst, change re-burst, solicited reply); see the Logical Layer's
-`Advertisement` and `Heartbeat` sections for the cadence and liveness model.
+The `Advertisement` frame (see Logical Layer) carries up to 16 `PeerAddress` entries.
+Devices representing more than 16 logical identities send multiple frames.
+Advertisements are emitted only on events (birth burst, change re-burst, solicited
+reply); see the Logical Layer's `Advertisement` and `Heartbeat` sections for the
+cadence and liveness model.
 
-Note that this "local network" does not necessarily need to be a "physical" local network;
-it can be a virtual local network that connects multiple devices, possibly through VPNs or
-other means.
+Note that this "local network" does not need to be a physical L2 segment; an
+L2-bridged virtual network (e.g. a layer-2 VPN, a virtual switch, a Wi-Fi mesh
+operating as a single bridged segment) counts as a single segment and works without
+further configuration. Routed networks, including routed VPNs and overlay networks,
+do not propagate SCAN multicast — TTL=1 keeps the datagrams on the originating L2
+segment by construction. Reach across routed boundaries is provided by configuring a
+gateway, not by extending the multicast domain.
 
 **Privacy and integrity note.** Multicast advertisements carry 32-byte static public keys
 in the clear. Any device on the same broadcast segment can enumerate SCAN identities and
@@ -203,6 +215,11 @@ segment. There is no ordering, failover, or primary/secondary relationship among
 the device maintains an independent TCP connection to each, and treats the union of their
 advertised identities, plus any locally multicast identities, as its view of the network.
 
+A device may also be configured to operate exclusively through gateways, in which case
+it does not join the multicast group, does not emit local-segment advertisements, and
+ignores any local-segment traffic; the configured gateways are then the sole source of
+identity-to-IP mappings.
+
 If the same logical peer is advertised by more than one gateway (or by both a gateway and
 the local segment), the device opens at most one logical connection to that peer and may
 freely choose which of the available paths to use. Failure of the chosen path may be
@@ -212,8 +229,8 @@ Operations through a gateway map thusly:
 
 * The device opens a TCP connection to each configured gateway at the gateway's IP and
   configured TCP port (11372 by default).
-* All traffic to logical peers reachable through a gateway flows over that gateway's
-  TCP connection.
+* When a logical peer is reached via a gateway, all traffic for that peer flows over
+  that gateway's TCP connection.
 * On TCP loss to a gateway, the device reconnects under the same 10-attempts-per-minute
   cap as in §Addressing; any scheduling algorithm within that cap is permitted.
 * The gateway emits `Advertisement` frames over that TCP connection on the same event
@@ -243,8 +260,9 @@ error (RST/timeout) or a heartbeat timeout (see Logical Layer). When that happen
 device reconnects to a currently-advertised address for the peer, per §Addressing.
 
 Liveness is tracked by the `Heartbeat` frame (see Logical Layer), not by TCP keepalive.
-Heartbeat flows from TCP establishment onward — it does not require the logical
-handshake to have completed — so the same liveness timeout applies to a stalled
+`Heartbeat` is a Logical-Layer frame but does not depend on the Noise handshake — it
+is unencrypted and does not advance the cipher state, so it flows in the clear from TCP
+establishment onward. The same liveness timeout therefore applies to a stalled
 handshake as to an established logical connection. Implementations may enable TCP
 keepalive as a defence in depth but must not rely on it for the timeliness of offline
 detection.
@@ -306,6 +324,31 @@ designed to handle communication through insecure networks just fine. The point 
 layer is to make the device available to talk to, in the most convenient way possible for
 the user.
 
+### MTU Considerations
+
+SCAN allows Logical-Layer messages of substantial size; TCP segments those into IP
+packets sized by the path MTU and is, in principle, responsible for sizing them
+correctly. Two failure modes affect SCAN deployments specifically:
+
+* **MTU black holes.** A path traverses a tunnel or interface with MTU below 1500 bytes
+  (PPPoE, IPsec, WireGuard, nested encapsulations) and an intermediate router drops
+  oversized packets without sending ICMP "Packet Too Big" / "Packet Too Large". Classic
+  PMTUD then fails silently, TCP retransmits the same too-large segments, and the
+  connection stalls after the handshake completes. The gateway scenario — TCP over a
+  long-haul tunnel — is the geometry where this is most likely to bite.
+* **IPv6 minimum MTU (1280 bytes).** A path that should always work because it is at
+  the IPv6 floor stops working when an additional encapsulation pushes the effective
+  MTU below 1280.
+
+Two recommendations follow:
+
+* Implementations should enable Packetization Layer Path MTU Discovery (PLPMTUD,
+  RFC 4821) where the operating system supports it. PLPMTUD probes via the data stream
+  rather than relying on ICMP and survives ICMP-blackhole networks.
+* Operators of gateways carrying SCAN traffic over tunnels should configure TCP MSS
+  clamping at tunnel ingress to the tunnel's effective MTU. This is operational
+  guidance, not a protocol requirement.
+
 ### IANA Allocations
 
 The following allocations are intended but not yet registered:
@@ -313,7 +356,8 @@ The following allocations are intended but not yet registered:
 * TCP port **11372** as the default SCAN listening port. All unicast traffic,
   including unicast replies to `AdvertisementRequest`, uses TCP on this port.
 * UDP port **11372** for multicast advertisements only.
-* IPv4 multicast group **239.255.255.244** within "IPv4 Local Scope" (RFC 2365).
+* IPv4 multicast group **239.255.255.244** from the administratively-scoped block
+  (`239.0.0.0/8`), scoped to the local L2 segment by TTL=1.
 * IPv6 multicast group **ff12::2c6c** (transient, link-local scope).
 
 Until registration is complete, the IPv6 group uses the transient flag (`ff12` rather
