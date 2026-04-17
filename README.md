@@ -406,9 +406,8 @@ maximum payload of 16383 bytes.
 
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
-on the network. There 
-can be at most two logical connections between any two devices, because the ordered pair of public static keys uniquely identifies
-a logical connection. Note however, that one physical connection can tunnel more than one logical connection.
+on the network. There can be at most two logical connections between any two devices, because
+the ordered pair of public static keys uniquely identifies a logical connection. Note however, that one physical connection can tunnel more than one logical connection.
 
 If any parties to a communication encounter any errors in the protocol or interpretation of messages
 they must immediately close the logical connection with a dedicated "close" message.
@@ -481,7 +480,7 @@ and data exchange.
 The protocol name, as well as the versions have to be included in the *prologue* of the Noise Handshake to
 make sure it has not been tampered with.
 
-If the responder disagrees with the version or the Noise protocol, it may respond with and Initial Handshake
+If the responder disagrees with the version or the Noise protocol, it may respond with an Initiate Handshake
 of its own with the counter proposal. If the initiator does not agree to that, the handshake failed.
 
 All devices must support the following protocols:
@@ -591,6 +590,7 @@ Structure:
 IntermediatePayloadChunk = Struct(
    messageId:          VariableLengthInteger(8),
    encryptedPayload:   EncryptedPayload
+)
 ```
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
@@ -616,6 +616,7 @@ Payload structure:
 LastPayloadChunk = Struct(
    messageId:          VariableLengthInteger(8),
    encryptedPayload:   EncryptedPayload
+)
 ```
 
 Encryption and key management is the same as for intermediate frames.
