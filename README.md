@@ -120,29 +120,34 @@ support at least one family and should support both where the environment permit
 A device opens TCP only to a peer whose IP it has learned, either from a recent
 `Advertisement` or from its persistent address cache. A device sends
 `AdvertisementRequest` frames (see Logical Layer) for the peers it needs an IP for.
-If a cached entry turns out to be stale because the IP has been reassigned to a
-different SCAN device, the Noise handshake fails because the responder will not hold
-the matching static key, and the device evicts the entry. Cache sizing and entry
-lifetime are implementation-defined; the protocol does not mandate either.
-Implementations should be prepared for networks with many peers and may choose to cache
-only the peers the device actually needs to reach (for example, those referenced by its
-configured wiring).
-Gateways are the exception: a gateway's address is configured out-of-band, so no
-prior advertisement is required to open TCP to it.
+Cache sizing and entry lifetime are implementation-defined; the protocol does not
+mandate either. Implementations should be prepared for networks with many peers and
+may choose to cache only the peers the device actually needs to reach (for example,
+those referenced by its configured wiring). Gateways are the exception: a gateway's
+address is configured out-of-band, so no prior advertisement is required to open TCP
+to it.
 
 The mapping from a logical peer to its IP comes from `Advertisement` source addresses;
 latest advertisement wins, and older mappings for that family are discarded once a new
 one is received. A logical peer may concurrently be known at one IPv4 and one IPv6
-address, since some peers may only observe one family and reply on it. If both families
-are known, IPv6 is preferred. There is no fallback to the other family and no
-concurrent connect-race (e.g. RFC 8305 Happy Eyeballs): the chosen path is the only
-path used. If the connect attempt fails, the device retries the same address; a
-subsequent advertisement may change the address used, but connect failure alone does
-not cause a switch. Retries use exponential backoff per (logical-peer, IP) pair, or
-per configured gateway IP: the first retry is attempted immediately on TCP close, and
-subsequent retries double from 1 s up to a 60 s ceiling, with ±25% random jitter on
-each delay. The backoff resets after a successful TCP establishment followed by a
-completed Noise handshake. For scope-independent source addresses, devices track only
+address, since some devices are limited to IPv4 or IPv6 only. If both families are
+known, IPv6 is preferred. There is no fallback to the other family and no concurrent
+connect-race (e.g. RFC 8305 Happy Eyeballs): the chosen path is the only path used.
+If the connect attempt fails, the device retries the same address; a subsequent
+advertisement may change the address used, but connect failure alone does not cause
+a switch. Retries use exponential backoff per logical peer, or per configured gateway:
+when the initiator detects an unexpected TCP close the first retry is attempted
+immediately, and subsequent retries double from 1 s up to a 60 s ceiling, with ±25%
+random jitter on each delay. The backoff resets after a successful TCP establishment
+followed by a completed Noise handshake.
+
+Only the initiator of a logical connection may close its TCP intentionally (for
+example to mark itself temporarily offline); after such an intentional close the
+initiator may not immediately reconnect. A responder does not close TCP to go
+offline — it relies on the initiator's own disconnect or on network-level failure
+to release state.
+
+For scope-independent source addresses, devices track only
 the IP that advertised the peer, not the interface on which it was received; the
 device's own routing table is assumed to pick a sensible interface for that IP. For
 link-local source addresses — `169.254.0.0/16` (IPv4, RFC 3927) and `fe80::/10`
@@ -165,15 +170,14 @@ resources.
 Every device must be capable of operating in a local network, where other devices are
 directly addressable and all devices can be contacted by multicast packets. In this scenario:
 
-* TCP listening port is 11372. Gateways may use a different port, configured
-  out-of-band as part of the gateway configuration (see §Gateway-based Configuration).
+* TCP listening port is 11372.
 * Source ports for outgoing TCP connections are ephemeral.
 * All devices are addressed over UDP on port 11372, at multicast group:
   * `239.255.255.244` for IPv4, from the IPv4 administratively-scoped block
     (`239.0.0.0/8`), restricted to the local L2 segment by TTL=1.
   * `ff12::2c6c` for IPv6 (transient, link-local scope; flags = `1` (transient),
-    scope = `2` (link-local); `0x2c6c` = 11372 decimal). The transient flag reflects
-    that this address is not yet IANA-registered.
+    scope = `2` (link-local)). The transient flag reflects that this address is
+    not yet IANA-registered.
 * Multicast datagrams must be sent with IPv4 TTL 1 and IPv6 hop-limit 1. SCAN discovery
   is scoped to the directly-attached L2 segment by design; routed multicast is out of
   scope, and cross-segment reachability is provided by gateways instead.
@@ -213,7 +217,7 @@ is semi-trusted; for hostile networks use a gateway reachable over a trusted tun
 
 ### Gateway-based Configuration
 
-Devices may support connecting through "Gateways". A Gateway is a Logical Layer-level
+Devices must support connecting through "Gateways". A Gateway is a Logical Layer-level
 software or hardware device that does not necessarily have an Application Layer presence —
 it may be invisible to the network, but presents all the devices that connect to it.
 
@@ -235,8 +239,8 @@ retried over a different one.
 
 Operations through a gateway map thusly:
 
-* The device opens a TCP connection to each configured gateway at the gateway's IP and
-  configured TCP port (11372 by default).
+* The device opens a TCP connection to each configured gateway at the gateway's IP
+  on TCP port 11372.
 * When a logical peer is reached via a gateway, all traffic for that peer flows over
   that gateway's TCP connection.
 * On TCP loss to a gateway, the device reconnects under the same exponential backoff
@@ -790,8 +794,11 @@ the chosen Noise protocol allows it.
 Any party may close the logical connection at any time for any reason. The initiator is
 free to re-open the connection at any time. 
 
-Any party is also free to close the physical connection at any time to mark itself "offline" but still
-"connected".
+The initiator is free to close the physical connection at any time to mark itself
+"offline" but still "connected".
+A responder does not close the physical connection
+intentionally — any close it observes is treated by the initiator as unexpected and
+triggers the immediate-reconnect/backoff rule in §Addressing.
 
 #### Initiator re-establishes a physical connection
 
