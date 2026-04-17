@@ -101,7 +101,7 @@ The Internet Layer is a thin wrapper over IP. It exposes two primitives to the l
   Layer, not by IP packet boundaries.
 * Send or receive UDP multicast datagrams to/from all physical peers on the local segment,
   used only for stateless segment-wide messages (advertisements and advertisement
-  requests).
+  requests). Each datagram carries exactly one Logical-Layer frame.
 
 ### Terminology
 
@@ -124,6 +124,9 @@ If a cached entry turns out to be stale because the IP has been reassigned to a
 different SCAN device, the Noise handshake fails because the responder will not hold
 the matching static key, and the device evicts the entry. Cache sizing and entry
 lifetime are implementation-defined; the protocol does not mandate either.
+Implementations should be prepared for networks with many peers and may choose to cache
+only the peers the device actually needs to reach (for example, those referenced by its
+configured wiring).
 Gateways are the exception: a gateway's address is configured out-of-band, so no
 prior advertisement is required to open TCP to it.
 
@@ -135,9 +138,11 @@ are known, IPv6 is preferred. There is no fallback to the other family and no
 concurrent connect-race (e.g. RFC 8305 Happy Eyeballs): the chosen path is the only
 path used. If the connect attempt fails, the device retries the same address; a
 subsequent advertisement may change the address used, but connect failure alone does
-not cause a switch. Retry attempts are capped at 10 per minute per (logical-peer, IP)
-pair, or per configured gateway IP; any scheduling algorithm within that cap is
-permitted. Devices track only the IP that advertised the peer, not the interface on
+not cause a switch. Retries use exponential backoff per (logical-peer, IP) pair, or
+per configured gateway IP: the first retry is attempted immediately on TCP close, and
+subsequent retries double from 1 s up to a 60 s ceiling, with ±25% random jitter on
+each delay. The backoff resets after a successful TCP establishment followed by a
+completed Noise handshake. Devices track only the IP that advertised the peer, not the interface on
 which it was received; the device's own routing table is assumed to pick a sensible
 interface for that IP. If the same source IP is observed on more than one local
 interface (e.g. bridged segments), implementations may treat the most recent
@@ -146,13 +151,10 @@ attempt to disambiguate at L2.
 
 Devices should reuse an existing TCP connection between two physical peers rather than
 opening a second one; multiple logical connections multiplex over that single TCP (see
-Logical Layer). When both sides happen to dial each other concurrently, or a race during
-reconnect produces two TCPs between the same pair, both connections are permitted to
-coexist. Each logical connection is pinned to the TCP connection on which it was opened
-and its frames never split across TCPs; the cost of duplicate TCPs is wasted resources
-only, and these collisions are expected to be rare. Duplicate TCPs are not proactively
-closed to reclaim resources — each simply lives out its natural lifetime like any
-other connection.
+Logical Layer). In the rare case both sides initiate concurrently, producing two TCPs
+between the same pair, each logical connection stays on the TCP its initiator opened.
+Both TCPs are permitted to live out their natural lifetime; the only cost is wasted
+resources.
 
 ### Local Network Configuration
 
@@ -233,8 +235,8 @@ Operations through a gateway map thusly:
   configured TCP port (11372 by default).
 * When a logical peer is reached via a gateway, all traffic for that peer flows over
   that gateway's TCP connection.
-* On TCP loss to a gateway, the device reconnects under the same 10-attempts-per-minute
-  cap as in §Addressing; any scheduling algorithm within that cap is permitted.
+* On TCP loss to a gateway, the device reconnects under the same exponential backoff
+  as in §Addressing.
 * The gateway emits `Advertisement` frames over that TCP connection on the same event
   triggers as local multicast (initial connect, change, solicited reply), each carrying
   up to 16 `PeerAddress` entries. Because TCP is reliable, each event emits a single
