@@ -120,22 +120,21 @@ support at least one family and should support both where the environment permit
 A device must have observed an `Advertisement` from a peer before opening a TCP
 connection to it — the advertisement is how its IP is learned in the first place.
 Gateways are the exception: a gateway's address is configured out-of-band, so no prior
-advertisement is required to open TCP to it. The connection is attempted at the source
-address of that advertisement, on the interface on which it was received. If the same
-peer has been observed on more than one interface (or via both address families on one
-interface), an IPv6-capable path is preferred; otherwise any of them may be picked.
-There is no fallback to another path or another address family, and no concurrent
-connect-race (e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path
-that is used. If the connect attempt fails, the device retries the same advertised
-address; a subsequent advertisement may change the address used, but connect failure
-alone does not cause a switch. Retry attempts, whether to a logical peer or to a
-gateway, are capped at 10 per minute per target; any scheduling algorithm within that
-cap is permitted.
-
-IPv6 link-local addresses (`fe80::/10`) are only meaningful when paired with the receiving
-interface's zone identifier. Devices that learn or advertise a link-local address must
-associate it with the interface on which it was observed; cross-interface use of a
-link-local address is undefined.
+advertisement is required to open TCP to it. A device may also cache previously-learned
+IPs across reboots and start reconnecting to a cached address immediately; it should
+still send an `AdvertisementRequest` (see Logical Layer) in parallel to refresh the
+mapping. The connection is attempted at the source address of that advertisement. If
+the same peer has been observed at more than one IP (or in both address families), an
+IPv6-capable path is preferred; otherwise any of them may be picked. There is no
+fallback to another path or another address family, and no concurrent connect-race
+(e.g. RFC 8305 Happy Eyeballs): the path that was advertised is the path that is used.
+If the connect attempt fails, the device retries the same advertised address; a
+subsequent advertisement may change the address used, but connect failure alone does
+not cause a switch. Retry attempts, whether to a logical peer or to a gateway, are
+capped at 10 per minute per target; any scheduling algorithm within that cap is
+permitted. Devices track only the IP that advertised the peer, not the interface on
+which it was received; the device's own routing table is assumed to pick a sensible
+interface for that IP.
 
 Devices should reuse an existing TCP connection between two physical peers rather than
 opening a second one; multiple logical connections multiplex over that single TCP (see
@@ -145,10 +144,6 @@ coexist. Logical connections may be carried over either TCP; the cost is wasted 
 only, and these collisions are expected to be rare. Duplicate TCPs are not proactively
 closed to reclaim resources — each simply lives out its natural lifetime like any
 other connection.
-
-Liveness is detected at the application layer via the `Heartbeat` frame (see Logical
-Layer), not via TCP keepalive. Implementations may enable TCP keepalive as a defence in
-depth but must not rely on it for the timeliness of offline detection.
 
 ### Local Network Configuration
 
@@ -175,16 +170,14 @@ directly addressable and all devices can be contacted by multicast packets. In t
   v2 on IPv6 on every interface over which they participate. Switches should enable
   IGMP/MLD snooping to suppress flooding, but the protocol does not require it.
 * Multicast loopback (`IP_MULTICAST_LOOP=0` or equivalent) may be disabled as an
-  optimization; a device in any case ignores advertisements whose key set it already
-  represents.
+  optimization; a device may in any case ignore its own advertisements, as they carry
+  no useful information.
 
 The `Advertisement` frame (see Logical Layer) carries up to 16 `PeerAddress` entries
-(16 × 32 = 512 bytes of keys, plus a small frame header) and fits comfortably within
-1280 bytes (the IPv6 minimum MTU), so implementations must not rely on IP fragmentation
-for advertisements. Devices representing more than 16 logical identities send multiple
-frames. Advertisements are emitted only on events (birth burst, change re-burst,
-solicited reply); see the Logical Layer's `Advertisement` and `Heartbeat` sections for
-the cadence and liveness model.
+and must fit in a single unfragmented datagram. Devices representing more than 16
+logical identities send multiple frames. Advertisements are emitted only on events
+(birth burst, change re-burst, solicited reply); see the Logical Layer's
+`Advertisement` and `Heartbeat` sections for the cadence and liveness model.
 
 Note that this "local network" does not necessarily need to be a "physical" local network;
 it can be a virtual local network that connects multiple devices, possibly through VPNs or
@@ -249,6 +242,13 @@ Reconnection is driven only by detected failure of the current TCP connection: a
 error (RST/timeout) or a heartbeat timeout (see Logical Layer). When that happens the
 device reconnects to a currently-advertised address for the peer, per §Addressing.
 
+Liveness is tracked by the `Heartbeat` frame (see Logical Layer), not by TCP keepalive.
+Heartbeat flows from TCP establishment onward — it does not require the logical
+handshake to have completed — so the same liveness timeout applies to a stalled
+handshake as to an established logical connection. Implementations may enable TCP
+keepalive as a defence in depth but must not rely on it for the timeliness of offline
+detection.
+
 The logical connection (Noise keys, subscription state) is not affected and resumes per the
 reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
 access points, and interface changes on multi-homed peers.
@@ -279,16 +279,18 @@ Zero-configuration bring-up is a goal; devices should combine the following mech
   WPS is discouraged and should not be relied on, as the WPS PIN method is considered
   insecure and has been deprecated by the Wi-Fi Alliance.
 * DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
-* Link-local IP address auto-selection (RFC 3927 for IPv4, RFC 4862 for IPv6) when DHCP
-  is not available, to support ad-hoc wired networks.
-* Cycle through these strategies if one is not available.
+* IPv4 link-local auto-selection (RFC 3927) when DHCP is not available, to support
+  ad-hoc wired networks. IPv6 nodes always have a link-local address by construction.
+
+How and in what order these are tried is implementation-defined; the point is that
+joining a network should require zero manual configuration wherever possible.
 
 Devices with multiple network interfaces treat each interface independently: they listen
 for TCP on their TCP port (11372 by default) on each interface, join the multicast group
-on each interface, emit their own advertisements on every interface they are active on,
-and track the (interface, source IP) tuple of each received advertisement. A logical
-peer reachable via several physical peers (e.g. wired + WiFi) will appear as multiple
-IP-to-key mappings; which one is used follows the path-selection rule in §Addressing.
+on each interface, and emit their own advertisements on every interface they are active
+on. A logical peer reachable via several physical peers (e.g. wired + WiFi) will appear
+as multiple IP-to-key mappings; which one is used follows the path-selection rule in
+§Addressing.
 
 Devices may support other methods to connect to a SCAN network, like VPN, proxies, or
 other custom tunnelling methods. NAT/firewall traversal techniques (STUN, TURN, ICE) are
@@ -308,7 +310,9 @@ the user.
 
 The following allocations are intended but not yet registered:
 
-* TCP/UDP port **11372** as the default SCAN port.
+* TCP port **11372** as the default SCAN listening port. All unicast traffic,
+  including unicast replies to `AdvertisementRequest`, uses TCP on this port.
+* UDP port **11372** for multicast advertisements only.
 * IPv4 multicast group **239.255.255.244** within "IPv4 Local Scope" (RFC 2365).
 * IPv6 multicast group **ff12::2c6c** (transient, link-local scope).
 
@@ -592,11 +596,14 @@ than that, it sends multiple frames; the identity set is eventually consistent.
 Advertisement is emitted only on events, never at a steady periodic rate:
 
 * **Birth burst.** A device sends three `Advertisement` frames over approximately two
-  seconds when it first becomes reachable on the network. This tolerates multicast
-  packet loss and makes the device visible to any already-present peer.
-* **Re-burst on change.** The same burst is repeated on any change that affects
-  reachability or identity: IP address change, interface change, or addition or removal
-  of a represented logical key.
+  seconds when it first becomes reachable on the network, with small random jitter
+  between frames (on the order of hundreds of milliseconds) so that segments of devices
+  booting together — e.g. after a power restore — do not burst in lockstep. This
+  tolerates multicast packet loss and makes the device visible to any already-present
+  peer.
+* **Re-burst on change.** The same burst (with the same jitter) is repeated on any
+  change that affects reachability or identity: IP address change, interface change, or
+  addition or removal of a represented logical key.
 * **Solicited reply.** A unicast reply to any `AdvertisementRequest` whose filter
   matches the device (or is empty), sent to the solicitor's IP with a small random
   jitter (0-500 ms) to spread response storms.
@@ -625,9 +632,13 @@ If the array is empty the request is a broad solicitation: every device on the s
 replies with its own `Advertisement`. If the array is non-empty, only devices holding
 at least one of the listed logical keys reply.
 
-Replies are sent unicast to the solicitor's IP address with a small random jitter
-(0-500 ms). The reply is the full `Advertisement` for the replying device (all
-identities it represents), not just the matching keys.
+Replies are sent unicast over a TCP connection to the solicitor's IP address on the
+default SCAN port (11372), with a small random jitter (0-500 ms) to spread response
+storms. The reply is the full `Advertisement` for the replying device (all identities
+it represents), not just the matching keys. The responder's receipt of the request
+(which carries the solicitor's `PeerAddress` in the Frame header, sourced from the
+solicitor's IP) satisfies the "must have observed an `Advertisement`" precondition for
+opening that TCP (see Internet Layer §Addressing).
 
 Typical uses:
 
@@ -646,15 +657,18 @@ the unicast replies back.
 
 #### Heartbeat
 
-An explicit liveness probe sent from the Responder to the Initiator on an established
-TCP connection.
+An explicit liveness probe sent from the Responder to the Initiator over an open TCP
+connection.
 
 ```
 Heartbeat = Unit
 ```
 
 `Heartbeat` carries no payload, is not encrypted, and does not advance the Noise
-cipher state. 
+cipher state. Because it is unencrypted and role-agnostic at the wire level, Heartbeat
+flows from TCP establishment onward and does not wait for the logical handshake to
+complete — a stalled handshake is therefore caught by the same liveness timer as any
+other silence.
 
 Heartbeats are one-directional. The Initiator is the party with a liveness interest —
 it is consuming state from the Responder and needs to know when that stream becomes
@@ -663,13 +677,13 @@ Initiator's disappearance on its next `Heartbeat` or `State` send failing at the
 layer, which reclaims subscription state with a slower but sufficient guarantee. This
 matches the Initiator/Responder asymmetry of the protocol overall.
 
-On an established connection, the Responder must send a `Heartbeat` if no other frame
-has gone out in `heartbeatInterval` (default 1 second). The Initiator considers the
-Responder offline if no frame has been received in `livenessTimeout` (default 3
-seconds). Any received frame — `Heartbeat`, `Payload`, `Advertisement`, or otherwise —
-resets the Initiator's liveness timer. The effective `livenessTimeout` may be tightened
-by active subscriptions (see `Subscribe` in the Modalities Layer); `heartbeatInterval`
-is always `livenessTimeout / 3`.
+From the moment the TCP connection is open, the Responder must send a `Heartbeat` if
+no other frame has gone out in `heartbeatInterval` (default 1 second). The Initiator
+considers the Responder offline if no frame has been received in `livenessTimeout`
+(default 3 seconds). Any received frame — `Heartbeat`, `Payload`, `Advertisement`, or
+otherwise — resets the Initiator's liveness timer. The effective `livenessTimeout`
+may be tightened by active subscriptions (see `Subscribe` in the Modalities Layer);
+`heartbeatInterval` is always `livenessTimeout / 3`.
 
 A device that is "connected" (logical connection exists, keys retained) but has no
 current TCP connection is considered *offline*, whether it went silent intentionally,
