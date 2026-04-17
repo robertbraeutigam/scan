@@ -128,14 +128,13 @@ address is configured out-of-band, so no prior advertisement is required to open
 to it.
 
 The mapping from a logical peer to its IP comes from `Advertisement` source addresses;
-latest advertisement wins, and older mappings for that family are discarded once a new
-one is received. A logical peer may concurrently be known at one IPv4 and one IPv6
-address, since some devices are limited to IPv4 or IPv6 only. If both families are
-known, IPv6 is preferred. There is no fallback to the other family and no concurrent
-connect-race (e.g. RFC 8305 Happy Eyeballs): the chosen path is the only path used.
-If the connect attempt fails, the device retries the same address; a subsequent
-advertisement may change the address used, but connect failure alone does not cause
-a switch. Retries use exponential backoff per logical peer, or per configured gateway:
+a peer has at most one current IP, and the latest advertisement wins regardless of
+family. A later IPv4 advertisement replaces a previously recorded IPv6 address, and
+vice versa. This keeps the mapping fresh when a peer stops advertising on one family
+(for example after a roam) and avoids connect attempts to a stale address just
+because its family was previously preferred. If the connect attempt fails, the device
+retries the same address; a subsequent advertisement may change the address used,
+but connect failure alone does not cause a switch. Retries use exponential backoff per logical peer, or per configured gateway:
 when the initiator detects an unexpected TCP close the first retry is attempted
 immediately, and subsequent retries double from 1 s up to a 60 s ceiling, with ±25%
 random jitter on each delay. The backoff resets after a successful TCP establishment
