@@ -74,7 +74,7 @@ The PSK-as-role authorization model is unique and elegant -- it avoids ACLs (OPC
 
 | Protocol | Transport | Max Message | Fragmentation | Multiplexing | Streaming |
 |----------|-----------|-------------|---------------|--------------|-----------|
-| **SCAN** | TCP/IP + UDP multicast | **Unlimited** (chunked) | Built-in (chunk-based, per-chunk encrypted) | Yes (multiple logical connections per TCP) | **Yes** (native) |
+| **SCAN** | TCP/IP + UDP multicast | **Unlimited** (chunked, ~2 KB per frame) | Built-in (chunk-based, per-chunk encrypted) | Yes (multiple logical connections per TCP) | **Yes** (native) |
 | MQTT | TCP | 256 MB | **No** | No | No |
 | CoAP | UDP (+ TCP ext.) | ~1 KB (UDP) | Block-wise transfer (finite) | Token-based | No |
 | LwM2M | CoAP transports | ~1 KB (UDP) | Inherited from CoAP | Limited | No |
@@ -202,7 +202,7 @@ The `scan.health` modality alone (temperature, voltage, current, battery, memory
 
 | Protocol | Open & Free? | Certification Fees? | Minimal Implementation Size | Central Dependencies |
 |----------|-------------|---------------------|-----------------------------|---------------------|
-| **SCAN** | Yes | **None** | Moderate (Noise + TCP + modalities) | **None** |
+| **SCAN** | Yes | **None** | Moderate (~4 KB frame buffers for 2 connections + Noise + TCP + modalities) | **None** |
 | MQTT | Yes | None | ~1 KB (but need a broker) | Broker |
 | CoAP | Yes | None | ~hundreds of lines of C | None |
 | LwM2M | Yes | Carrier programs exist | ~132 KB flash + 32 KB RAM | LwM2M Server |
@@ -346,7 +346,7 @@ This mirrors the current industry trajectory: NMEA OneNet (IPv6/Ethernet) is bei
 
 2. **Cloud story is absent** -- Modern IoT increasingly assumes cloud connectivity. MQTT and AMQP are natively cloud-integrated. SCAN's gateway model can bridge to the internet but there's no defined cloud integration pattern.
 
-3. **Constrained device suitability is unproven** -- The mandatory Noise handshake + TCP + all mandatory modalities may be too heavy for the smallest microcontrollers. CoAP on an 8-bit MCU with 32 KB flash is proven; SCAN on such hardware is not.
+3. **Constrained device suitability is unproven** -- TCP + Noise crypto + all mandatory modalities are still heavy for the smallest microcontrollers, even though the ~2 KB per-frame cap means per-connection buffers no longer exclude Class 2 MCUs (ESP8266, nRF52832, Cortex-M4 with ≥64 KB SRAM). CoAP on an 8-bit MCU with 32 KB flash is proven; SCAN on such hardware is not.
 
 4. **The type system is unfinished** -- Five of six sections in TYPES.md are TODO. This is the foundation for the transformation language, which is the foundation for virtual modalities, which is the foundation for SCAN's interoperability story. The most innovative part of the protocol is also the most incomplete.
 
