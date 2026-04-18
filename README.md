@@ -258,10 +258,21 @@ Operations through a gateway map thusly:
   triggers as local multicast (initial connect, change, solicited reply), each carrying
   up to 16 `PeerAddress` entries. The `port` field of each such frame carries the
   gateway's own TCP listening port, so the receiver's `(IP, port)` mapping for every
-  identity behind the gateway points back at the gateway. Because TCP is reliable,
-  each event emits a single frame rather than the three-frame burst used for
-  multicast. Devices process advertisements received over TCP identically to those
-  received over UDP multicast. Gateways with more than 16 identities behind them send
+  identity behind the gateway points back at the gateway. Because the mapping
+  reported to the client is always the gateway's own address, address churn of
+  peers behind the gateway (roaming, DHCP renewals, reconnects) is absorbed by
+  the gateway and does not trigger a change advertisement. Change advertisements
+  are emitted only when a new identity becomes reachable through the gateway,
+  and carry only the newly-reachable identities, not the full set.
+  Advertisements have no counterpart to announce that an identity is no longer
+  reachable: their purpose is to maintain the identity-to-address mapping for
+  peers that can potentially be contacted, not to track online presence. Because
+  TCP is reliable, each event emits a
+  single frame rather than the three-frame burst used for multicast. Gateways
+  may coalesce change events over a short, implementation-defined window to
+  limit fan-out under membership churn. Devices process advertisements received
+  over TCP identically to those received over UDP multicast. On initial connect,
+  and whenever a single change batch exceeds 16 entries, the gateway sends
   multiple frames; the identity set is eventually consistent.
 * On TCP establishment to a gateway, the device sends an `Advertisement` over that same
   connection covering the logical identities the device itself represents, with its

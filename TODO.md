@@ -4,8 +4,6 @@
 
 - **Resource limits.** Devices need to defend against being overwhelmed by inbound TCP connections (popular sensor, gateway with many clients). Devices should report capabilities (max connections, max message size, etc.) on `OPTION`; the Internet Layer side needs to specify what to do when those limits are exceeded — refuse the TCP, accept and immediately close with a `CloseConnection`, or rate-limit accepts.
 
-- **Gateway advertisement fan-out.** A gateway with N logical identities behind it and M connected devices replays the advertisement set per connection and per change: O(N·M) on any re-burst. Think about batching, per-device delta advertisements, or capping how often a gateway re-broadcasts identity churn.
-
 - **Gateway authentication.** A device opening TCP to a configured gateway has no cryptographic check on the gateway endpoint itself — it is pure trust in the configured IP. End-to-end Noise to the actual peer still protects payloads, but the gateway can deny service, observe metadata, and impersonate any "gateway at this IP" without detection. Decide whether to add a gateway-identity verification step (e.g. a gateway static key proven during a separate handshake at TCP open) or leave gateway identity as configured trust.
 
 - **Soft-AP based discovery.** Include Soft-AP discovery? If so, include the discovery protocol in the QR package.
