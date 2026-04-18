@@ -117,24 +117,25 @@ reachable through multiple physical peers (a multi-homed device). Unless otherwi
 Addressing uses native IP addresses. Both IPv4 and IPv6 are supported; implementations must
 support at least one family and should support both where the environment permits.
 
-A device opens TCP only to a peer whose IP it has learned, either from a recent
-`Advertisement` or from its persistent address cache. A device sends
-`AdvertisementRequest` frames (see Logical Layer) for the peers it needs an IP for.
-Cache sizing and entry lifetime are implementation-defined; the protocol does not
-mandate either. Implementations should be prepared for networks with many peers and
-may choose to cache only the peers the device actually needs to reach (for example,
-those referenced by its configured wiring). Gateways are the exception: a gateway's
-address is configured out-of-band, so no prior advertisement is required to open TCP
-to it.
+A device opens TCP only to a peer whose `(IP, port)` it has learned, either from a
+recent `Advertisement` or from its persistent address cache. A device sends
+`AdvertisementRequest` frames (see Logical Layer) for the peers it needs an address
+for. Cache sizing and entry lifetime are implementation-defined; the protocol does
+not mandate either. Implementations should be prepared for networks with many peers
+and may choose to cache only the peers the device actually needs to reach (for
+example, those referenced by its configured wiring). Gateways are the exception: a
+gateway's address is configured out-of-band, so no prior advertisement is required to
+open TCP to it.
 
-The mapping from a logical peer to its IP comes from `Advertisement` source addresses;
-a peer has at most one current IP, and the latest advertisement wins regardless of
-family. A later IPv4 advertisement replaces a previously recorded IPv6 address, and
-vice versa. This keeps the mapping fresh when a peer stops advertising on one family
-(for example after a roam) and avoids connect attempts to a stale address just
-because its family was previously preferred. If the connect attempt fails, the device
-retries the same address; a subsequent advertisement may change the address used,
-but connect failure alone does not cause a switch. Retries use exponential backoff per logical peer, or per configured gateway:
+The mapping from a logical peer to its `(IP, port)` comes from `Advertisement`
+source addresses combined with the `port` field of the frame; a peer has at most one
+current `(IP, port)`, and the latest advertisement wins regardless of family. A later
+IPv4 advertisement replaces a previously recorded IPv6 address, and vice versa. This
+keeps the mapping fresh when a peer stops advertising on one family (for example
+after a roam) and avoids connect attempts to a stale address just because its family
+was previously preferred. If the connect attempt fails, the device retries the same
+address; a subsequent advertisement may change the address used, but connect failure
+alone does not cause a switch. Retries use exponential backoff per logical peer, or per configured gateway:
 when the initiator detects an unexpected TCP close the first retry is attempted
 immediately, and subsequent retries double from 1 s up to a 60 s ceiling, with ±25%
 random jitter on each delay. The backoff resets after a successful TCP establishment
@@ -172,9 +173,15 @@ resources.
 Every device must be capable of operating in a local network, where other devices are
 directly addressable and all devices can be contacted by multicast packets. In this scenario:
 
-* TCP listening port is 11372.
+* The TCP listening port is chosen by the device. The default is 11372 where that
+  port is available. The actual port is announced to peers in every `Advertisement`
+  and `AdvertisementRequest` frame the device emits. Devices should keep the chosen
+  port stable across reboots so that cached `(IP, port)` entries in other devices
+  remain usable until the next advertisement propagates; a device that cannot honor
+  a previously-used port (for example, the port is taken by another process) picks
+  a new one and relies on its birth-burst advertisement to restore reachability.
 * Source ports for outgoing TCP connections are ephemeral.
-* All devices are addressed over UDP on port 11372, at multicast group:
+* All devices are addressed over UDP on the fixed port 11372, at multicast group:
   * `239.255.255.244` for IPv4, from the IPv4 administratively-scoped block
     (`239.0.0.0/8`), restricted to the local L2 segment by TTL=1.
   * `ff12::2c6c` for IPv6 (transient, link-local scope; flags = `1` (transient),
@@ -240,22 +247,25 @@ newest source gateway it had seen, with the same rules as in Addressing.
 
 Operations through a gateway map thusly:
 
-* The device opens a TCP connection to each configured gateway at the gateway's IP
-  on TCP port 11372.
+* The device opens a TCP connection to each configured gateway at the gateway's
+  configured IP and TCP port. Both are supplied out-of-band; there is no default
+  gateway port.
 * When a logical peer is reached via a gateway, all traffic for that peer flows over
   that gateway's TCP connection.
 * On TCP loss to a gateway, the device reconnects under the same exponential backoff
   as in §Addressing.
 * The gateway emits `Advertisement` frames over that TCP connection on the same event
   triggers as local multicast (initial connect, change, solicited reply), each carrying
-  up to 16 `PeerAddress` entries. Because TCP is reliable, each event emits a single
-  frame rather than the three-frame burst used for multicast. Devices process
-  advertisements received over TCP identically to those received over UDP multicast.
-  Gateways with more than 16 identities behind them send multiple frames; the identity
-  set is eventually consistent.
+  up to 16 `PeerAddress` entries. The `port` field of each such frame carries the
+  gateway's own TCP listening port, so the receiver's `(IP, port)` mapping for every
+  identity behind the gateway points back at the gateway. Because TCP is reliable,
+  each event emits a single frame rather than the three-frame burst used for
+  multicast. Devices process advertisements received over TCP identically to those
+  received over UDP multicast. Gateways with more than 16 identities behind them send
+  multiple frames; the identity set is eventually consistent.
 * On TCP establishment to a gateway, the device sends an `Advertisement` over that same
-  connection covering the logical identities the device itself represents, so the gateway
-  can route inbound traffic.
+  connection covering the logical identities the device itself represents, with its
+  own TCP listening port in the frame, so the gateway can route inbound traffic.
 
 Gateways have no cryptographic access to payloads — end-to-end encryption is preserved at
 the Logical Layer. A gateway can, however, observe metadata (identity keys, packet timing,
@@ -321,8 +331,10 @@ addresses (SLAAC, DHCP/DHCPv6, static) are preferred when available and are used
 without an interface association.
 
 Devices with multiple network interfaces treat each interface independently: they listen
-for TCP on port 11372 on each interface, join the multicast group on each interface,
-and emit their own advertisements on every interface they are active on.
+for TCP on their chosen SCAN port on each interface, join the multicast group on each
+interface, and emit their own advertisements on every interface they are active on.
+A single listening port across all interfaces is sufficient; nothing requires the
+device to pick a different port per interface.
 
 NAT/firewall traversal techniques (STUN, TURN, ICE) are not part of the SCAN
 protocol; a device behind NAT without an inbound path should reach the network by
@@ -355,9 +367,13 @@ hundred milliseconds.
 
 The following allocations are intended but not yet registered:
 
-* TCP port **11372** as the default SCAN listening port. All unicast traffic,
-  including unicast replies to `AdvertisementRequest`, uses TCP on this port.
-* UDP port **11372** for multicast advertisements only.
+* TCP port **11372** as the default SCAN listening port. The actual TCP port a
+  device listens on is announced in its `Advertisement` frames and may differ from
+  the default — for example, when the default port is taken by another process or
+  when several SCAN devices share a host. Devices should bind 11372 when they can.
+* UDP port **11372** for multicast advertisements only. This port is fixed: it is
+  the rendezvous point at which devices listen for discovery traffic, and cannot
+  itself be discovered.
 * IPv4 multicast group **239.255.255.244** from the administratively-scoped block
   (`239.0.0.0/8`), scoped to the local L2 segment by TTL=1.
 * IPv6 multicast group **ff12::2c6c** (transient, link-local scope).
@@ -637,11 +653,19 @@ gateway may represent multiple logical identities on behalf of other devices, wh
 why multiple static keys may reside at the same IP address.
 
 ```
-Advertisement = DynamicArray(PeerAddress, max=16)
+Advertisement = Struct(
+   port:      UnsignedInteger(2),
+   peers:     DynamicArray(PeerAddress, max=16)
+)
 ```
 
-A frame may contain up to 16 static keys. If a device represents more logical identities
-than that, it sends multiple frames; the identity set is eventually consistent.
+The `port` field is the TCP port on which the sender accepts SCAN connections for the
+logical identities listed in `peers`. Receivers combine it with the source IP of the
+datagram (for multicast) or the remote end of the TCP connection (for advertisements
+arriving over TCP) to form the `(IP, port)` mapping cached per `PeerAddress`. A frame
+may contain up to 16 static keys; if a device represents more logical identities than
+that, it sends multiple frames with the same `port`, and the identity set is eventually
+consistent.
 
 Advertisement is emitted only on events, never at a steady periodic rate:
 
@@ -677,22 +701,27 @@ Solicits `Advertisement` replies from one or more specific peers, or from everyo
 the segment.
 
 ```
-AdvertisementRequest = DynamicArray(PeerAddress, max=16)
+AdvertisementRequest = Struct(
+   port:      UnsignedInteger(2),
+   peers:     DynamicArray(PeerAddress, max=16)
+)
 ```
 
-If the array is empty the request is a broad solicitation: every device on the segment
-replies with its own `Advertisement`. If the array is non-empty, only devices holding
-at least one of the listed logical keys reply.
+The `port` field is the TCP port at which the solicitor accepts SCAN connections, so
+the responder can reach the solicitor even though it may not yet have observed an
+`Advertisement` from it. If `peers` is empty the request is a broad solicitation:
+every device on the segment replies with its own `Advertisement`. If `peers` is
+non-empty, only devices holding at least one of the listed logical keys reply.
 
-Replies are sent unicast over a TCP connection to the solicitor's IP address on the
-default SCAN port (11372), with a small random jitter (0-500 ms) to spread response
-storms. The reply is the full `Advertisement` for the replying device (all identities
-it represents), not just the matching keys. The responder's receipt of the request
-(which carries the solicitor's `PeerAddress` in the Frame header, sourced from the
-solicitor's IP) satisfies the "must have observed an `Advertisement`" precondition for
-opening that TCP (see Internet Layer §Addressing). If no logical connection has been
-opened over the newly-established TCP after the reply has been sent, the replier
-closes it.
+Replies are sent unicast over a TCP connection to the solicitor's IP address at the
+`port` carried in the request, with a small random jitter (0-500 ms) to spread
+response storms. The reply is the full `Advertisement` for the replying device (all
+identities it represents), not just the matching keys. The responder's receipt of the
+request (which carries the solicitor's `PeerAddress` in the Frame header, sourced from
+the solicitor's IP, and the solicitor's TCP port in the request body) satisfies the
+"must have observed an `Advertisement`" precondition for opening that TCP (see
+Internet Layer §Addressing). If no logical connection has been opened over the
+newly-established TCP after the reply has been sent, the replier closes it.
 
 Typical uses:
 
