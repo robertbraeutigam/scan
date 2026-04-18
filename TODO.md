@@ -186,4 +186,4 @@
 
 - **Transformation placement.** Do the transformation on the sending side (avoids sending when not needed). Cannot support multiple inputs that way — this is an accepted trade-off.
 
-- **Message size.** Max 2 KB. Just require this — nothing to communicate.
+- **Message size.** Max 1200 B per frame (sized to fit IPv6 minimum MTU minus TCP/IP headers, so each frame is one IP packet). Just require this — nothing to communicate.

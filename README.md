@@ -339,36 +339,17 @@ the user.
 
 ### Networking Considerations
 
-SCAN allows Logical-Layer messages of substantial size; TCP segments those into IP
-packets sized by the path MTU and is, in principle, responsible for sizing them
-correctly. Two failure modes affect SCAN deployments specifically:
+SCAN frames are capped at 1200 bytes (see Logical Layer §Frames), which sits below the
+IPv6 minimum path MTU of 1280 bytes after worst-case TCP/IP header overhead. Combined
+with a single `write()` of a whole frame on a `TCP_NODELAY` socket, each SCAN frame is
+sent as exactly one IP packet on any path that meets the IPv6 minimum. Path-MTU
+discovery failures, ICMP black holes, and MSS clamping on tunnels therefore do not
+affect SCAN frames specifically — a path whose effective MTU falls below 1280 bytes is
+broken by IPv6 standards, not by SCAN.
 
-* **MTU black holes.** A path traverses a tunnel or interface with MTU below 1500 bytes
-  (PPPoE, IPsec, WireGuard, nested encapsulations) and an intermediate router drops
-  oversized packets without sending ICMP "Packet Too Big" / "Packet Too Large". Classic
-  PMTUD then fails silently, TCP retransmits the same too-large segments, and the
-  connection stalls after the handshake completes. The gateway scenario — TCP over a
-  long-haul tunnel — is the geometry where this is most likely to bite.
-* **IPv6 minimum MTU (1280 bytes).** A path that should always work because it is at
-  the IPv6 floor stops working when an additional encapsulation pushes the effective
-  MTU below 1280.
-
-Two recommendations follow:
-
-* Implementations should enable Packetization Layer Path MTU Discovery (PLPMTUD,
-  RFC 4821) where the operating system supports it. PLPMTUD probes via the data stream
-  rather than relying on ICMP and survives ICMP-blackhole networks.
-* Operators of gateways carrying SCAN traffic over tunnels should configure TCP MSS
-  clamping at tunnel ingress to the tunnel's effective MTU. This is operational
-  guidance, not a protocol requirement.
-
-Beyond these recommendations, SCAN assumes that the path can carry TCP-segmented
-frames of arbitrary size. A path that silently degrades MTU below what SCAN traffic
-needs is a network-configuration problem, not something the protocol attempts to
-work around at the application layer.
-
-All connections should use **TCP_NODELAY** to prevent the TCP/IP to hold data for
-batching purposes. Not using this option could delay frames up to several hundred milliseconds.
+All connections should use **TCP_NODELAY** to prevent the TCP/IP stack from holding
+data for batching purposes. Not using this option could delay frames up to several
+hundred milliseconds.
 
 ### IANA Allocations
 
@@ -404,7 +385,11 @@ each device is free to directly communicate with any number of other devices. Th
 To support every possible physical topology, frames may contain additional logical routing information and are designed
 to be able to be multiplexed, forwarded and proxied. 
 
-The communication on this layer is packet based. All frames are designed to fit comfortably in a 2048 byte buffer.
+The communication on this layer is packet based. All frames are designed to fit in a 1200 byte
+buffer. This is below the IPv6 minimum path MTU of 1280 bytes minus worst-case TCP/IP header
+overhead, so a frame written in a single `write()` on a `TCP_NODELAY` socket is sent as exactly
+one IP packet on any compliant path. Payloads larger than a single frame are split across multiple
+chunks (see Payload Messages).
 
 A logical connection is a connection between two devices identified by their public static keys. All
 devices have a static key pair, the public part of which identifies the device uniquely and securely
@@ -573,7 +558,7 @@ Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
 
 // Used later
 EncryptedPayload = Struct(
-   payload:   DynamicArray(Byte, max=1958), // This is to fit in 2048 under all circumstances
+   payload:   DynamicArray(Byte, max=1100), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
    mac:       Array(16, Byte)
 )
 ```
