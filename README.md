@@ -337,7 +337,7 @@ designed to handle communication through insecure networks just fine. The point 
 layer is to make the device available to talk to, in the most convenient way possible for
 the user.
 
-### MTU Considerations
+### Networking Considerations
 
 SCAN allows Logical-Layer messages of substantial size; TCP segments those into IP
 packets sized by the path MTU and is, in principle, responsible for sizing them
@@ -366,6 +366,9 @@ Beyond these recommendations, SCAN assumes that the path can carry TCP-segmented
 frames of arbitrary size. A path that silently degrades MTU below what SCAN traffic
 needs is a network-configuration problem, not something the protocol attempts to
 work around at the application layer.
+
+All connections should use **TCP_NODELAY** to prevent the TCP/IP to hold data for
+batching purposes. Not using this option could delay frames up to several hundred milliseconds.
 
 ### IANA Allocations
 

@@ -2,11 +2,6 @@
 
 ## Internet Layer
 
-- **TCP Nagle / latency.** Delayed coalescing hurts latency-sensitive modalities (e.g. `scan.locate`, fast control). Options:
-  - Mandate `TCP_NODELAY` for all connections (simple, but penalizes bulk).
-  - Add a subscription-level "low-latency" flag that the responder honors by disabling Nagle (or setting `TCP_QUICKACK`) on the path carrying that subscription's State frames.
-  - Decide once we have measurements.
-
 - **Resource limits.** Devices need to defend against being overwhelmed by inbound TCP connections (popular sensor, gateway with many clients). Devices should report capabilities (max connections, max message size, etc.) on `OPTION`; the Internet Layer side needs to specify what to do when those limits are exceeded — refuse the TCP, accept and immediately close with a `CloseConnection`, or rate-limit accepts.
 
 - **Hard port requirement.** Drop hard port requirements and just advertise the device port instead?
