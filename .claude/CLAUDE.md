@@ -11,7 +11,7 @@ All work happens in Markdown:
 - `README.md` — the SCAN protocol specification (the main document).
 - `TYPES.md` — the SCAN Type System specification (separate, stand-alone type/transform language used by the protocol).
 - `COMPARISON.md` — reference comparison against existing IoT protocols (MQTT, CoAP, Matter, NMEA 2000, DDS, etc.). Useful for design-rationale questions.
-- `TODO` — free-form running list of open design questions and follow-ups.
+- `TODO.md` — organized list of open design questions and follow-ups, grouped by layer/topic.
 
 ## What SCAN Is (Big Picture)
 
@@ -37,5 +37,5 @@ The type system is intentionally minimal and uniform: aggregates are just built-
 - Both `README.md` and `TYPES.md` are marked *Draft Version*; inconsistencies are expected. When you spot one, flag it rather than silently "fixing" one side.
 - Protocol structures are written in the TYPES.md syntax inside fenced code blocks. When editing a message/modality, keep that syntax consistent (`Struct(...)`, `Union(...)`, `DynamicArray(...)`, `Optional(...)`, `VariableLengthInteger(n)`, etc.) and keep field names in `camelCase` as the existing spec does.
 - Modality declarations follow a fixed shape (`id`, `priority`, `keyType`, `outputType`, `inputType`); preserve that shape and the `scan.*` id convention when adding or modifying modalities.
-- `TODO` markers exist inline in `README.md` (e.g. `// TODO` in backup/restore, network settings) and as a top-level `TODO` file. Treat these as the canonical list of known-open items.
+- `TODO` markers exist inline in `README.md` (e.g. `// TODO` in backup/restore, network settings) and as a top-level `TODO.md` file. Treat these as the canonical list of known-open items.
 - `COMPARISON.md` references specific claims in `README.md`; when you change a load-bearing property (topology, crypto, discovery, QoS), check whether `COMPARISON.md` needs a corresponding update.
