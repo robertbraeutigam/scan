@@ -1817,42 +1817,27 @@ QRPayload = Struct(
 )
 ```
 
-The `capabilities` field declares which bring-up channels the device offers. Concrete
-binary sizes are determined by the type system's binary representation (see
-`TYPES.md`) rather than fixed here; at the time of writing, the payload is on the
-order of ~66 bytes. Base32-encoded it is approximately 106 characters. At error
-correction level Q (25%), this fits comfortably in a QR code of version 8 or smaller
-(49 × 49 modules). At a conservative 1 mm module size with a 4-module quiet zone, the
-physical QR code fits in a 57 × 57 mm square; smaller module sizes shrink the physical
-footprint proportionally.
+The `capabilities` field declares which bring-up channels the device offers. 
 
 ### Bring-Up Blob
 
 Both Soft-AP and BLE bring-up channels carry the same payload: a *bring-up blob*
-describing the network the device should attach to.
+describing the WiFi network the device should attach to.
 
 ```
 BringUpBlob = Struct(
-   wifi:           Optional(WiFiCredentials),
-   staticIp:       Optional(StaticIpConfiguration)
-)
-
-WiFiCredentials = Struct(
    ssid:           String,
    passphrase:     Optional(String)
 )
-
-StaticIpConfiguration = Struct(
-   address:        String,
-   prefixLength:   UnsignedInteger(1),
-   gateway:        Optional(String),
-   dns:            DynamicArray(String)
-)
 ```
 
-The `wifi` field is required when the bring-up channel is Soft-AP or BLE. The
-`passphrase` field is absent for open WiFi networks. The `staticIp` field is absent when
-DHCP / SLAAC is acceptable.
+The `passphrase` field is absent for open WiFi networks. No IP configuration is carried
+in the blob: once the device has joined the WiFi network, §Network Acquisition handles
+address assignment (DHCP, SLAAC, or link-local) and the device's subsequent
+advertisements carry its resulting `(IP, port)` so the administrative application can
+find it without any pre-arranged address. Any post-enrollment network reconfiguration —
+including static IPs, when needed — belongs to a separate `scan.netconfig`-style
+modality rather than to bring-up.
 
 The blob MUST be authenticated and encrypted using a key derived from the device's
 enrollment PSK, so that an attacker in physical proximity cannot push bogus network
@@ -1895,16 +1880,19 @@ A device advertising Soft-AP bring-up MUST:
   encoding of the first four bytes of the device's `peerAddress`. This lets the
   administrative application match the scanned QR to the broadcasting AP when multiple
   devices are nearby.
-* Serve the administrative application's device (when it associates) via DHCPv4 on the
-  Soft-AP interface. The device itself takes the address `192.168.4.1/24` and offers a
-  DHCP pool of at least `192.168.4.2` – `192.168.4.10` with a lease time of at least one
-  hour. This follows the de-facto convention widely used by embedded WiFi stacks and
-  avoids clashes with the most common home-network subnets (`192.168.0.0/24`,
-  `192.168.1.0/24`).
+* Take the fixed address `192.168.4.1/24` on the Soft-AP interface. This follows the
+  de-facto convention widely used by embedded WiFi stacks and avoids clashes with the
+  most common home-network subnets (`192.168.0.0/24`, `192.168.1.0/24`).
+* Run a DHCPv4 server on the Soft-AP interface that leases addresses inside the same
+  `192.168.4.0/24` subnet to associating clients. Pool size, lease time, and any
+  additional DHCP options are implementation-defined; neither iOS's
+  `NEHotspotConfiguration` nor Android's `WifiNetworkSpecifier` lets an admin app assign
+  a static IP to the phone side, so a DHCP-less Soft-AP would be unreachable regardless
+  of the device's own address.
 * Accept incoming TCP connections on port 11372 (§IANA Allocations) at `192.168.4.1`.
-* Accept a bring-up blob via a single length-prefixed TCP write to that port, framed as a
-  2-byte big-endian length followed by the `EncryptedBringUpBlob` bytes. After accepting
-  a valid blob, the device closes the TCP connection before tearing down the Soft-AP.
+* Accept one `EncryptedBringUpBlob` over the connection. Regardless of outcome,
+  the device closes the connection afterwards. If the data was valid, it closes
+  the Soft-AP as well and proceeds with the proper network connect.
 
 ### BLE Bring-Up
 
@@ -1946,7 +1934,7 @@ new blob. This protects against typos and temporary network outages without requ
 factory reset.
 
 A device MAY stop advertising its bring-up channels after a prolonged period of
-inactivity (RECOMMENDED: 30 minutes since power-on with no bring-up connection or write)
+inactivity (RECOMMENDED: 10 minutes since power-on with no bring-up connection or write)
 in order to reduce the long-lived attack surface of an always-open Soft-AP or an
 always-advertising BLE radio. A device that implements such a timeout MUST re-arm the
 bring-up channels on power cycle and SHOULD also re-arm them in response to a physical
