@@ -2,8 +2,6 @@
 
 ## Internet Layer
 
-- **Resource limits.** Devices need to defend against being overwhelmed by inbound TCP connections (popular sensor, gateway with many clients). Devices should report capabilities (max connections, max message size, etc.) on `OPTION`; the Internet Layer side needs to specify what to do when those limits are exceeded — refuse the TCP, accept and immediately close with a `CloseConnection`, or rate-limit accepts.
-
 - **Gateway authentication.** A device opening TCP to a configured gateway has no cryptographic check on the gateway endpoint itself — it is pure trust in the configured IP. End-to-end Noise to the actual peer still protects payloads, but the gateway can deny service, observe metadata, and impersonate any "gateway at this IP" without detection. Decide whether to add a gateway-identity verification step (e.g. a gateway static key proven during a separate handshake at TCP open) or leave gateway identity as configured trust.
 
 ---
@@ -205,3 +203,5 @@
 - **Transformation placement.** Do the transformation on the sending side (avoids sending when not needed). Cannot support multiple inputs that way — this is an accepted trade-off.
 
 - **Message size.** Max 1200 B per frame (sized to fit IPv6 minimum MTU minus TCP/IP headers, so each frame is one IP packet). Just require this — nothing to communicate.
+
+- **Resource limits.** No capability advertisement on `OPTION`. Max frame size is already a universal MUST (1200 B), larger payloads are handled via streaming, and `scan.health` already carries memory, CPU, network-error, latency, and per-modality connection counts — there is nothing left to advertise. Overload is handled by dropping TCP: a responder under resource pressure closes the TCP connection, and the initiator reconnects under the normal exponential backoff. Persistent overload surfaces through `scan.health` counters rather than a dedicated signal.

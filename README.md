@@ -141,11 +141,12 @@ immediately, and subsequent retries double from 1 s up to a 60 s ceiling, with �
 random jitter on each delay. The backoff resets after a successful TCP establishment
 followed by a completed Noise handshake.
 
-Only the initiator of a logical connection may close its TCP intentionally (for
-example to mark itself temporarily offline); after such an intentional close the
-initiator may not immediately reconnect. A responder does not close TCP to go
-offline — it relies on the initiator's own disconnect or on network-level failure
-to release state.
+Only the initiator of a logical connection may close its TCP intentionally to
+indicate offline status; after such an intentional close the initiator may not
+immediately reconnect. A responder does not close TCP to go offline — it relies
+on the initiator's own disconnect or on network-level failure to release state.
+A responder under resource pressure may still close TCP to shed load; this is
+not "going offline", and the initiator reconnects under the normal backoff.
 
 For non-link-local source addresses, devices track only
 the IP that advertised the peer, not the interface on which it was received; the
@@ -1407,6 +1408,7 @@ DeviceHealth = Struct(
    volatileMemory: HardSoftLimited(Information),
    cpuUsage: HardSoftLimited(Percent),
 
+   networkConnections: HardSoftLimited(Long),
    networkErrors: HardSoftLimited(Long),
    networkLatency: HardSoftLimited(TimeInterval),
 
