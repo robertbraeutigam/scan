@@ -1856,9 +1856,34 @@ DHCP / SLAAC is acceptable.
 
 The blob MUST be authenticated and encrypted using a key derived from the device's
 enrollment PSK, so that an attacker in physical proximity cannot push bogus network
-credentials and cause the device to join an unintended network. The exact cryptographic
-framing (AEAD primitive, key derivation, nonce scheme) is an open specification point
-(see `TODO.md`).
+credentials and cause the device to join an unintended network. The wire format is:
+
+```
+EncryptedBringUpBlob = Struct(
+   nonce:          Array(12, Byte),
+   ciphertext:     DynamicArray(Byte),    // AES-256-GCM encrypted BringUpBlob
+   tag:            Array(16, Byte)        // AES-256-GCM authentication tag
+)
+```
+
+The framing reuses the AEAD already mandated by the Logical Layer Noise suite
+(`AESGCM_SHA256`), so a constrained device does not need a second cryptographic
+primitive just for bring-up:
+
+* **AEAD**: AES-256-GCM.
+* **Key**: `HKDF-SHA256(ikm = enrollmentPsk, salt = empty, info = "SCAN bring-up v1")`,
+  taking the first 32 bytes of output.
+* **Nonce**: 12 bytes, chosen uniformly at random by the administrative application and
+  carried in the clear alongside the ciphertext. A fresh nonce MUST be used for every
+  delivery attempt. A collision is statistically negligible at any realistic onboarding
+  volume.
+* **Associated data**: the device's 32-byte `peerAddress`. This binds the ciphertext to
+  a specific device and prevents an attacker from replaying a captured blob against a
+  different device.
+
+A device that fails to decrypt or authenticate a received blob MUST discard it silently
+(without consuming or locking anything on the bring-up channel) and remain available for
+another attempt.
 
 ### Soft-AP Bring-Up
 
@@ -1870,22 +1895,34 @@ A device advertising Soft-AP bring-up MUST:
   encoding of the first four bytes of the device's `peerAddress`. This lets the
   administrative application match the scanned QR to the broadcasting AP when multiple
   devices are nearby.
-* Accept incoming TCP connections on port 11372 (§IANA Allocations) at a well-known IP
-  address served to the administrative application via DHCP on the Soft-AP interface.
-* Accept a bring-up blob via a single length-prefixed TCP write to that port.
+* Serve the administrative application's device (when it associates) via DHCPv4 on the
+  Soft-AP interface. The device itself takes the address `192.168.4.1/24` and offers a
+  DHCP pool of at least `192.168.4.2` – `192.168.4.10` with a lease time of at least one
+  hour. This follows the de-facto convention widely used by embedded WiFi stacks and
+  avoids clashes with the most common home-network subnets (`192.168.0.0/24`,
+  `192.168.1.0/24`).
+* Accept incoming TCP connections on port 11372 (§IANA Allocations) at `192.168.4.1`.
+* Accept a bring-up blob via a single length-prefixed TCP write to that port, framed as a
+  2-byte big-endian length followed by the `EncryptedBringUpBlob` bytes. After accepting
+  a valid blob, the device closes the TCP connection before tearing down the Soft-AP.
 
 ### BLE Bring-Up
 
 A device advertising BLE bring-up MUST:
 
-* Advertise a GATT server carrying a fixed SCAN bring-up service UUID (TBD; to be
-  assigned in a later revision of this specification).
+* Advertise a GATT server carrying the SCAN bring-up service UUID
+  `5343414E-0000-4000-A000-000000000001`. The leading bytes `53 43 41 4E` spell `SCAN` in
+  ASCII, making the service identifiable on BLE sniffer captures without a lookup table.
 * Include the Local Name `SCAN-XXXXXXXX` in its BLE advertisement, where `XXXXXXXX` is
   the uppercase hexadecimal encoding of the first four bytes of the `peerAddress`.
-* Expose within the service a writable characteristic (UUID TBD) that accepts the
-  bring-up blob. Because blobs typically exceed the default BLE ATT MTU of 23 bytes and
-  may exceed negotiated MTUs, fragmentation is required. The exact fragmentation scheme
-  is an open specification point (see `TODO.md`).
+* Expose within the service a single writable characteristic (the *bring-up blob
+  characteristic*) at UUID `5343414E-0000-4000-A000-000000000002` that accepts the
+  encrypted blob. The characteristic has the `Write` and `Extended Properties` GATT
+  properties and supports reliable (long) writes via ATT Prepared Write + Execute Write.
+* Accept the blob either as a single Write With Response (when the negotiated ATT MTU is
+  large enough to carry the entire `EncryptedBringUpBlob`) or as a GATT Long Write
+  sequence. Placing fragmentation at the ATT layer avoids a SCAN-specific chunking
+  header; all mainstream BLE stacks implement Long Writes natively.
 
 ### Post-Bring-Up Transition
 
@@ -1907,6 +1944,13 @@ If application of the blob fails (bad passphrase, network unreachable, DHCP time
 device MUST revert to the bring-up state: re-enable its bring-up channels and wait for a
 new blob. This protects against typos and temporary network outages without requiring a
 factory reset.
+
+A device MAY stop advertising its bring-up channels after a prolonged period of
+inactivity (RECOMMENDED: 30 minutes since power-on with no bring-up connection or write)
+in order to reduce the long-lived attack surface of an always-open Soft-AP or an
+always-advertising BLE radio. A device that implements such a timeout MUST re-arm the
+bring-up channels on power cycle and SHOULD also re-arm them in response to a physical
+reset button if one is available.
 
 ## Technical Discussions
 

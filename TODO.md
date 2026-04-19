@@ -10,17 +10,17 @@
 
 ## Bring-Up
 
-- **Bring-up blob authentication.** The blob must be authenticated and encrypted with a key derived from the enrollment PSK. Decide the exact cryptographic framing: AEAD primitive (reusing AES-GCM from the Logical Layer Noise suite avoids an extra primitive on small devices), key-derivation scheme (HKDF with a fixed "scan-bringup" info string vs Noise symmetric-state derivation), nonce scheme (all-zero single-use vs explicit counter), and associated-data layout (include the target `peerAddress` to prevent cross-device replay?). Alternative: skip authentication entirely and trust physical proximity, since an attacker close enough to reach Soft-AP or BLE is also close enough to physically reset the device.
+- **Bring-up blob authentication — confirm draft.** Draft currently proposes AES-256-GCM with an HKDF-SHA256-derived key (info = "SCAN bring-up v1"), a 12-byte random nonce carried in the clear, and the `peerAddress` as associated data. Confirm or revise. Open alternative: skip authentication entirely and trust physical proximity, since an attacker close enough to reach Soft-AP or BLE is also close enough to physically reset the device.
 
-- **Bring-up blob fragmentation over BLE.** BLE's default ATT MTU is 23 B and negotiated MTUs rarely exceed 247 B; a bring-up blob will exceed both. Specify the fragmentation header (likely `{totalLength, offset, payload}`) and whether fragments arrive via GATT Write Long, multiple Write Without Response operations, or a dedicated chunk-index characteristic.
+- **BLE fragmentation — confirm draft.** Draft currently mandates GATT Long Write (ATT Prepared Write + Execute Write) rather than a SCAN-specific chunking header. Confirm this is robust across the BLE stacks targeted (iOS CoreBluetooth, Android, ESP-IDF, NimBLE, Zephyr).
 
-- **BLE GATT UUIDs.** Assign the service UUID and characteristic UUID(s) for BLE bring-up.
+- **BLE GATT UUIDs — confirm draft values.** Draft allocates `5343414E-0000-4000-A000-000000000001` (service) and `5343414E-0000-4000-A000-000000000002` (bring-up blob characteristic). The `5343414E` prefix spells "SCAN" in ASCII. Confirm these do not collide with any assigned UUID and that we are comfortable with a vendor-style 128-bit UUID rather than pursuing a Bluetooth SIG 16-bit allocation.
 
-- **Soft-AP IP addressing.** Pick an addressing convention for the Soft-AP interface (e.g. `192.168.4.1/24` with a small DHCP pool). Consider whether IPv6 link-local alone would suffice, avoiding DHCP entirely.
+- **Soft-AP IP addressing — confirm draft.** Draft uses `192.168.4.1/24` with DHCP pool `192.168.4.2` – `192.168.4.10`, following the ESP-IDF / embedded-WiFi convention. Confirm, or consider IPv6 link-local alone to avoid an onboard DHCP server.
 
 - **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Should reuse the `WiFiCredentials` / `StaticIpConfiguration` types from the bring-up blob so that re-configuration uses the same payload shape as initial bring-up.
 
-- **Bring-up channel timeout.** Decide whether a device tears down bring-up channels after some maximum idle time (to reduce a "forever open Soft-AP" attack surface), and if so how it is re-armed — physical button, power-cycle, always-on.
+- **Bring-up channel timeout — confirm draft.** Draft recommends (but does not require) tearing down bring-up channels after 30 minutes of inactivity, with re-arm on power cycle or physical reset. Confirm the duration and whether this should become a MUST.
 
 ---
 
