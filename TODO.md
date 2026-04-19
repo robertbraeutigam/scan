@@ -2,10 +2,6 @@
 
 ## Bring-Up
 
-- **Bring-up blob authentication — confirm draft.** Draft currently proposes AES-256-GCM with an HKDF-SHA256-derived key (info = "SCAN bring-up v1"), a 12-byte random nonce carried in the clear, and the `peerAddress` as associated data. Confirm or revise. Open alternative: skip authentication entirely and trust physical proximity, since an attacker close enough to reach Soft-AP or BLE is also close enough to physically reset the device.
-
-- **BLE fragmentation — confirm draft.** Draft currently mandates GATT Long Write (ATT Prepared Write + Execute Write) rather than a SCAN-specific chunking header. Confirm this is robust across the BLE stacks targeted (iOS CoreBluetooth, Android, ESP-IDF, NimBLE, Zephyr).
-
 - **BLE GATT UUIDs — confirm draft values.** Draft allocates `5343414E-0000-4000-A000-000000000001` (service) and `5343414E-0000-4000-A000-000000000002` (bring-up blob characteristic). The `5343414E` prefix spells "SCAN" in ASCII. Confirm these do not collide with any assigned UUID and that we are comfortable with a vendor-style 128-bit UUID rather than pursuing a Bluetooth SIG 16-bit allocation.
 
 - **Soft-AP IP addressing — confirm draft.** Draft fixes the device address at `192.168.4.1/24` and requires a DHCPv4 server on the Soft-AP interface leasing in the same `/24`, but leaves pool size, lease duration, and other DHCP options to the vendor. DHCP is kept as MUST because neither iOS `NEHotspotConfiguration` nor Android `WifiNetworkSpecifier` lets an admin app assign a static IP to the phone side, so a DHCP-less Soft-AP would be unusable by the admin app regardless of what the device does. Skipping DHCP in favour of IPv6 link-local alone is only worth revisiting if this OS-side constraint changes.
@@ -199,3 +195,5 @@
 - **Message size.** Max 1200 B per frame (sized to fit IPv6 minimum MTU minus TCP/IP headers, so each frame is one IP packet). Just require this — nothing to communicate.
 
 - **Resource limits.** No capability advertisement on `OPTION`. Max frame size is already a universal MUST (1200 B), larger payloads are handled via streaming, and `scan.health` already carries memory, CPU, network-error, latency, and per-modality connection counts — there is nothing left to advertise. Overload is handled by dropping TCP: a responder under resource pressure closes the TCP connection, and the initiator reconnects under the normal exponential backoff. Persistent overload surfaces through `scan.health` counters rather than a dedicated signal.
+
+- **BLE fragmentation.** Mandate GATT Long Write (ATT Prepared Write + Execute Write) unconditionally for the bring-up blob characteristic, regardless of negotiated ATT MTU. This keeps the device independent of MTU negotiation (default 23 B, not raised by every stack), gives both sides a single code path, and avoids a SCAN-specific chunking header. Most IoT provisioning stacks (Matter BTP, ESP-IDF, Improv, Nordic UART, Bluetooth Mesh proxy) build their own framing because they need bidirectional comms; SCAN's bring-up is strictly unidirectional (push blob, reconnect on the real network), so Long Write is the natural fit.

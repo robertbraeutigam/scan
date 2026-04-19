@@ -1916,11 +1916,9 @@ A device advertising BLE bring-up MUST:
 * Expose within the service a single writable characteristic (the *bring-up blob
   characteristic*) at UUID `5343414E-0000-4000-A000-000000000002` that accepts the
   encrypted blob. The characteristic has the `Write` and `Extended Properties` GATT
-  properties and supports reliable (long) writes via ATT Prepared Write + Execute Write.
-* Accept the blob either as a single Write With Response (when the negotiated ATT MTU is
-  large enough to carry the entire `EncryptedBringUpBlob`) or as a GATT Long Write
-  sequence. Placing fragmentation at the ATT layer avoids a SCAN-specific chunking
-  header; all mainstream BLE stacks implement Long Writes natively.
+  properties and supports long writes via ATT Prepared Write + Execute Write.
+* Accept the blob as a GATT Long Write sequence (ATT Prepared Write + Execute Write)
+  regardless of the negotiated ATT MTU. 
 
 ### Post-Bring-Up Transition
 
