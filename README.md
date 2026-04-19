@@ -1947,7 +1947,7 @@ new blob. This protects against typos and temporary network outages without requ
 factory reset.
 
 A device MAY stop advertising its bring-up channels after a prolonged period of
-inactivity (RECOMMENDED: 10 minutes since power-on with no bring-up connection or write)
+inactivity (Recommended: 10 minutes since power-on with no bring-up connection or write)
 in order to reduce the long-lived attack surface of an always-open Soft-AP or an
 always-advertising BLE radio. A device that implements such a timeout MUST re-arm the
 bring-up channels on power cycle and SHOULD also re-arm them in response to a physical

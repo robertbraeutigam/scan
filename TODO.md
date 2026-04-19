@@ -4,8 +4,6 @@
 
 - **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up.
 
-- **Bring-up channel timeout — confirm draft.** Draft recommends (but does not require) tearing down bring-up channels after 30 minutes of inactivity, with re-arm on power cycle or physical reset. Confirm the duration and whether this should become a MUST.
-
 ---
 
 ## Logical Layer
