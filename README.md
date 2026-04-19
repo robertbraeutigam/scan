@@ -1803,27 +1803,28 @@ base32-encoded binary payload (RFC 4648 without padding, case-insensitive):
 The binary payload is:
 
 ```
+Ethernet = Unit
+SoftAP   = Unit
+BLE      = Unit
+
+BringUpCapability = Union(Ethernet, SoftAP, BLE)
+
 QRPayload = Struct(
    version:         UnsignedInteger(1),      // 0x01 for this revision
-   capabilities:    UnsignedInteger(1),      // bit flags, see below
+   capabilities:    Set(BringUpCapability),
    peerAddress:     PeerAddress,
    enrollmentPsk:   PSK
 )
 ```
 
-The `capabilities` byte uses the following bit positions:
-
-| Bit | Meaning                                         |
-|-----|-------------------------------------------------|
-|  0  | Device supports Ethernet.                       |
-|  1  | Device supports WiFi Soft-AP bring-up.          |
-|  2  | Device supports WiFi BLE bring-up.              |
-| 3-7 | Reserved; MUST be zero in this revision.        |
-
-The payload is 66 bytes. Base32-encoded it is approximately 106 characters. At error
-correction level Q (25%), this fits a QR code of version 8 or smaller (49 × 49 modules).
-At a conservative 1 mm module size with a 4-module quiet zone, the physical QR code fits
-in a 57 × 57 mm square; smaller module sizes shrink the physical footprint proportionally.
+The `capabilities` field declares which bring-up channels the device offers. Concrete
+binary sizes are determined by the type system's binary representation (see
+`TYPES.md`) rather than fixed here; at the time of writing, the payload is on the
+order of ~66 bytes. Base32-encoded it is approximately 106 characters. At error
+correction level Q (25%), this fits comfortably in a QR code of version 8 or smaller
+(49 × 49 modules). At a conservative 1 mm module size with a 4-module quiet zone, the
+physical QR code fits in a 57 × 57 mm square; smaller module sizes shrink the physical
+footprint proportionally.
 
 ### Bring-Up Blob
 

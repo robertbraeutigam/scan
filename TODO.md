@@ -34,6 +34,8 @@
 
 ## Type System
 
+- **`Set` aggregate.** The bring-up QR payload uses `Set(BringUpCapability)`, which relies on a built-in `Set` aggregate that is not yet listed in `TYPES.md` alongside `Array`, `DynamicArray`, `Struct`, `Union`, and `Stream`. Decide whether `Set` is a first-class aggregate (naturally compiled to a bitmask when the element type is a closed Union of `Unit` variants, to a sorted-unique vector otherwise) or whether it should be expressed as `DynamicArray` with a uniqueness constraint.
+
 - **Type tier names.** Give type tiers better names (e.g. Primitive → … → Generic → Application).
 
 - **Tier −1.** Introduce Tier −1: types with fixed length, typed with variable-length integer indicating size — makes it easier to skip and thus extendable. Alternatively: make value type code contain size on 3 bits, exact semantics on lower bits.
