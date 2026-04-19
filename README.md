@@ -300,7 +300,7 @@ The logical connection (Noise keys, subscription state) is not affected and resu
 reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
 access points, and interface changes on multi-homed peers.
 
-### Bring-up and Onboarding
+### Network Acquisition
 
 Devices are expected to be available through a variety of network topologies and
 configurations, including through static or non-static IP addresses, through WiFi, with or
@@ -319,13 +319,8 @@ gateway is essentially a stand-in for all devices that are behind it. This may b
 for devices that are not on any local network, connected through untrusted networks such
 as cellular networks or other host networks.
 
-Zero-configuration bring-up is a goal; devices should combine the following mechanisms:
+Zero-configuration IP acquisition is a goal; devices should combine the following mechanisms:
 
-* Wi-Fi Easy Connect (Wi-Fi Alliance DPP) or WPS for WiFi onboarding where available.
-  Devices without either should offer BLE-based provisioning or a temporary captive
-  portal. The weaknesses of the WPS PIN method are not a concern here, since SCAN does
-  not rely on WiFi-level security — confidentiality and integrity are established by
-  the Logical Layer handshake regardless of how the device joined the network.
 * DHCP (IPv4) and SLAAC or DHCPv6 (IPv6) where available.
 * IPv4 link-local auto-selection (RFC 3927) when DHCP is not available, to support
   ad-hoc wired networks. IPv6 nodes always have a link-local address by construction.
@@ -359,6 +354,10 @@ Note that joining a network is not a security-sensitive operation. The layers ab
 designed to handle communication through insecure networks just fine. The point of this
 layer is to make the device available to talk to, in the most convenient way possible for
 the user.
+
+This section presumes that the device already has the credentials necessary to attach to a
+network (for WiFi: an SSID and passphrase; for Ethernet: a physical connection). Delivering
+those credentials to a device in factory state is a separate concern covered by §Bring-Up.
 
 ### Networking Considerations
 
@@ -1761,6 +1760,152 @@ Media = Struct(
    content:     Stream(Byte)
 )
 ```
+
+## Bring-Up
+
+This chapter specifies how a device in factory state is brought onto a network before any
+of the protocol layers above apply. Bring-up is not part of the four-layer protocol stack;
+it is a prerequisite to it, specified here because interoperability with a standard SCAN
+administrative application requires a shared onboarding surface.
+
+The bring-up surface carries only the information a device needs in order to attach to a
+network (for WiFi: an SSID and passphrase; optionally a static IP configuration). Once the
+device is on the network, the administrative application discovers it via the normal
+Internet Layer advertisement mechanism and enrolls it via `scan.enroll` over a standard
+Logical Layer connection. Everything specific to SCAN — Noise, framing, modalities —
+happens on the real network, not on the bring-up surface.
+
+### Requirements
+
+Every SCAN device MUST provide at least one factory-state mechanism by which an
+administrative application can deliver network credentials. In particular:
+
+* Ethernet-capable devices have no additional bring-up requirement. A physical Ethernet
+  connection combined with zero-configuration IP acquisition (§Network Acquisition) is
+  sufficient.
+* WiFi-capable devices MUST support at least one of:
+  * **Soft-AP bring-up** — the device acts as an open WiFi access point until a valid
+    bring-up blob has been delivered.
+  * **BLE bring-up** — the device advertises a GATT service until a valid bring-up blob
+    has been delivered.
+* A device MAY support multiple bring-up mechanisms; the administrative application then
+  chooses whichever works best on its platform. Soft-AP and BLE bring-up use separate
+  radios and can run concurrently without conflict.
+
+### Factory QR Code
+
+Every SCAN device MUST be delivered with a factory QR code identifying the device and
+carrying the enrollment PSK needed to administer it. The QR encodes a URI whose body is a
+base32-encoded binary payload (RFC 4648 without padding, case-insensitive):
+
+    SCAN:<base32-payload>
+
+The binary payload is:
+
+```
+QRPayload = Struct(
+   version:         UnsignedInteger(1),      // 0x01 for this revision
+   capabilities:    UnsignedInteger(1),      // bit flags, see below
+   peerAddress:     PeerAddress,
+   enrollmentPsk:   PSK
+)
+```
+
+The `capabilities` byte uses the following bit positions:
+
+| Bit | Meaning                                         |
+|-----|-------------------------------------------------|
+|  0  | Device supports Ethernet.                       |
+|  1  | Device supports WiFi Soft-AP bring-up.          |
+|  2  | Device supports WiFi BLE bring-up.              |
+| 3-7 | Reserved; MUST be zero in this revision.        |
+
+The payload is 66 bytes. Base32-encoded it is approximately 106 characters. At error
+correction level Q (25%), this fits a QR code of version 8 or smaller (49 × 49 modules).
+At a conservative 1 mm module size with a 4-module quiet zone, the physical QR code fits
+in a 57 × 57 mm square; smaller module sizes shrink the physical footprint proportionally.
+
+### Bring-Up Blob
+
+Both Soft-AP and BLE bring-up channels carry the same payload: a *bring-up blob*
+describing the network the device should attach to.
+
+```
+BringUpBlob = Struct(
+   wifi:           Optional(WiFiCredentials),
+   staticIp:       Optional(StaticIpConfiguration)
+)
+
+WiFiCredentials = Struct(
+   ssid:           String,
+   passphrase:     Optional(String)
+)
+
+StaticIpConfiguration = Struct(
+   address:        String,
+   prefixLength:   UnsignedInteger(1),
+   gateway:        Optional(String),
+   dns:            DynamicArray(String)
+)
+```
+
+The `wifi` field is required when the bring-up channel is Soft-AP or BLE. The
+`passphrase` field is absent for open WiFi networks. The `staticIp` field is absent when
+DHCP / SLAAC is acceptable.
+
+The blob MUST be authenticated and encrypted using a key derived from the device's
+enrollment PSK, so that an attacker in physical proximity cannot push bogus network
+credentials and cause the device to join an unintended network. The exact cryptographic
+framing (AEAD primitive, key derivation, nonce scheme) is an open specification point
+(see `TODO.md`).
+
+### Soft-AP Bring-Up
+
+A device advertising Soft-AP bring-up MUST:
+
+* Act as an open (unencrypted) WiFi access point. Confidentiality of the bring-up blob is
+  provided by its own encryption, not by WiFi-level security.
+* Use an SSID of the form `SCAN-XXXXXXXX`, where `XXXXXXXX` is the uppercase hexadecimal
+  encoding of the first four bytes of the device's `peerAddress`. This lets the
+  administrative application match the scanned QR to the broadcasting AP when multiple
+  devices are nearby.
+* Accept incoming TCP connections on port 11372 (§IANA Allocations) at a well-known IP
+  address served to the administrative application via DHCP on the Soft-AP interface.
+* Accept a bring-up blob via a single length-prefixed TCP write to that port.
+
+### BLE Bring-Up
+
+A device advertising BLE bring-up MUST:
+
+* Advertise a GATT server carrying a fixed SCAN bring-up service UUID (TBD; to be
+  assigned in a later revision of this specification).
+* Include the Local Name `SCAN-XXXXXXXX` in its BLE advertisement, where `XXXXXXXX` is
+  the uppercase hexadecimal encoding of the first four bytes of the `peerAddress`.
+* Expose within the service a writable characteristic (UUID TBD) that accepts the
+  bring-up blob. Because blobs typically exceed the default BLE ATT MTU of 23 bytes and
+  may exceed negotiated MTUs, fragmentation is required. The exact fragmentation scheme
+  is an open specification point (see `TODO.md`).
+
+### Post-Bring-Up Transition
+
+On successful decryption and validation of a bring-up blob, the device:
+
+1. Applies the network configuration carried by the blob.
+2. Tears down all active bring-up channels (Soft-AP, BLE).
+3. Proceeds with §Network Acquisition on the configured network.
+4. Joins the multicast group and emits advertisements per §Presence Messages.
+
+The administrative application, having recorded the device's `peerAddress` from the QR,
+waits for that `peerAddress` to appear in an advertisement on the real network. On seeing
+it, the administrative application opens a TCP connection and proceeds with the Logical
+Layer handshake using the enrollment PSK from the QR. From that point, enrollment and
+configuration proceed identically regardless of which bring-up channel delivered the
+blob.
+
+If application of the blob fails (bad passphrase, network unreachable, DHCP timeout), the
+device MUST revert to the bring-up state: re-enable its bring-up channels and wait for a
+new blob. This protects against typos and temporary network outages without requiring a
+factory reset.
 
 ## Technical Discussions
 

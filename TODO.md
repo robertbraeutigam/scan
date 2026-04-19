@@ -6,7 +6,21 @@
 
 - **Gateway authentication.** A device opening TCP to a configured gateway has no cryptographic check on the gateway endpoint itself — it is pure trust in the configured IP. End-to-end Noise to the actual peer still protects payloads, but the gateway can deny service, observe metadata, and impersonate any "gateway at this IP" without detection. Decide whether to add a gateway-identity verification step (e.g. a gateway static key proven during a separate handshake at TCP open) or leave gateway identity as configured trust.
 
-- **Soft-AP based discovery.** Include Soft-AP discovery? If so, include the discovery protocol in the QR package.
+---
+
+## Bring-Up
+
+- **Bring-up blob authentication.** The blob must be authenticated and encrypted with a key derived from the enrollment PSK. Decide the exact cryptographic framing: AEAD primitive (reusing AES-GCM from the Logical Layer Noise suite avoids an extra primitive on small devices), key-derivation scheme (HKDF with a fixed "scan-bringup" info string vs Noise symmetric-state derivation), nonce scheme (all-zero single-use vs explicit counter), and associated-data layout (include the target `peerAddress` to prevent cross-device replay?). Alternative: skip authentication entirely and trust physical proximity, since an attacker close enough to reach Soft-AP or BLE is also close enough to physically reset the device.
+
+- **Bring-up blob fragmentation over BLE.** BLE's default ATT MTU is 23 B and negotiated MTUs rarely exceed 247 B; a bring-up blob will exceed both. Specify the fragmentation header (likely `{totalLength, offset, payload}`) and whether fragments arrive via GATT Write Long, multiple Write Without Response operations, or a dedicated chunk-index characteristic.
+
+- **BLE GATT UUIDs.** Assign the service UUID and characteristic UUID(s) for BLE bring-up.
+
+- **Soft-AP IP addressing.** Pick an addressing convention for the Soft-AP interface (e.g. `192.168.4.1/24` with a small DHCP pool). Consider whether IPv6 link-local alone would suffice, avoiding DHCP entirely.
+
+- **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Should reuse the `WiFiCredentials` / `StaticIpConfiguration` types from the bring-up blob so that re-configuration uses the same payload shape as initial bring-up.
+
+- **Bring-up channel timeout.** Decide whether a device tears down bring-up channels after some maximum idle time (to reduce a "forever open Soft-AP" attack surface), and if so how it is re-armed — physical button, power-cycle, always-on.
 
 ---
 
@@ -163,6 +177,9 @@
   - Link a firmware update to the version number in some data packet?
   - Link a light-switch command to the actual light data packet?
   - Is this what the modality ID is for?
+
+- **Require "reset" button.** The device joined some network, has some data it can't deal with, changed hands and is in unknown state. We need a way for the device to be reset to
+  factory state, without contacting it. Or de we require that the device maybe reset by other means (BLE interface for 5 minutes after restart, etc., also in the QR code?)
 
 ---
 

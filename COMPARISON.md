@@ -185,7 +185,7 @@ No other surveyed protocol specifies this combination. Z-Wave association groups
 
 | Protocol | Firmware Update | Health Monitoring | Logging | Backup/Restore | Provisioning |
 |----------|----------------|-------------------|---------|----------------|-------------|
-| **SCAN** | `scan.firmware` (mandatory) | `scan.health` (mandatory, comprehensive) | `scan.logs` (mandatory, severity-keyed streaming) | `scan.backup` (mandatory, encrypted) | `scan.enroll` + factory PSK |
+| **SCAN** | `scan.firmware` (mandatory) | `scan.health` (mandatory, comprehensive) | `scan.logs` (mandatory, severity-keyed streaming) | `scan.backup` (mandatory, encrypted) | Factory QR + Soft-AP/BLE bring-up + `scan.enroll` |
 | MQTT | Platform-specific | LWT + custom | Custom | None | Platform-specific |
 | CoAP | Not defined | Not defined | Not defined | Not defined | Not defined |
 | LwM2M | Object 5 (PUSH/PULL) | Device Object 3 | Not standard | Not standard | Bootstrap server (4 modes) |
