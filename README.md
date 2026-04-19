@@ -1845,9 +1845,7 @@ The `passphrase` field is absent for open WiFi networks. No IP configuration is 
 in the blob: once the device has joined the WiFi network, §Network Acquisition handles
 address assignment (DHCP, SLAAC, or link-local) and the device's subsequent
 advertisements carry its resulting `(IP, port)` so the administrative application can
-find it without any pre-arranged address. Any post-enrollment network reconfiguration —
-including static IPs, when needed — belongs to a separate `scan.netconfig`-style
-modality rather than to bring-up.
+find it without any pre-arranged address. 
 
 The blob MUST be authenticated and encrypted using a key derived from the device's
 enrollment PSK, so that an attacker in physical proximity cannot push bogus network
