@@ -2,8 +2,6 @@
 
 ## Bring-Up
 
-- **BLE GATT UUIDs — confirm draft values.** Draft allocates `5343414E-0000-4000-A000-000000000001` (service) and `5343414E-0000-4000-A000-000000000002` (bring-up blob characteristic). The `5343414E` prefix spells "SCAN" in ASCII. Confirm these do not collide with any assigned UUID and that we are comfortable with a vendor-style 128-bit UUID rather than pursuing a Bluetooth SIG 16-bit allocation.
-
 - **Soft-AP IP addressing — confirm draft.** Draft fixes the device address at `192.168.4.1/24` and requires a DHCPv4 server on the Soft-AP interface leasing in the same `/24`, but leaves pool size, lease duration, and other DHCP options to the vendor. DHCP is kept as MUST because neither iOS `NEHotspotConfiguration` nor Android `WifiNetworkSpecifier` lets an admin app assign a static IP to the phone side, so a DHCP-less Soft-AP would be unusable by the admin app regardless of what the device does. Skipping DHCP in favour of IPv6 link-local alone is only worth revisiting if this OS-side constraint changes.
 
 - **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up.

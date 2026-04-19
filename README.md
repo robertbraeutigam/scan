@@ -1911,8 +1911,13 @@ A device advertising BLE bring-up MUST:
 * Advertise a GATT server carrying the SCAN bring-up service UUID
   `5343414E-0000-4000-A000-000000000001`. The leading bytes `53 43 41 4E` spell `SCAN` in
   ASCII, making the service identifiable on BLE sniffer captures without a lookup table.
-* Include the Local Name `SCAN-XXXXXXXX` in its BLE advertisement, where `XXXXXXXX` is
-  the uppercase hexadecimal encoding of the first four bytes of the `peerAddress`.
+* Include the Local Name `SCXXXXXX` in its BLE advertisement, where `XXXXXX` is
+  the uppercase hexadecimal encoding of the first three bytes of the `peerAddress`.
+  The `SC` prefix is a sniffer hint matching the ASCII prefix of the service UUID;
+  the hex suffix lets the administrative application correlate the advertisement
+  with a specific device's QR code. The total advertising payload (Flags +
+  128-bit Service UUID + Local Name) fits within the 31-byte legacy BLE
+  advertisement limit.
 * Expose within the service a single writable characteristic (the *bring-up blob
   characteristic*) at UUID `5343414E-0000-4000-A000-000000000002` that accepts the
   encrypted blob. The characteristic has the `Write` and `Extended Properties` GATT
