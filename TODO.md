@@ -64,6 +64,9 @@
   - Tier 1 should also mention what Tier 0 it is, so it can be skipped without explicit length.
   - Clarify what "parameters" are.
 
+- **Metrics.** We want to enable generic displays of data. So a data element would need to carry some meta-data, similar to TS DBs.
+  - Things whether a piece of data is a Gauge, Counter, Histogram, etc. 
+
 ---
 
 ## Wiring
