@@ -1,11 +1,5 @@
 # SCAN Protocol — Open Design Questions
 
-## Internet Layer
-
-- **Gateway authentication.** A device opening TCP to a configured gateway has no cryptographic check on the gateway endpoint itself — it is pure trust in the configured IP. End-to-end Noise to the actual peer still protects payloads, but the gateway can deny service, observe metadata, and impersonate any "gateway at this IP" without detection. Decide whether to add a gateway-identity verification step (e.g. a gateway static key proven during a separate handshake at TCP open) or leave gateway identity as configured trust.
-
----
-
 ## Bring-Up
 
 - **Bring-up blob authentication — confirm draft.** Draft currently proposes AES-256-GCM with an HKDF-SHA256-derived key (info = "SCAN bring-up v1"), a 12-byte random nonce carried in the clear, and the `peerAddress` as associated data. Confirm or revise. Open alternative: skip authentication entirely and trust physical proximity, since an attacker close enough to reach Soft-AP or BLE is also close enough to physically reset the device.

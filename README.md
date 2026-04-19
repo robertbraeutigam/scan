@@ -248,9 +248,14 @@ newest source gateway it had seen, with the same rules as in Addressing.
 
 Operations through a gateway map thusly:
 
-* The device opens a TCP connection to each configured gateway at the gateway's
-  configured IP and TCP port. Both are supplied out-of-band; there is no default
-  gateway port.
+* A gateway is configured out-of-band as an `(IP, TCP port, PSK)` triple. The PSK
+  is a 32-byte shared secret; there is no default gateway port. The device opens a
+  TCP connection to the configured address and completes a TLS 1.3 handshake using
+  the gateway PSK as an external pre-shared key (RFC 8446 §4.2.11), ciphersuite
+  `TLS_AES_128_GCM_SHA256`, before any SCAN framing is exchanged. If the handshake
+  fails, the device closes the TCP connection and reconnects under the normal
+  exponential backoff. All subsequent SCAN traffic, including `Advertisement`
+  frames, flows inside the TLS channel.
 * When a logical peer is reached via a gateway, all traffic for that peer flows over
   that gateway's TCP connection.
 * On TCP loss to a gateway, the device reconnects under the same exponential backoff
@@ -280,8 +285,11 @@ Operations through a gateway map thusly:
   own TCP listening port in the frame, so the gateway can route inbound traffic.
 
 Gateways have no cryptographic access to payloads — end-to-end encryption is preserved at
-the Logical Layer. A gateway can, however, observe metadata (identity keys, packet timing,
-traffic volumes) and can drop traffic. Users should treat a gateway as untrusted transit,
+the Logical Layer, inside the gateway-hop TLS channel. The gateway-hop TLS-PSK protects
+metadata (identity keys, packet timing, traffic volumes) from observers on the path between
+the device and the gateway, and prevents unauthorized parties from connecting to the gateway
+and enumerating the identities reachable through it. The gateway itself can still observe that
+metadata and can drop traffic, and users should treat a gateway as untrusted transit,
 equivalent to any other network intermediary.
 
 Note, that a gateway may change metadata, specifically source and target peer address information,
