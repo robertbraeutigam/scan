@@ -12,6 +12,9 @@
 
 - **Reset on options change.** Reset / close connection if options change? Should we verify data schema?
 
+- **Ack/Counters.** Think about how the client can be sure it's state is seen, if the other side reflects that state. Does that automatically provide "ACK"? And if so,
+     how does "reset" for example work. Wouldn't the device see the same "reset" signal when it comes online and reset again?
+
 ---
 
 ## Type System

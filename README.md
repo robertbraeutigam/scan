@@ -1257,6 +1257,13 @@ Usable only with administrative PSK. Note, that the administrative PSK is not li
 the master administrative key stays valid. Additional "administrative" keys may be created, if needed, through this interface,
 not through enrollment, by assigning rights to all relevant modalities.
 
+Setting the PSKs and their rights will only affect authorizations *after* the rights were set on the device. Already
+connected devices will still stay connected, regardless what they used for authorization. If the user wishes everything
+to reconnect anew, a reboot/reconnect should be triggered.
+
+The user may "rotate" PSKs at any time by supplying a fresh set of PSKs with similar rights. Since this will not cause any
+disconnects, these rotations can be done without any downtime.
+
 #### Keys
 
 All the keys to other devices this device possesses.
