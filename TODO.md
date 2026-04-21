@@ -8,8 +8,6 @@
 
 ## Logical Layer
 
-- **PSK rotation.** Do we want to rotate PSKs? If yes: how do you deploy a new network setup without the old still working somewhat?
-
 - **Reset on options change.** Reset / close connection if options change? Should we verify data schema?
 
 - **Ack/Counters.** Think about how the client can be sure it's state is seen, if the other side reflects that state. Does that automatically provide "ACK"? And if so,
