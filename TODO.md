@@ -4,13 +4,6 @@
 
 - **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up. Stays single-network on purpose — multi-SSID fallback on a single-radio device is a supplicant concern, not a protocol one (see Redundancy discussion in README).
 
-
----
-
-## logical layer
-
-- **Reset on options change.** Reset / close connection if options change? Should we verify data schema?
-
 ---
 
 ## Type System
@@ -56,8 +49,6 @@
 
 - **Wiring stability.** Wiring should be stable for a given data/action. If a device's capabilities change but the same data is still present, the wiring should continue to work.
   - Example: how to submit all cell voltages and temperatures? Do we want permanent identifiers for things in the data packet (not just indices) so wiring survives added data elements?
-
-- **Keys in wiring.** Do not embed keys in the wiring — install keys separately; just describe the connections.
 
 - **Wiring repository.** Define a repository of how devices can be connected and offer it to users. Also: remember where wiring came from and upgrade it if it changes.
 
