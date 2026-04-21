@@ -2,11 +2,12 @@
 
 ## Bring-Up
 
-- **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up.
+- **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up. Stays single-network on purpose — multi-SSID fallback on a single-radio device is a supplicant concern, not a protocol one (see Redundancy discussion in README).
+
 
 ---
 
-## Logical Layer
+## logical layer
 
 - **Reset on options change.** Reset / close connection if options change? Should we verify data schema?
 

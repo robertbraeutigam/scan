@@ -50,7 +50,8 @@
       "WebFetch(domain:www.cisco.com)",
       "WebFetch(domain:www.hirschmann.com)",
       "WebFetch(domain:www.iana.org)",
-      "WebFetch(domain:www.rfc-editor.org)"
+      "WebFetch(domain:www.rfc-editor.org)",
+      "Bash(git *)"
     ]
   }
 }

@@ -128,18 +128,40 @@ gateway's address is configured out-of-band, so no prior advertisement is requir
 open TCP to it.
 
 The mapping from a logical peer to its `(IP, port)` comes from `Advertisement`
-source addresses combined with the `port` field of the frame; a peer has at most one
-current `(IP, port)`, and the latest advertisement wins regardless of family. A later
-IPv4 advertisement replaces a previously recorded IPv6 address, and vice versa. This
-keeps the mapping fresh when a peer stops advertising on one family (for example
-after a roam) and avoids connect attempts to a stale address just because its family
-was previously preferred. If the connect attempt fails, the device retries the same
-address; a subsequent advertisement may change the address used, but connect failure
-alone does not cause a switch. Retries use exponential backoff per logical peer, or per configured gateway:
-when the initiator detects an unexpected TCP close the first retry is attempted
-immediately, and subsequent retries double from 1 s up to a 60 s ceiling, with ±25%
-random jitter on each delay. The backoff resets after a successful TCP establishment
-followed by a completed Noise handshake.
+source addresses combined with the `port` field of the frame. A receiver maintains
+an ordered cache of recent `(IP, port)` entries per logical peer, head-first by
+most-recent-advertisement, bounded to a small implementation-defined cap (at least
+2). Each cache entry is tagged with the `generation` and emitter of the advertisement
+that installed or last refreshed it. A new advertisement from the same emitter that
+carries an already-cached `(IP, port)` refreshes that entry's generation and moves it
+to the head; a previously unknown `(IP, port)` is inserted at the head; the tail is
+evicted when the cap is exceeded. This allows a multi-homed peer (for example one
+reachable over both wired Ethernet and WiFi) to be cached under several concurrent
+addresses rather than overwriting one with the next.
+
+The `generation` counter is reset at reboots. When a smaller counter value
+is received than the newest known, the whole cache for that peer must be evicted, so
+that it's list remains ordered by the counter descending.
+
+Entries are evicted independently of the cap when they become obsolete. Since a
+device advertises on every active interface in every generation, an entry that is
+absent from two or more consecutive generations from its emitter is no longer
+reachable through that path and is removed. A cache is permitted to retain an entry
+across a single missed generation to tolerate one lost multicast packet. A later
+IPv4 advertisement therefore does not replace a previously recorded IPv6 address
+merely because it arrived last: both coexist until one of them ages out by
+generation.
+
+When a device needs to (re)establish a TCP connection to a peer — on first use,
+after an unexpected close, or after cryptographic teardown — it walks the cache head
+first, attempting each `(IP, port)` once. The first attempt is made immediately;
+subsequent in-cycle attempts are not throttled. If every cached entry fails within a
+cycle, the device enters exponential backoff: 1 s, 2 s, 4 s, … up to a 60 s ceiling,
+with ±25% random jitter on each delay, per logical peer or per configured gateway.
+Each backoff cycle again walks the cache head first; advertisements received during
+backoff update the cache (installing, refreshing, or evicting entries as above), so
+the next cycle uses the current list state. The backoff resets after a successful
+TCP establishment followed by a completed Noise handshake.
 
 Only the initiator of a logical connection may close its TCP intentionally to
 indicate offline status; after such an intentional close the initiator may not
@@ -280,6 +302,23 @@ Operations through a gateway map thusly:
   over TCP identically to those received over UDP multicast. On initial connect,
   and whenever a single change batch exceeds 16 entries, the gateway sends
   multiple frames; the identity set is eventually consistent.
+* The gateway assigns its own `generation` counter to every advertisement it emits,
+  independent of the counters carried by the peers behind it. The gateway's counter
+  reflects only the gateway's own emissions: it is bumped when the set of identities
+  reachable through the gateway changes, not when an individual behind-the-gateway
+  peer re-advertises. Because the gateway is the emitter from the receiver's
+  perspective (the cached `(IP, port)` is the gateway's own address), generation-based
+  eviction on the receiver side operates over the gateway's counter exactly as it
+  would for any other emitter. A peer that becomes unreachable behind the gateway
+  does not produce an "unadvertise"; it simply stops being included in future
+  advertisements that the gateway emits, and the gateway's next generation-bumping
+  event ages the corresponding identity out of the receivers' caches.
+* A gateway maintains, on its inside face, its own per-peer address cache exactly
+  as in §Addressing, using the generation counters of the inside-connected peers to
+  evict obsolete entries and to drive the same newest-first failover behavior. This
+  lets the gateway exploit inside-peer multi-homing (for example a peer reachable
+  over both wired Ethernet and WiFi on the inside segment) in the same way an
+  end device would.
 * On TCP establishment to a gateway, the device sends an `Advertisement` over that same
   connection covering the logical identities the device itself represents, with its
   own TCP listening port in the frame, so the gateway can route inbound traffic.
@@ -297,17 +336,21 @@ as part of its normal operations.
 
 ### Address Change Handling
 
-The mapping from logical peer to physical peer is maintained by processing `Advertisement`
-frames. New advertisements do not, on their own, trigger any change to an existing
-connection — not even the appearance of an additional IP for an already-reachable peer,
-nor the disappearance of the IP currently in use from a subsequent advertisement.
+The mapping from logical peer to physical peer is maintained by processing
+`Advertisement` frames into the per-peer address cache described in §Addressing. New
+advertisements do not, on their own, trigger any change to an existing connection —
+they merely refresh, extend, or (by generation) age out entries in the cache.
 Reconnection is driven only by closure of the current TCP connection. When the TCP
-connection closes for any reason, the device reconnects to a currently-advertised
-address for the peer, per §Addressing.
+connection closes for any reason, the device walks the cache head first, attempting
+each currently-cached address once per cycle before entering exponential backoff,
+per §Addressing. An entry whose generation has aged out is already absent from the
+cache by the time the next cycle consults it.
 
-The logical connection (Noise keys, subscription state) is not affected and resumes per the
-reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi roaming between
-access points, and interface changes on multi-homed peers.
+The logical connection (Noise keys, subscription state) is not affected and resumes
+per the reconnect rules in the Logical Layer. This handles DHCP renewals, WiFi
+roaming between access points, and interface changes on multi-homed peers —
+including the case where the peer remains reachable on one interface while another
+goes down, which simply ages out of the cache after two silent generations.
 
 ### Network Acquisition
 
@@ -673,8 +716,9 @@ why multiple static keys may reside at the same IP address.
 
 ```
 Advertisement = Struct(
-   port:      UnsignedInteger(2),
-   peers:     DynamicArray(PeerAddress, max=16)
+   port:       UnsignedInteger(2),
+   generation: VariableLengthInteger(8),
+   peers:      DynamicArray(PeerAddress, max=16)
 )
 ```
 
@@ -683,8 +727,28 @@ logical identities listed in `peers`. Receivers combine it with the source IP of
 datagram (for multicast) or the remote end of the TCP connection (for advertisements
 arriving over TCP) to form the `(IP, port)` mapping cached per `PeerAddress`. A frame
 may contain up to 16 static keys; if a device represents more logical identities than
-that, it sends multiple frames with the same `port`, and the identity set is eventually
-consistent.
+that, it sends multiple frames with the same `port` and the same `generation`, and the
+identity set is eventually consistent.
+
+The `generation` field is a per-emitter monotonic counter that identifies a single
+advertisement *event*. Every frame produced for the same event carries the same
+value: all three frames of a birth burst, every frame of a multi-frame split when
+more than 16 identities are represented, and every copy emitted on every active
+interface. A new event (change re-burst or solicited reply) carries a new, strictly
+greater value. Receivers use `generation` to recognize which cached `(IP, port)`
+entries a given emitter still stands behind: because the emitter advertises on every
+active interface in every generation, a cached entry whose generation falls
+sufficiently behind the newest seen for that emitter can be evicted as obsolete (see
+§Addressing). This generation counter is reset to 0 on reboot.
+
+The emitter of a generation is the device whose advertisement reaches the receiver:
+for multicast advertisements it is the originating device, and for advertisements
+forwarded over a gateway TCP connection it is the gateway itself. Gateways issue their
+own generation counter independent of the counters of the peers behind them: a change
+behind the gateway does not bump the gateway's counter unless the *set* of identities
+reachable through the gateway changes (see §Gateway-based Configuration). This keeps
+the receiver-side eviction rule simple — it operates on whichever emitter actually
+delivered the advertisement.
 
 Advertisement is emitted only on events, never at a steady periodic rate:
 
@@ -2286,4 +2350,88 @@ steering, engine control).
 
 All three tiers carry best-effort bulk data and safety-critical control on the same network,
 differentiated by the DSCP markings defined in Tier 1.
+
+### Redundancy
+
+Deployments may want a device to stay reachable when one network path goes away:
+a fixed device with wired Ethernet *and* WiFi, a mobile device roaming between
+access points, or an installation with two physically separate cable runs. SCAN
+supports a cheap, practical form of redundancy out of the box, without any
+additional framing, without a standby negotiation, and without splitting or
+duplicating application traffic.
+
+The mechanism lives entirely in §Internet Layer and rests on three facts already
+established there:
+
+1. A multi-homed device advertises on every interface it is active on, so each of
+   its addresses is independently observable by peers.
+2. Receivers keep an ordered cache of recent `(IP, port)` entries per peer
+   (§Addressing), head-first by most-recent-advertisement, bounded to a small
+   cap.
+3. Every `Advertisement` carries a per-emitter `generation` counter that is shared
+   across all frames of a single advertisement event — every interface, every copy
+   of a birth burst, every frame of a multi-frame split.
+
+From these three the failover behavior follows mechanically. When the current TCP
+connection closes unexpectedly the initiator walks its cache head first, attempting
+each cached address once before entering backoff. If the head address is dead
+(pulled Ethernet cable, downed AP) the next cached address is tried immediately;
+the switch-over cost is one failed `connect()` plus one fresh Noise handshake (optional),
+typically in the sub-second range on a LAN. Nothing below the Internet Layer
+changes, no subscription state is lost, and no application code needs to react.
+
+The `generation` counter handles cache hygiene without any explicit "unadvertise"
+frame. Because an advertisement event is emitted on every active interface with the
+same counter, an entry that is absent from two consecutive generations from its
+emitter is known to be no longer reachable through that path and is evicted. One
+missed generation is tolerated to absorb ordinary multicast packet loss. A stale
+entry therefore disappears within two advertisement events of the interface going
+silent, rather than lingering in the cache as a dead fallback target.
+
+**Gateways.** A gateway is itself an emitter, not a relay, for the purposes of
+generation and caching. The gateway issues its own generation counter (bumped on
+changes to the set of identities reachable through it, not on every behind-the-gateway
+event) and maintains its own per-peer address cache on its inside face using the
+inside peers' counters. This means both faces of the gateway benefit from the same
+fallback behavior, and a receiver talking to the gateway does not have its cache
+perturbed by churn behind it.
+
+**Common scenarios.**
+
+* **Wired Ethernet + WiFi on the same device.** Both interfaces advertise with the
+  same generation. Receivers cache both `(IP, port)` entries. If the wired link
+  drops, its TCP goes down; the next connect attempts the WiFi entry and succeeds.
+  The wired entry ages out after two silent generations. When wired comes back, its
+  next advertisement reinstates it at the head of the cache, and the next new
+  connection from that peer uses it.
+* **WiFi roaming within a single ESS (one SSID, many APs).** This is handled below
+  SCAN, at the 802.11 layer: the supplicant re-associates to a different BSSID
+  without the device's IP changing. SCAN sees at worst a brief TCP hiccup handled
+  by the existing reconnect rules and does not need a second cached address.
+* **Two separate wired paths (disjoint cable runs).** Each path appears as its own
+  interface with its own IP. Same behavior as Ethernet + WiFi: both cached, failover
+  on TCP close.
+* **Gateway plus local segment.** If the same logical peer is reachable both
+  locally and through a gateway, both addresses coexist in the cache (one keyed to
+  the local emitter, one to the gateway emitter). Either can serve as a fallback
+  for the other, subject to the per-logical-connection rules in §Gateway-based
+  Configuration.
+
+**What this design does not provide.**
+
+* *Zero-failover-time redundancy.* Failover is bounded by how quickly TCP notices
+  the break: immediate on a clean RST, seconds on a silent link drop. Installations
+  that require sub-millisecond, hitless failover should use IEEE 802.1CB (§Mixed
+  and Redundant Topologies) at the Ethernet layer, which duplicates frames across
+  disjoint paths with receiver-side deduplication. 802.1CB and SCAN's per-peer
+  cache are complementary and can be used together.
+* *Parallel use of both paths.* Only one path carries traffic at a time. Active
+  deduplication across two live TCPs is out of scope.
+* *Fallback across different WiFi SSIDs on a single-radio device.* SCAN does not
+  carry multiple WiFi credential sets. Installations that need this should either
+  rely on ESS roaming (which is sufficient for most mesh and enterprise WiFi) or
+  handle it at the supplicant level as a firmware feature below SCAN. In practice
+  few IoT protocols carry multi-SSID fallback as a protocol concept; it is
+  deliberately left outside the SCAN spec to keep bring-up and `scan.netconfig`
+  minimal.
 
