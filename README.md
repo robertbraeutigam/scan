@@ -1277,13 +1277,12 @@ Modality(
    id:                 "scan.reset",
    priority:           Management,
    keyType:            "Unit",
-   outputType:         "Nothing",
+   outputType:         "Boolean",
    inputType:          "Boolean"
 )
 ```
 
-Input is whether the device should reset. There is no output, it is expected the input will be kept `true` until the device resets, i.e.
-the connection is lost.
+Both the input and output denote whether the device should be in the "reset" state.
 
 Usable only with the administrative PSK. Note: After the call that administrative PSK is not valid anymore. Device must terminate
 all connections.
