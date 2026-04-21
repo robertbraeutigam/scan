@@ -1361,29 +1361,38 @@ Modality(
    id:                 "scan.firmware",
    priority:           Bulk,
    keyType:            "Unit",
-   outputType:         "NextFirmware",
-   inputType:          "Media"
+   outputType:         "FirmwareState",
+   inputType:          "FirmwareUpdate"
 )
 
-NextFirmware = Struct(
-   updateSource:       URI   // Vendor specific version string
+NextFirmwareState = Struct(
+   currentVersion: URI,  // The URI the current firmware is from
+   nextVersion:    URI   // The URI where the next version will be (or is) available
 )
+
+FirmwareUpdate = Struct(
+   currentVersion: URI,  // The URI where this update was downloaded from
+   firmware: Media       // The firmware itself
 ```
 
-The `updateSource` must be a valid URI. A GET to that URI should get an updated firmware image, if available. This means the URI
+Firmwares are simply identified by where it was downloaded from or where it will be downloaded from.
+A GET to the "nextVersion" URI should get an updated firmware image, if available. This means the URI
 will need to likely include the current (or the next) version number, as the server will need to determine whether a new version is available.
 If the server returns HTTP status code `200` for the GET, the admin interface (or whatever software is doing the downloading)
 should assume there is a firmware update available for this device with the current firmware. If it returns `404`, it should assume
 no update is available, i.e. the device is up to date.
 
-It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, and it should
-be capable of doing this completely offline.
+This supports a vendor-independent way to update every device on the network.
+
+It is the responsibility of the device to include any and all mechanisms to verify the authenticity of the firmware, like checking
+checksums, or cryptographic markers. All of this should be included in the media shipped. All of these operations should be
+offline capable.
 
 It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
 should not assume that they have, or will eventually have access to the internet.
 
-The call should be considered successful, if the reported URI changes. Note, that the device may reboot as part of the update
-to finish installing. If no updates are available the caller may conclude, that the update process was successful.
+Note, that the device may reboot as part of the update to finish installing. The device will do nothing if the "currentVersion" in
+the update is the same already installed.
 
 #### Reboot
 
@@ -1394,12 +1403,26 @@ Modality(
    id:                 "scan.reboot",
    priority:           Management,
    keyType:            "Unit",
-   outputType:         "Nothing",
-   inputType:          "Boolean"
+   outputType:         "BootState",
+   inputType:          "BootState"
+)
+
+BootGeneration = UnsignedInteger(4)
+
+BootState = Struct(
+   currentGeneration: BootGeneration,
+   rebootGeneration: BootGeneration
 )
 ```
 
-Keep input `true`, until device reboots. Process should be considered successful if connection is terminated.
+On every bootup a device must generate a random "generation" number, the "currentGeneration". So the device updates
+this part of the state as soon as it comes up.
+
+The user side updates the "rebootGeneration" to match the "currentGeneration" if it wants the device to reboot. The
+device reboots only if it receives a state where its own generation is current and the reboot generation matches.
+
+This guarantees that it will eventually reboot, and when it comes back and sees this state again, it will not reboot
+again.
 
 ### Operational Modalities
 
