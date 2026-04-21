@@ -1364,14 +1364,15 @@ Modality(
    inputType:          "FirmwareUpdate"
 )
 
-NextFirmwareState = Struct(
+FirmwareState = Struct(
    currentVersion: URI,  // The URI the current firmware is from
    nextVersion:    URI   // The URI where the next version will be (or is) available
 )
 
 FirmwareUpdate = Struct(
-   currentVersion: URI,  // The URI where this update was downloaded from
+   version: URI,         // The URI of this firmware
    firmware: Media       // The firmware itself
+)
 ```
 
 Firmwares are simply identified by where it was downloaded from or where it will be downloaded from.
@@ -1390,7 +1391,7 @@ offline capable.
 It is assumed that firmware updates will be applied through the administrative interface or dedicated servers. The devices themselves
 should not assume that they have, or will eventually have access to the internet.
 
-Note, that the device may reboot as part of the update to finish installing. The device will do nothing if the "currentVersion" in
+Note, that the device may reboot as part of the update to finish installing. The device will do nothing if the "version" in
 the update is the same already installed.
 
 #### Reboot
@@ -1422,6 +1423,8 @@ device reboots only if it receives a state where its own generation is current a
 
 This guarantees that it will eventually reboot, and when it comes back and sees this state again, it will not reboot
 again.
+
+Note: there is a non-zero chance the generation comes back the same, in which case the device needs to reboot again.
 
 ### Operational Modalities
 
