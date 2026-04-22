@@ -18,15 +18,18 @@ This type system consist of following parts:
 
 ## Type System Textual Language
 
-The language is very minimal, consisting of just a few syntactic elements.
-
-The top level element is a union type definition in the following form:
+A type definition has the form:
 
 ```
-<name>(parmeters) = <constructor definition 1> | ... | <constructor definition N>
+<name>(parameters) = <constructor 1> | ... | <constructor N>
 ```
 
-Where constructor definitions may define a structure, which is sequence of name - type reference pairs, such as:
+A constructor is one of:
+
+* a **bare identifier** carrying no data (e.g. `None`), or
+* a **named structure** — a sequence of name/type pairs (e.g. `Some { value: T }`).
+
+A type may list any number of constructors separated by `|`. If a type has exactly one constructor, the `<name> =` prefix may be omitted; the type then takes the constructor's name. For example:
 
 ```
 LogLine {
@@ -36,11 +39,9 @@ LogLine {
 }
 ```
 
-If the type defines only one constructor, the syntax can collapse to just the constructor itself,
-in which case the type will be named the same as the given constructor.
+is shorthand for `LogLine = LogLine { severity: Severity, time: Timestamp, line: String }`.
 
-Worth noting, that parameters to a type can be other types such as item type of an `Array`, but also
-normal values, such as `length`, `max` or other information appropriate for the type.
+Types and constructors live in separate namespaces. A constructor name is a tag used to discriminate within its type and cannot be used on its own as a type elsewhere.
 
 ### Built-in "Primitive" Types
 
@@ -50,18 +51,16 @@ This type system defines these built-in types:
 * FloatingPoint(sizeInBytes)
 * UnsignedInteger(sizeInBytes)
 * SignedInteger(sizeInBytes)
-* VariableLengthInteger(sizeInBytes)
+* VariableLengthInteger(maxSizeInBytes)
+
+`Unit` is a type with exactly one value and carries no other data.
 
 The `FloatingPoint` type has a size parameter, which is either 4 or 8, corresponding to the standard IEEE float and double.
 
 The `UnsignedInteger` and `SignedInteger` numbers may have sizes of 1, 2, 4 or 8, corresponding to the usual number types:
 byte, word, int, long.
 
-The `VariableLengthInteger` is a number stored as a variable number of bytes.
-On each byte except the last the highest bit indicates that a byte still follows, which means
-the last byte may use the high bit for representing the value itself, it does not have to be 0. This type is
-for cases where lower numbers are much more likely, thus this results in more efficient packing. The size parameter
-can be any integer from 1 to 8 inclusive, although a VLI of 1 is just a normal unsigned byte.
+The `VariableLengthInteger` is a number stored as a variable number of bytes. On each byte except the last the highest bit indicates that a byte still follows, which means the last byte may use the high bit for representing the value itself — it does not have to be 0. This is useful when lower numbers are much more likely, resulting in more efficient packing. The `maxSizeInBytes` parameter bounds the wire size (1 to 8 inclusive); the actual number of bytes used varies by value. A VLI with `maxSizeInBytes=1` is just a normal unsigned byte.
 
 All values are stored in big-endian ordering.
 
@@ -79,9 +78,7 @@ An `Array` is an ordered aggregation of multiple values of the given type with a
 HourlyMeasurements = Array(Measurement, size=24)
 ```
 
-The `Array` type is useful, because the number of items do not need to be written to the wire. However, if the number of items is not known
-a-priori there's the `DynamicArray`, which can have a different size in each value.
-
+The `Array` type is useful, because the number of items do not need to be written to the wire. However, if the number of items is not known a-priori there's the `DynamicArray`, which can have a different size in each value.
 
 ```
 Events = DynamicArray(Event)
@@ -89,7 +86,7 @@ Events = DynamicArray(Event)
 
 The downside is, that the length needs to be written onto the wire.
 
-If each item may only be present once, the `Set` can be used. This is useful for representing flags for example:
+A `Set` is an **unordered** collection of **distinct** values of the given type. Any element type is allowed. When the element type contains no data (thus whether it's present in the set can be described by a single bit), a `Set` wire-encodes naturally as a bitmask; otherwise it is encoded as a deduplicated variable-length sequence. The concrete encoding is defined in *Values Binary Representation* below.
 
 ```
 Flags = IPv4 | IPv6
@@ -97,52 +94,64 @@ Flags = IPv4 | IPv6
 EnabledProtocols = Set(Flags)
 ```
 
-And there are streams, which are a potentially infinite sequence of values of the given type. For example a live video stream.
+A `Stream` is a potentially infinite sequence of values of the given type — for example, a live video stream:
 
 ```
 VideoContent = Stream(Byte)
 ```
 
-There can only be one stream per message, since one stream can be potentially infinite. 
+Because a `Stream` has no length terminator on the wire, nothing can follow it. Consequently **a type may contain at most one `Stream`, transitively** — whether on the top level or any sub-structure.
 
 ### Type Parameters
 
-Types can have parameters. For example this type has a value as parameter:
+Types can take parameters, which may be values or other types. Parameters are declared by name with a type, and may have defaults:
 
 ```
-Measurement(unit: String) = Double
-```
+Measurement(unit: String) { value: Double }
 
-This `Measurement` type that is a measurement of something that can be expressed with a "unit". Volts, Amperes, Kg, %, etc. Since the type
-parameter is a value, it is essentially a constant and not a runtime value. It will not be encoded with the actual `Double` value.
-
-Types can have type parameters as well:
-
-```
 Option(contentType: Type) = None | Some { value: contentType }
+
+Buffer(size: UnsignedInteger = 256) { data: Array(Byte, size) }
 ```
 
-Which defines the standard `Option` type to denote a potentially missing value.
+At the call site, arguments may be passed positionally or by name:
+
+```
+HourlyMeasurements = Array(Measurement, size=24)
+```
+
+When defaults are present, positional arguments bind left-to-right; to override a later default without restating the earlier ones, switch to the named form.
+
+A parameter whose value is bound at definition time (e.g. `unit` in `Measurement`) is a compile-time constant and is **not** encoded with the value on the wire.
+
+### Type Aliases
+
+An alias gives a new name to an existing type without introducing a new constructor:
+
+```
+<name> = <type reference>
+```
+
+The right-hand side is a single type reference, optionally with constraints. Examples:
+
+```
+Byte = UnsignedInteger(1)
+Double = FloatingPoint(8)
+String = DynamicArray(Byte)
+TableLegNumber = Byte {1 to 4}
+```
+
+An alias is distinguished from a type definition by its right-hand side: a constructor list (any `|`, or a `Name { ... }` / bare-`Name` form) defines a new type, while a parameterised type reference is an alias.
 
 ### Constraints
 
-For all number types (all primitive types except `Unit`), following constraints are available:
-
-```
-TableLegNumber = Byte {1,2,3,4}
-```
-
-Or
+Number types may be refined to a subset of values, e.g.:
 
 ```
 TableLegNumber = Byte {1 to 4}
 ```
 
-Or
-
-```
-TableLegNumber = Byte {min 1, max 4}
-```
+Several equivalent forms exist (such as `{1,2,3,4}` and `{min 1, max 4}`), and constraints compose. The full grammar is given in the *Type Reference* section below.
 
 ## Types Binary Representation
 
