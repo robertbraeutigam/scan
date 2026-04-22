@@ -141,7 +141,7 @@ String = DynamicArray(Byte)
 TableLegNumber = Byte {1 to 4}
 ```
 
-An alias is distinguished from a type definition by its right-hand side: a constructor list (any `|`, or a `Name { ... }` / bare-`Name` form) defines a new type, while a parameterised type reference is an alias.
+An alias is distinguished from a type definition by its right-hand side. If the RHS contains `|`, or ends in a `{ ... }` struct body, it defines a new type; otherwise it is an alias. The collision case — an RHS that is a bare identifier, which could in principle be read as a type definition with a single no-data constructor — is always read as an alias, since such a type would be isomorphic to `Unit` and carries no information. The collapse form (`Foo { ... }`) still covers the useful struct-definition cases.
 
 ### Constraints
 
