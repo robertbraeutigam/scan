@@ -1,14 +1,10 @@
 # SCAN Protocol — Open Design Questions
 
-## Bring-Up
-
-- **`scan.netconfig` modality.** Define a mandatory application-layer modality for reading, writing, and re-applying network configuration after enrollment. Must at least cover WiFi credentials (SSID + passphrase, matching the `BringUpBlob` shape) so that changing WiFi networks does not require a factory reset; may additionally cover static IP / gateway / DNS, since those are deliberately excluded from bring-up. Stays single-network on purpose — multi-SSID fallback on a single-radio device is a supplicant concern, not a protocol one (see Redundancy discussion in README).
-
----
-
 ## Type System
 
 - **`Set` aggregate.** The bring-up QR payload uses `Set(BringUpCapability)`, which relies on a built-in `Set` aggregate that is not yet listed in `TYPES.md` alongside `Array`, `DynamicArray`, `Struct`, `Union`, and `Stream`. Decide whether `Set` is a first-class aggregate (naturally compiled to a bitmask when the element type is a closed Union of `Unit` variants, to a sorted-unique vector otherwise) or whether it should be expressed as `DynamicArray` with a uniqueness constraint.
+
+- **Collection-size constraints on `DynamicArray`.** `README.md` uses `DynamicArray(T, min=N)` and `DynamicArray(T, max=N)` in multiple places (e.g. `EncryptedPayload`, `Advertisement`, `scan.netconfig`), but `TYPES.md`'s §Constraints only documents constraints for numeric primitive types. Extend that section to formally cover size constraints on collection aggregates.
 
 - **Type tier names.** Give type tiers better names (e.g. Primitive → … → Generic → Application).
 
@@ -113,6 +109,8 @@
   - Or: expressions as validations (problem: how to detect two controls accepting the same range?).
 
 - **If both data and action share a "modality ID"**, one can associate actions with data.
+
+- **Network stats.** Make it per interface, reflecting netconfig
 
 ---
 

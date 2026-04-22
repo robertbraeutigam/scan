@@ -1689,9 +1689,116 @@ NetworkPeerStatistics = Struct(
 )
 ```
 
-#### Network Settings
+#### Network Configuration
 
-TODO
+Read, write, and re-apply the device's network configuration. This
+modality carries everything the device needs to stay on the network over its lifetime:
+per-interface WiFi credentials and IP configuration, plus the device-wide choice between
+local-segment discovery and routed reach through SCAN gateways (§Gateway-based
+Configuration). 
+
+```
+Modality(
+   id:                 "scan.netconfig",
+   priority:           Management,
+   keyType:            "Unit",
+   outputType:         "NetworkConfiguration",
+   inputType:          "NetworkConfiguration"
+)
+
+NetworkConfiguration = Struct(
+   interfaces:    DynamicArray(InterfaceConfig, min=1),
+   reachability:  Reachability
+)
+
+InterfaceConfig = Struct(
+   name:       String,
+   wifi:       Wifi,
+   ipv4:       Ipv4Mode,
+   ipv6:       Ipv6Mode
+)
+
+NotApplicable = Unit
+Disabled      = Unit
+Automatic     = Unit
+
+Wifi = Union(NotApplicable, Disabled, WifiConnection)
+
+WifiConnection = Struct(
+   ssid:        String,
+   passphrase:  Optional(String)
+)
+
+Ipv4Mode = Union(Automatic, Disabled, Ipv4Static)
+Ipv6Mode = Union(Automatic, Disabled, Ipv6Static)
+
+Ipv4Static = Struct(
+   address:   Ipv4Address,
+   prefix:    UnsignedInteger(1),
+   gateway:   Optional(Ipv4Address)
+)
+
+Ipv6Static = Struct(
+   address:   Ipv6Address,
+   prefix:    UnsignedInteger(1),
+   gateway:   Optional(Ipv6Address)
+)
+
+Ipv4Address = Array(4, Byte)
+Ipv6Address = Array(16, Byte)
+IpAddress   = Union(Ipv4Address, Ipv6Address)
+
+LocalOnly   = Unit
+GatewayOnly = DynamicArray(Gateway, min=1)
+Mixed       = DynamicArray(Gateway, min=1)
+
+Reachability = Union(LocalOnly, GatewayOnly, Mixed)
+
+Gateway = Struct(
+   ip:     IpAddress,
+   port:   UnsignedInteger(2),
+   psk:    PSK
+)
+```
+
+A written configuration is applied as a single snapshot. The output state reflects the
+configuration currently in effect on the device, which may differ from the last input if
+application failed (bad passphrase, unreachable gateway, invalid static address). Because
+the Resolution Principle guarantees that the latest `State` message wins, the
+administrative application observes the outcome by reading the modality back.
+
+The `interfaces` array is non-empty; every SCAN-participating device has at least one
+network interface. The `name` of each interface is a device-assigned stable identifier
+(for example `wlan0`, `eth0`, or a vendor-assigned label); the administrative application
+discovers the set of names by reading the output state before writing.
+
+`Wifi.NotApplicable` indicates that the interface has no WiFi radio at all. `Disabled`
+indicates a WiFi-capable interface whose radio is administratively off. `WifiConnection`
+associates the interface with a specific network; `passphrase` is absent for open
+networks, matching the `BringUpBlob` shape. Writing `NotApplicable` to an interface that
+does have a WiFi radio, or anything other than `NotApplicable` to an interface that does
+not, is invalid.
+
+`Ipv4Mode` and `Ipv6Mode` `Automatic` selects the §Network Acquisition mechanisms
+appropriate to the family (DHCP for IPv4, SLAAC or DHCPv6 for IPv6, with link-local
+fallback); `Disabled` disables the family on the interface; `Ipv4Static` / `Ipv6Static`
+carry an address, prefix length, and optional default gateway.
+
+`Reachability.LocalOnly` is the default post-enrollment mode: the device participates in
+the local-segment multicast discovery described in §Presence Messages and does not use
+any SCAN gateways. `Mixed` adds one or more gateways alongside local participation.
+`GatewayOnly` disables local-segment participation entirely — no multicast join, no
+local-segment advertisements, no accept of local-segment connections — and routes all
+SCAN traffic through the configured gateways. Both non-local variants require at least
+one `Gateway`. A `Gateway` carries the `(IP, TCP port, PSK)` triple required by
+§Gateway-based Configuration; the PSK is used as the TLS 1.3 external pre-shared key
+that precedes SCAN framing on the gateway connection. A gateway has no `PeerAddress`:
+it is Logical-Layer infrastructure with no application-layer identity.
+
+If application of a newly-written configuration fails to produce a working network
+presence within an implementation-defined window, a vendor MAY revert to a previous
+configuration. Whether, when, and how to revert is left to the implementation; this
+specification neither mandates nor forbids automatic recovery.
 
 #### State Messages
 
