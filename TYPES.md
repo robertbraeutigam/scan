@@ -18,35 +18,40 @@ This type system consist of following parts:
 
 ## Type System Textual Language
 
-The language is very minimal, consisting of named definitions of types in the form of:
+The language is very minimal, consisting of just a few syntactic elements.
+
+The top level element is a union type definition in the following form:
 
 ```
-<name> = <type definition>
-```
-
-Where type definitions don't have any specific syntax other than "instantiating" already existing types, like this:
+<name>(parmeters) = <constructor definition 1> | ... | <constructor definition N>
 
 ```
-Button = Boolean
-```
 
-With the only caveat that types may have parameters, either named or unnamed, either as other types or even values, such as:
+Where constructor definitions may define a structure, which is sequence of name - type reference pairs, such as:
 
 ```
-HourlyReadings = Array(24, Reading)
+LogLine {
+   severity: Severity,
+   time: Timestamp,
+   line: String
+}
 ```
 
-Even sequences and other constructs are using special built-in types, instead of dedicated syntax. (See below)
+If the type defines only one constructor, the syntax can collapse to just the constructor itself,
+in which case the type will be named the same as the given constructor.
 
-### Built-in Types
+Worth noting, that parameters to a type can be other types such as item type of an `Array`, but also
+normal values, such as `length`, `max` or other information appropriate for the type.
+
+### Built-in "Primitive" Types
+
+This type system defines these built-in types:
 
 * Unit
 * FloatingPoint(sizeInBytes)
 * UnsignedInteger(sizeInBytes)
 * SignedInteger(sizeInBytes)
 * VariableLengthInteger(sizeInBytes)
-
-Type definitions may have parameters themselves as above. Type parameters may be other types or even values as above.
 
 The `FloatingPoint` type has a size parameter, which is either 4 or 8, corresponding to the standard IEEE float and double.
 
@@ -61,69 +66,45 @@ can be any integer from 1 to 8 inclusive, although a VLI of 1 is just a normal u
 
 All values are stored in big-endian ordering.
 
-### Basic Type Definitions
+### Built-In "Aggregate" Types
 
-Types are defined thusly:
+The type system defines following built-in aggregate types:
+* Array
+* DynamicArray
+* Set
+* Stream
 
-```
-Byte = UnsignedInteger(1)
-```
-
-This defines a `Byte` type that is a 1 byte sized `UnsignedInteger`. This is how this type is defined in the standard library available to all 
-definitions to use.
-
-More examples:
+An `Array` is an ordered aggregation of multiple values of the given type with a compile-time fixed length. It is written like this:
 
 ```
-Long = UnsignedInteger(8)
-SignedLong = SignedInteger(8)
-Float = FloatingPoint(4)
-Double = FloatingPoint(8)
+HourlyMeasurements = Array(Measurement, size=24)
 ```
 
-### Aggregate Definitions
+The `Array` type is useful, because the number of items do not need to be written to the wire. However, if the number of items is not known
+a-priori there's the `DynamicArray`, which can have a different size in each value.
 
-Contrary to other definition languages, there is no specific syntax for defining aggregated types, instead they
-are defined by using built-in types. For example:
-
-```
-HourlyMeasurements = Array(24, Measurement)
-```
-
-Array is a built-in type, which needs the exact number of items as parameter. There is another type, which allows for arbitrary
-item counts at runtime by also serializing the array length:
 
 ```
 Events = DynamicArray(Event)
 ```
 
-There's a built-in type for structures:
+The downside is, that the length needs to be written onto the wire.
+
+If each item may only be present once, the `Set` can be used. This is useful for representing flags for example:
 
 ```
-LogLine = Struct)
-   severity: Severity,
-   time: Timestamp,
-   line: String
-)
+Flags = IPv4 | IPv6
+
+EnabledProtocols = Set(Flags)
 ```
 
-There's a built-in type for unions:
-
-```
-False = Unit
-True = Unit
-
-Boolean = Union(False, True)
-```
-
-And there are streams, which are potentially infinite sized values. For example a live video stream.
+And there are streams, which are a potentially infinite sequence of values of the given type. For example a live video stream.
 
 ```
 VideoContent = Stream(Byte)
 ```
 
-There can only be one stream per message, since one stream can be potentially infinite. A stream in any message will
-be sent last in the message, so all other data will be already available.
+There can only be one stream per message, since one stream can be potentially infinite. 
 
 ### Type Parameters
 
