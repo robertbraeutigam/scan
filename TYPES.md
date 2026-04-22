@@ -24,7 +24,6 @@ The top level element is a union type definition in the following form:
 
 ```
 <name>(parmeters) = <constructor definition 1> | ... | <constructor definition N>
-
 ```
 
 Where constructor definitions may define a structure, which is sequence of name - type reference pairs, such as:
@@ -120,10 +119,10 @@ parameter is a value, it is essentially a constant and not a runtime value. It w
 Types can have type parameters as well:
 
 ```
-Option(contentType: Type) = Unit | contentType
+Option(contentType: Type) = None | Some { value: contentType }
 ```
 
-Which defines the standard `Option` type to denote a potentially missing value. The union type can only unite other types not values.
+Which defines the standard `Option` type to denote a potentially missing value.
 
 ### Constraints
 
@@ -147,8 +146,8 @@ TableLegNumber = Byte {min 1, max 4}
 
 ## Types Binary Representation
 
-This binary represenation is used by devices to tell other devices about data and command types, so it is parsed
-dynamically runtime by devices, but only once when they connect. It is therefore more important to have an easy
+This binary represenation is actually used by devices during normal operations, so it is parsed
+dynamically runtime by devices. This information is usually read once, then not used anymore. It is therefore more important to have an easy
 parsing instead versus an efficient encoding.
 
 TODO
@@ -162,15 +161,17 @@ TODO
 
 ## Subset Determination
 
-When invvoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
+When invoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
 that value fits the type the command expects. These rules define when that is the case.
 
 TODO
 
 ## Transformation Language
 
-Since this protocol does not define devices at all, the transformation language's goal is to make devices compatible, by
-being able to join current data and transform them into a proper format for a command invocation.
+Since SCAN does not define devices at all, the transformation language's goal is to make devices compatible, by
+being able to join current data and transform them into a proper format for modalilties. The textual language,
+similar to the type textual language, is only designed to interact with at the administrative interface. Devices
+do not have to parse or understand it.
 
 TODO
 
@@ -182,4 +183,6 @@ small VM implementation. Since these program are "just" statelessly transforming
 fitting small microcontrollers.
 
 TODO
+
+## Type Reference
 
