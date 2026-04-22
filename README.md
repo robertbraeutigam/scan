@@ -1737,43 +1737,53 @@ All devices must implement these modalities.
 
 #### Virtual Modalities
 
-Define virtual modalities that transform other ones into another modality.
+Define clusters of local modalities whose values are coupled by transformations.
 
 ```
 Modality(
    id:                 "scan.vmods",
    priority:           Management,
    keyType:            "Unit",
-   outputType:         "VirtualModalities",
-   inputType:          "VirtualModalities"
+   outputType:         "VirtualModalityClusters",
+   inputType:          "VirtualModalityClusters"
 )
 
-VirtualModalities = DynamicArray(VirtualModality)
+VirtualModalityClusters = DynamicArray(VirtualModalityCluster)
 
-VirtualModality = Struct(
-   modality:           Modality,
-   outputTransform:    DynamicArray(Byte),    // Compiled transformation program
-   inputTransform:     DynamicArray(Byte),    // Compiled transformation program
+VirtualModalityCluster = Struct(
+   members: DynamicArray(ClusterMember)
+)
+
+ClusterMember = Struct(
+   modality:   Modality,
+   transform:  DynamicArray(Byte)    // Compiled transformation program
 )
 ```
 
-Note, that if one or more remote modalities are used, those need to be wired first in order for them to be available.
+A cluster defines a set of local modalities (its *members*) on the device. Each member is a fully ordinary modality:
+it appears in the device's `Modalities` advertisement, can be subscribed to, can receive intents, and is wired to
+remote modalities through `scan.wiring` like any other modality. Other peers see no difference between a cluster
+member and a native modality. The cluster itself is a host-internal arrangement and does not appear on the wire.
 
-Transformations are compiled platform-independent, interpreted programs, whose interpreter is described with the SCAN Type System.
+Each member declares a transformation program. Transformations are platform-independent,
+interpreted programs, whose interpreter is described with the SCAN Type System.
 
-The state transformation will transform all the incoming states of the modalities to a single resulting state that should match
-the type specified in the modality definition. The incoming values will be placed as input to the program in the order they are defined here.
+A transformation has the signature `(state: Array<MemberValue>) -> Array<MemberValue>`. The input is the current
+value of every cluster member, in the order declared in `members`. The output is the new value of every member,
+in the same order, with the same types. Transformations are pure functions of the cluster state.
 
-The intent transformation transforms the one intent received by this virtual modality (if changeable) and transforms it to an array
-of optional intents for each of the modalities connected in sequence. Where the optional value is None, no intent will be sent. The
-incoming intent will be considered applied, if _all_ outgoing intents were applied. Any errors will immediately cause the incoming intent
-to be failed as well.
+A member's transformation runs exactly once whenever that member receives an external state write (a `State` message
+from a peer in its LWW group). When that change is received, it will see all other current state of all the other
+members.
 
-The intent transformation can throw an error too, in which case the incoming intent will be rejected with the given error message.
+After a transformation runs, the host compares each output element against the corresponding member's current state.
+Elements that differ are written as ordinary LWW writes on each member's group, using the host's own monotonically
+increasing counter. Writes the transformation produces do not retrigger any cluster member's transformation. A single
+external write therefore produces at most one transformation run and at most one outgoing write per member.
 
-TODO: what rules apply for multiple authoritative sources, etc.?
-
-TODO: describe how does rate limiting apply?
+Each cluster member participates in its own LWW group, formed by wiring. Counters and writers are independent across
+groups and do not propagate through transformations. The host is just another writer in each member's group. Causality
+crosses the cluster — a change on one member can cause a write on another — but LWW state does not.
 
 #### Wiring
 

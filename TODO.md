@@ -67,7 +67,9 @@
 
 - **Derived modality with current state.** Can you create a derived modality that takes the current state into account for a "successful turn on"? Is this needed?
 
-- **Multiple device control.** How to control multiple devices — do we make one lamp authoritative? Can a modality aggregate others via transformation?
+- **Default state for modalities (cold boot).** A modality needs a defined value to advertise before its first measurement or write — most acutely for `scan.vmods` cluster members, whose transformations need inputs from the moment a member is subscribed, but the question is general (a push button has no physically-encoded "current" position either). Without a defined default, a freshly-booted cluster has no inputs for its first transformation, and a freshly-subscribed peer cannot get a meaningful first `State` message before something happens. Options to consider: a deterministic type-level default in `TYPES.md` (per built-in / aggregate), a per-modality `defaultOutput` override on the `Modality` struct, persistence in non-volatile memory, or "no state until first write" with an explicit rule for `Subscribe` semantics in that window. The previously-considered NVRAM route is undesirable because of the storage cost on constrained devices.
+
+- **Cross-cluster write contention detection.** When two `scan.vmods` clusters on different devices both write into the same target modality, LWW arbitrates each individual write, but the two clusters can oscillate by repeatedly overriding each other. The host should detect this case (its own writes on a cluster member being clobbered by another peer at a high rate) and surface it through `scan.logs` and per-modality status in `scan.health`. Define the threshold and the reporting shape. Prevention proper belongs to admin tooling that has the full wiring graph across devices.
 
 ---
 
