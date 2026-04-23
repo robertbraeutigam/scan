@@ -397,6 +397,55 @@ On exit the aggregate ends on a byte boundary and the enclosing scope continues 
 
 **Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
 
+## Value Decoding Events
+
+The wire form defined in *Values Binary Representation* is consumed incrementally. As bytes arrive, a decoder walks the type in lockstep with the encoder and produces a sequence of **decoding events** for its consumer. This lets a consumer process values larger than its available memory — values containing a `Stream`, long `Array`s, long `String`s — by handling each event as it arrives and discarding its content before the next event.
+
+Each event has a memory footprint bounded at compile time by the type alone. A consumer — a transform, a relay, a debugger — observes the value's structure and data without assembling the whole value in memory.
+
+### Event Set
+
+```
+Event = Scalar        { value: <primitive value> }     // bounded primitive
+      | StartField    { index: UnsignedInteger }        // entering a struct field
+      | EndField      { index: UnsignedInteger }        // leaving a struct field
+      | Constructor   { index: UnsignedInteger }        // union variant selected; its fields follow
+      | StartContainer { kind: ContainerKind }          // kind ∈ { Array, Set, Stream }
+      | EndContainer  { kind: ContainerKind }           // Array / Set end; Stream has no end event
+      | StartItem                                       // complex-item container: item begins
+      | EndItem                                         // complex-item container: item ends
+      | Chunk         { bytes: Array(Byte) }            // primitive-item container: bounded byte run
+
+ContainerKind = Array | Set | Stream
+```
+
+`index` is the declared position of the field or constructor within its enclosing type. `kind` records which container kind a Start/End pair delimits.
+
+### Per-Type Event Sequences
+
+**Primitive** (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`) — one `Scalar(v)` event.
+
+**Single-constructor type** `T { f₀: T₀, ..., fₖ₋₁: Tₖ₋₁ }` — for each field *i* in declaration order: `StartField(i)`, the events for the field's value (recursive), `EndField(i)`. If `Tᵢ = Stream(U)`, no `EndField(i)` is emitted — the stream runs until the enclosing transport ends.
+
+**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — `Constructor(j)` where *j* is the index of the selected constructor, followed by the event sequence for that constructor's fields (using the single-constructor rule).
+
+**`Array(T, size)` and `Set(T, size)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Item events take one of two forms, selected by *T*:
+
+* **Primitive-item layout** — when *T* is a single primitive type (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`): the container's content is delivered as a sequence of `Chunk(bytes)` events. Each chunk is bounded by the transport's frame budget. The consumer parses individual items out of chunk bytes using the type.
+* **Complex-item layout** — otherwise (struct, union, or nested container element type): items are delivered as a sequence of `StartItem`, the event sequence for one item (recursive), `EndItem`.
+
+**`Stream(T)`** — identical to `Array` / `Set`, except no `EndContainer(Stream)` event is emitted; the sequence runs until the enclosing transport ends.
+
+### Memory Bound
+
+Each event's in-memory size is bounded:
+
+* `Scalar(v)` — the declared primitive size (at most 8 bytes for fixed primitives; at most `maxN` bytes for `VariableLengthInteger(maxN)`).
+* `StartField`, `EndField`, `Constructor`, `StartContainer`, `EndContainer`, `StartItem`, `EndItem` — constant-size markers.
+* `Chunk(bytes)` — bounded by the transport's frame budget.
+
+The maximum per-event memory a consumer must handle for a given type is statically known: the greater of the largest bounded primitive appearing in the type and the transport's frame budget.
+
 ## Type Membership
 
 When a transformation produces a value and delivers it into a typed slot — a cluster member's value, a built-in's parameter, a field of a struct under construction — the implementation must decide whether the value belongs to that slot's type. This section defines that relation.

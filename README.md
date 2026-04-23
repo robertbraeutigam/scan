@@ -972,11 +972,21 @@ The "Resolution Principle" applies to both directions of data flow. Data is alwa
 Devices can not expect to receive _all_ state transitions from a remote device. The only guarantee is, that they will receive the newest
 one at the earliest time possible.
 
-Consequently, the only per-modality state a device must keep in memory is the small Lamport metadata used to order writes (see
-*Last-Writer-Wins Ordering* below). Values themselves are wire artifacts: producers generate them on demand when emitting a frame,
-and receivers consume them as they arrive — streaming chunk by chunk when the value does not fit in a single frame, and discarding
-everything but the updated Lamport pair once the value has been applied or forwarded. Devices therefore don't need a sending queue
-for modalities, and don't need to hold full values in memory even when those values are large or contain a `Stream`.
+A device is **authoritative** for the outputs of its own modalities: whatever it publishes, it must be able to reproduce on demand.
+It must therefore keep one consistent snapshot of each of its modalities' current output state accessible in some form — the raw
+value in memory, a derived form (a sensor reading, a computed state), a reference to stored content, whichever the implementation
+chooses — so that it can emit a complete `State` frame for that modality whenever a subscriber needs one. The encoded size of a
+modality's output is bounded statically by its type (up to any trailing `Stream`, whose items are produced live from underlying
+state as they are emitted), so the resource budget per modality is bounded.
+
+Inputs arriving from remote peers, in contrast, may be **stream-processed**: a device may consume the bytes of an incoming `State`
+as they arrive, apply them to its local state event by event, and discard the input bytes as they pass — without ever holding the
+full input. This lets modalities accept inputs arbitrarily larger than the device's available memory — firmware blobs, backups,
+video streams — provided the device's input processing is event-driven. See *Value Decoding Events* in `TYPES.md` for the event
+model.
+
+Beyond this, the only per-instance state the protocol itself requires is the small Lamport metadata used to order writes (see
+*Last-Writer-Wins Ordering* below).
 
 While connecting modalities is semantically symmetric, as data is moving back and forth the same way between devices, with exactly same rules, the
 connection itself is not symmetric. One device, the *Initiator*, connects to the other device, the *Responder*. The Initiator will make requests
@@ -1021,8 +1031,8 @@ outcome before any value bytes are committed. If `(received.counter, received.wr
 `(counter, writer)` for this instance — counter first, ties broken by lexicographic comparison of the 32-byte `PeerAddress` of the
 writer — update `seenCounter := received.counter`, replace the stored pair with the received one, and accept the incoming value:
 apply it to local behaviour and/or relay it to downstream peers chunk by chunk as the bytes stream in. Otherwise the frame is stale;
-consume and discard the value bytes with no effect on local state and no relay to downstream peers. The full value is never required
-to be held in memory — only the Lamport pair is.
+consume and discard the value bytes with no effect on local state and no relay to downstream peers. The incoming wire value is never
+required to be held in memory — the Lamport pair is the only per-instance state LWW itself keeps.
 
 All peers that have seen the same set of `State` messages converge to identical Lamport pairs `(counter, writer)` per instance, and
 therefore agree on which write is currently in effect. The associated value is carried on the winning `State` frame and is not stored
