@@ -303,6 +303,8 @@ String(length: Constraint = All) = DynamicArray(Byte, length)
 
 A length-bounded byte string. The `length` parameter forwards to the underlying `DynamicArray`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
 
+Note, that strings are not bound by characters but by the overall bytes needed. This is specifically for protocol clarity.
+
 ### DynamicValue
 
 ```
