@@ -489,13 +489,15 @@ to distribute those reconnects inside the minute.
 Frames are defined thusly:
 
 ```
-Frame = {
-   sourcePeer:      Optional(PeerAddress)
-   destinationPeer: Optional(PeerAddress)
-   content:         Union(Control, Payload, Presence)
+Frame {
+   sourcePeer:      Option(PeerAddress),
+   destinationPeer: Option(PeerAddress),
+   content:         FrameContent
 }
 
-PeerAddress = Array(32, Byte)
+FrameContent = Control | Payload | Presence
+
+PeerAddress = Array(Byte, size = 32)
 ```
 
 The source is the sending peer's public identity key. The destination is the public identity key of the target device. 
@@ -521,7 +523,7 @@ this shouldn't happen given the version number included in the handshake.
 ### Control Messages
 
 ```
-Control = Union(InitiateHandshake, ContinueHandshake, CloseConnection)
+Control = InitiateHandshake | ContinueHandshake | CloseConnection
 ```
 
 #### Initiate Handshake
@@ -532,10 +534,10 @@ The frame transmits the first handshake message together with the
 Noise Protocol Name and version of the logical layer.
 
 ```
-InitiateHandshake = {
-   noiseProtocolName: String(max=128)
-   protocolVersion:   Version             // 1.0 for this specification
-   handshake:         DynamicArray(Byte, max=128)
+InitiateHandshake {
+   noiseProtocolName: String(MaxInclusive(128)),
+   protocolVersion:   Version,                                    // 1.0 for this specification
+   handshake:         DynamicArray(Byte, length = MaxInclusive(128))
 }
 ```
 
@@ -611,8 +613,8 @@ and continue in turn until the connection is established based on the initially 
 protocol variant.
 
 ```
-ContinueHandshake = {
-   handshake: DynamicArray(Byte, max=128)
+ContinueHandshake {
+   handshake: DynamicArray(Byte, length = MaxInclusive(128))
 }
 ```
 
@@ -622,9 +624,9 @@ Both parties may send this message to terminate the logical connection. After th
 all keys and state information about the connection can be discarded.
 
 ```
-CloseConnection = Struct(
-   reason: String(max=128)
-)
+CloseConnection {
+   reason: String(MaxInclusive(128))
+}
 ```
 
 It contains a diagnostic message, a human readable reason for closing the connection.
@@ -632,13 +634,13 @@ It contains a diagnostic message, a human readable reason for closing the connec
 ### Payload Messages
 
 ```
-Payload = Union(IntermediatePayloadChunk, LastPayloadChunk, SingleChunkPayload)
+Payload = IntermediatePayloadChunk | LastPayloadChunk | SingleChunkPayload
 
 // Used later
-EncryptedPayload = Struct(
-   payload:   DynamicArray(Byte, max=1100), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
-   mac:       Array(16, Byte)
-)
+EncryptedPayload {
+   payload:   DynamicArray(Byte, length = MaxInclusive(1100)), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
+   mac:       Array(Byte, size = 16)
+}
 ```
 
 #### Intermediate Payload Chunk
@@ -652,10 +654,10 @@ may be sent by both the initiator and responder.
 Structure:
 
 ```
-IntermediatePayloadChunk = Struct(
+IntermediatePayloadChunk {
    messageId:          VariableLengthInteger(8),
    encryptedPayload:   EncryptedPayload
-)
+}
 ```
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
@@ -678,10 +680,10 @@ It indicates that the application message identified by Message Id is complete w
 
 Payload structure:
 ```
-LastPayloadChunk = Struct(
+LastPayloadChunk {
    messageId:          VariableLengthInteger(8),
    encryptedPayload:   EncryptedPayload
-)
+}
 ```
 
 Encryption and key management is the same as for intermediate frames.
@@ -704,7 +706,7 @@ Presence frames manage the discovery and liveness of peers on the network. They 
 encrypted and do not advance the Noise cipher state of any connection.
 
 ```
-Presence = Union(Advertisement, AdvertisementRequest, Heartbeat)
+Presence = Advertisement | AdvertisementRequest | Heartbeat
 ```
 
 #### Advertisement
@@ -715,11 +717,11 @@ gateway may represent multiple logical identities on behalf of other devices, wh
 why multiple static keys may reside at the same IP address.
 
 ```
-Advertisement = Struct(
+Advertisement {
    port:       UnsignedInteger(2),
    generation: VariableLengthInteger(8),
-   peers:      DynamicArray(PeerAddress, max=16)
-)
+   peers:      DynamicArray(PeerAddress, length = MaxInclusive(16))
+}
 ```
 
 The `port` field is the TCP port on which the sender accepts SCAN connections for the
@@ -784,10 +786,10 @@ Solicits `Advertisement` replies from one or more specific peers, or from everyo
 the segment.
 
 ```
-AdvertisementRequest = Struct(
+AdvertisementRequest {
    port:      UnsignedInteger(2),
-   peers:     DynamicArray(PeerAddress, max=16)
-)
+   peers:     DynamicArray(PeerAddress, length = MaxInclusive(16))
+}
 ```
 
 The `port` field is the TCP port at which the solicitor accepts SCAN connections, so
@@ -1062,7 +1064,7 @@ as no external source of truth exists to contradict it.
 ### Initiator Messages
 
 ```
-InitiatorMessage = Union(Subscribe, Unsubscribe, State)
+InitiatorMessage = Subscribe | Unsubscribe | State
 ```
 
 #### Subscribe
@@ -1070,12 +1072,12 @@ InitiatorMessage = Union(Subscribe, Unsubscribe, State)
 Request the Responder to send state values indefinitely for the specified modality.
 
 ```
-Subscribe = Struct(
+Subscribe {
    modality:            IndexedModalityReference,
    minimumSendWait:     Duration,
-   priority:            Optional(Priority),
-   livenessTimeout:     Optional(Duration)
-)
+   priority:            Option(Priority),
+   livenessTimeout:     Option(Duration)
+}
 ```
 
 Minimum send wait specifies how much time the Responder should wait between sending data. Zero
@@ -1117,9 +1119,9 @@ for the same data sequentially.
 Request the Responder to stop sending state values.
 
 ```
-Unsubscribe = Struct(
+Unsubscribe {
    modality: IndexedModalityReference
-)
+}
 ```
 
 The Responder must immediately stop sending state updates, and interrupt any outstanding streams.
@@ -1131,12 +1133,12 @@ The Initiator may send this message, if it does not use the state updates anymor
 Signal a change of the visible state of a modality.
 
 ```
-State = Struct(
+State {
    modality:      IndexedModalityReference,
    counter:       VariableLengthInteger(8),
-   writer:        Optional(PeerAddress),
-   value:         DynamicValue,
-)
+   writer:        Option(PeerAddress),
+   value:         DynamicValue
+}
 ```
 
 The `modality` must reference the target modality on the Responder device.
@@ -1161,7 +1163,7 @@ discussion.
 ### Responder Messages
 
 ```
-ResponderMessage = Union(Modalities, State)
+ResponderMessage = Modalities | State
 ```
 
 #### Modalities
@@ -1171,17 +1173,16 @@ Responders send this message as soon as a connection is established, unsolicited
 ```
 Modalities = DynamicArray(Modality)
 
-Modality = Struct(
+Modality {
    id:                 String,                // Identifier of this modality on this device
    name:               Text,
    description:        MarkdownText,
-   localTypes:         DynamicArray(Byte),    // Types for this modality
    minimumIntentWait:  Duration,              // Minimum time to wait between inputs
    priority:           Priority,              // Default traffic priority for this modality
-   keyType:            String,                // The type identifying modality instances
-   outputType:         String,                // The type of the visible state of this modality
-   inputType:          String,                // The type of the changeable part of the state
-)
+   keyType:            TypeReference,         // The type identifying modality instances
+   outputType:         TypeReference,         // The type of the visible state of this modality
+   inputType:          TypeReference          // The type of the changeable part of the state
+}
 ```
 
 The `priority` field declares the default traffic priority for this modality. It indicates the importance
@@ -1208,12 +1209,12 @@ Send state values to a subscribed Initiator. This is the same `State` type the I
 modality not the target modality.
 
 ```
-State = Struct(
+State {
    modality:      IndexedModalityReference,
    counter:       VariableLengthInteger(8),
-   writer:        Optional(PeerAddress),
+   writer:        Option(PeerAddress),
    value:         DynamicValue
-)
+}
 ```
 
 Note, that because of the Resolution Principle the Device must immediately
@@ -1255,11 +1256,11 @@ any confidential data.
 
 ```
 Modality(
-   id:                 "scan.enroll",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Nothing",
-   inputType:          "PSK"
+   id          = "scan.enroll",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Unit),
+   inputType   = TypeReference(PSK)
 )
 ```
 
@@ -1274,11 +1275,11 @@ Reset the device to factory settings, including removing any and all user settin
 
 ```
 Modality(
-   id:                 "scan.reset",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Boolean",
-   inputType:          "Boolean"
+   id          = "scan.reset",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Boolean),
+   inputType   = TypeReference(Boolean)
 )
 ```
 
@@ -1293,25 +1294,25 @@ All the PSKs and associated rights on this device, expect the master adminitrati
 
 ```
 Modality(
-   id:                 "scan.grant",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Rights",
-   inputType:          "Rights"
+   id          = "scan.grant",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Rights),
+   inputType   = TypeReference(Rights)
 )
 
 Rights = DynamicArray(PskRight)
 
-PskRight = Struct(
+PskRight {
    psk:           PSK,
    rights:        DynamicArray(Right)
-)
+}
 
-Right = Struct(
+Right {
    modalityId:    String,
    readOutput:    Boolean,
    writeInput:    Boolean
-)
+}
 ```
 
 Each PSK must have only one entry in the array and list all rights associated with that PSK.
@@ -1333,19 +1334,19 @@ All the keys to other devices this device possesses.
 
 ```
 Modality(
-   id:                 "scan.keys",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Keys",
-   inputType:          "Keys"
+   id          = "scan.keys",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Keys),
+   inputType   = TypeReference(Keys)
 )
 
 Keys = DynamicArray(Key)
 
-Key = Struct(
+Key {
    device:        PeerAddress,
    psk:           PSK
-)
+}
 ```
 
 When the device connects to another device, it must use the registered PSK to do so. There can be only one PSK for each
@@ -1357,22 +1358,22 @@ Represents the firmware on the device. All devices must support firmware updates
 
 ```
 Modality(
-   id:                 "scan.firmware",
-   priority:           Bulk,
-   keyType:            "Unit",
-   outputType:         "FirmwareState",
-   inputType:          "FirmwareUpdate"
+   id          = "scan.firmware",
+   priority    = Bulk,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(FirmwareState),
+   inputType   = TypeReference(FirmwareUpdate)
 )
 
-FirmwareState = Struct(
+FirmwareState {
    currentVersion: URI,  // The URI the current firmware is from
    nextVersion:    URI   // The URI where the next version will be (or is) available
-)
+}
 
-FirmwareUpdate = Struct(
+FirmwareUpdate {
    version: URI,         // The URI of this firmware
    firmware: Media       // The firmware itself
-)
+}
 ```
 
 Firmwares are simply identified by where it was downloaded from or where it will be downloaded from.
@@ -1400,19 +1401,19 @@ Reboot the device.
 
 ```
 Modality(
-   id:                 "scan.reboot",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "BootState",
-   inputType:          "BootState"
+   id          = "scan.reboot",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(BootState),
+   inputType   = TypeReference(BootState)
 )
 
 BootGeneration = UnsignedInteger(4)
 
-BootState = Struct(
+BootState {
    currentGeneration: BootGeneration,
    rebootGeneration: BootGeneration
-)
+}
 ```
 
 On every bootup a device must generate a random "generation" number, the "currentGeneration". So the device updates
@@ -1438,39 +1439,38 @@ Provide mostly static information about the device.
 
 ```
 Modality(
-   id:                 "scan.info",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "DeviceInformation",
-   inputType:          "UserDefinedData"
+   id          = "scan.info",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(DeviceInformation),
+   inputType   = TypeReference(UserDefinedData)
 )
 
-DeviceInformation = Struct(
+DeviceInformation {
    deviceData:        DeviceData,
    versionData:       VersionData,
    userData:          UserDefinedData
-)
+}
 
-DeviceData = Struct(
+DeviceData {
    name:              Text,                  // Name of the device
    description:       MarkdownText,          // Description of the device and its operation
    icon:              Icon,                  // Embedded icon for the device
    vendor:            String,                // The vendor's readable (non-localized) name
-   web:               Optional(URI),         // The product's web page, if given
-)
+   web:               Option(URI)            // The product's web page, if given
+}
 
-VersionData = Struct(
-   hardwareVersion:   Optional(String),      // The vendor's own hardware version
-   firmwareVersion:   Optional(String),      // The vendor's own firmware version
-   serialNumber:      Optional(String)       // The vendor's identifier for this exact product instance
-)
+VersionData {
+   hardwareVersion:   Option(String),        // The vendor's own hardware version
+   firmwareVersion:   Option(String),        // The vendor's own firmware version
+   serialNumber:      Option(String)         // The vendor's identifier for this exact product instance
+}
 
-UserDefinedData = Struct(
-   applicationName:   Optional(String),      // User editable name for the current application / environment
-   location:          Optional(String),      // User editable location
+UserDefinedData {
+   applicationName:   Option(String),        // User editable name for the current application / environment
+   location:          Option(String),        // User editable location
    tags:              DynamicArray(String)   // User editable set of tags
-)
-
+}
 ```
 
 The `DeviceData` fields are for display purposes to the user, mainly for the administrative
@@ -1490,23 +1490,23 @@ Provide runtime health information about the device.
 
 ```
 Modality(
-   id:                 "scan.health",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "DeviceHealth",
-   inputType:          "Nothing"
+   id          = "scan.health",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(DeviceHealth),
+   inputType   = TypeReference(Unit)
 )
 
-DeviceHealth = Struct(
+DeviceHealth {
    status: HealthStatus,                     // Overall health summing everything up
 
    uptime: TimeInterval,
    lastBootReason: BootReason,
 
-   temperature: Optional(HardSoftLimited(Temperature)),
-   voltage: Optional(HardSoftLimited(Voltage)),
-   current: Optional(HardSoftLimited(Current)),
-   battery: Optional(HardSoftLimited(Percent)),
+   temperature: Option(HardSoftLimited(Temperature)),
+   voltage: Option(HardSoftLimited(Voltage)),
+   current: Option(HardSoftLimited(Current)),
+   battery: Option(HardSoftLimited(Percent)),
 
    nonVolatileMemory: HardSoftLimited(Information),
    volatileMemory: HardSoftLimited(Information),
@@ -1518,28 +1518,25 @@ DeviceHealth = Struct(
 
    modalityStatus: HealthStatus,             // Sum status of all modalities
    modalityHealths: DynamicArray(ModalityHealth)
-)
+}
 
-HealthStatus = Union(Ok, Degraded, Error)
+HealthStatus = Ok | Degraded { reason: String } | Error { reason: String }
 
-Ok = Unit
+BootReason = PowerOn
+           | SoftwareReset
+           | Watchdog
+           | Brownout
+           | Crash
+           | Other { reason: String }
 
-Degraded = Reasoned(Unit)
-
-Error = Reasoned(Unit)
-
-BootReason = Union(PowerOn, SoftwareReset, Watchdog, Brownout, Crash, Other)
-
-Other = Reasoned(Unit)
-
-ModalityHealth = Struct(
+ModalityHealth {
    modalityId: String,
    status: HealthStatus,
    outgoingCount: Long,
    incomingCount: Long,
    failedIncomingCount: Long,
    connectedCount: Long
-)
+}
 ```
 
 The overall health status reflects all of the given data and also potentially internal attributes not visible through this interface.
@@ -1571,28 +1568,26 @@ Stream the logs from the device.
 
 ```
 Modality(
-   id:                 "scan.logs",
-   priority:           Management,
-   keyType:            "Severity",
-   outputType:         "Logs",
-   inputType:          "Nothing",
+   id          = "scan.logs",
+   priority    = Management,
+   keyType     = TypeReference(Severity),
+   outputType  = TypeReference(Logs),
+   inputType   = TypeReference(Unit)
 )
 
 // Categorization of log entries
-Severity = Union(
-   Fatal,  // Entry indicates a device-wide error condition
-   Error,  // Entry indicates function specific error condition
-   Warn,   // Function may be degraded or did not execute fully as intended by user
-   Info,   // No errors, but user may want to know this
-   Debug   // Messages helpful for tracking problems
-)
+Severity = Fatal   // Entry indicates a device-wide error condition
+         | Error   // Entry indicates function specific error condition
+         | Warn    // Function may be degraded or did not execute fully as intended by user
+         | Info    // No errors, but user may want to know this
+         | Debug   // Messages helpful for tracking problems
 
 Logs = Stream(Log)
 
-Log = Struct(
+Log {
    severity:      Severity,
    message:       Text
-)
+}
 ```
 
 This modality is keyed by severity. Each modality instance returns log entries at least the severity given in the key,
@@ -1625,14 +1620,14 @@ Backup or Restore the device's internal state or parts thereof.
 
 ```
 Modality(
-   id:                 "scan.backup",
-   priority:           Bulk,
-   keyType:            "StateType",
-   outputType:         "Media",
-   inputType:          "Media",
+   id          = "scan.backup",
+   priority    = Bulk,
+   keyType     = TypeReference(StateType),
+   outputType  = TypeReference(Media),
+   inputType   = TypeReference(Media)
 )
 
-StateType = Union(FunctionState, ConfigurationState, FullState)
+StateType = FunctionState | ConfigurationState | FullState
 ```
 
 // TODO: how to pull a consistent state from all devices?
@@ -1671,22 +1666,22 @@ Report network statistics since startup.
 
 ```
 Modality(
-   id:                 "scan.netstat",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "NetworkStatistics",
-   inputType:          "Nothing",
+   id          = "scan.netstat",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(NetworkStatistics),
+   inputType   = TypeReference(Unit)
 )
 
 NetworkStatistics = DynamicArray(NetworkPeerStatistics)
 
-NetworkPeerStatistics = Struct(
+NetworkPeerStatistics {
    remotePeer:         PeerAddress,
    sentCount:          Long,
    sentBytes:          Long,
    receivedCount:      Long,
    receivedBytes:      Long
-)
+}
 ```
 
 #### Network Configuration
@@ -1699,66 +1694,58 @@ Configuration).
 
 ```
 Modality(
-   id:                 "scan.netconfig",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "NetworkConfiguration",
-   inputType:          "NetworkConfiguration"
+   id          = "scan.netconfig",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(NetworkConfiguration),
+   inputType   = TypeReference(NetworkConfiguration)
 )
 
-NetworkConfiguration = Struct(
-   interfaces:    DynamicArray(InterfaceConfig, min=1),
+NetworkConfiguration {
+   interfaces:    DynamicArray(InterfaceConfig, length = MinInclusive(1)),
    reachability:  Reachability
-)
+}
 
-InterfaceConfig = Struct(
+InterfaceConfig {
    name:       String,
    wifi:       Wifi,
    ipv4:       Ipv4Mode,
    ipv6:       Ipv6Mode
-)
+}
 
-NotApplicable = Unit
-Disabled      = Unit
-Automatic     = Unit
+Wifi = NotApplicable
+     | Disabled
+     | WifiConnection { ssid: String, passphrase: Option(String) }
 
-Wifi = Union(NotApplicable, Disabled, WifiConnection)
+Ipv4Mode = Automatic
+         | Disabled
+         | Ipv4Static {
+              address: Ipv4Address,
+              prefix:  UnsignedInteger(1),
+              gateway: Option(Ipv4Address)
+           }
 
-WifiConnection = Struct(
-   ssid:        String,
-   passphrase:  Optional(String)
-)
+Ipv6Mode = Automatic
+         | Disabled
+         | Ipv6Static {
+              address: Ipv6Address,
+              prefix:  UnsignedInteger(1),
+              gateway: Option(Ipv6Address)
+           }
 
-Ipv4Mode = Union(Automatic, Disabled, Ipv4Static)
-Ipv6Mode = Union(Automatic, Disabled, Ipv6Static)
+Ipv4Address = Array(Byte, size = 4)
+Ipv6Address = Array(Byte, size = 16)
+IpAddress   = V4 { address: Ipv4Address } | V6 { address: Ipv6Address }
 
-Ipv4Static = Struct(
-   address:   Ipv4Address,
-   prefix:    UnsignedInteger(1),
-   gateway:   Optional(Ipv4Address)
-)
+Reachability = LocalOnly
+             | GatewayOnly { gateways: DynamicArray(Gateway, length = MinInclusive(1)) }
+             | Mixed       { gateways: DynamicArray(Gateway, length = MinInclusive(1)) }
 
-Ipv6Static = Struct(
-   address:   Ipv6Address,
-   prefix:    UnsignedInteger(1),
-   gateway:   Optional(Ipv6Address)
-)
-
-Ipv4Address = Array(4, Byte)
-Ipv6Address = Array(16, Byte)
-IpAddress   = Union(Ipv4Address, Ipv6Address)
-
-LocalOnly   = Unit
-GatewayOnly = DynamicArray(Gateway, min=1)
-Mixed       = DynamicArray(Gateway, min=1)
-
-Reachability = Union(LocalOnly, GatewayOnly, Mixed)
-
-Gateway = Struct(
+Gateway {
    ip:     IpAddress,
    port:   UnsignedInteger(2),
    psk:    PSK
-)
+}
 ```
 
 A written configuration is applied as a single snapshot. The output state reflects the
@@ -1807,26 +1794,21 @@ able to debug which remote states the device is receiving and what it reacts in 
 
 ```
 Modality(
-   id:                 "scan.messages",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Messages",
-   inputType:          "Nothing",
+   id          = "scan.messages",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Messages),
+   inputType   = TypeReference(Unit)
 )
 
-Messages = Stream(SentState, ReceivedState)
+Messages = Stream(MessageEvent)
 
-SentState = Struct(
-   localModality:             LocalModalityReference,
-   remoteModality:            RemoteModalityReference,
-   state:                     State
-)
-
-ReceivedState = Struct(
-   localModality:             LocalModalityReference,
-   remotePeer:                PeerAddress,
-   state:                     State
-)
+MessageEvent = Sent     { localModality:  LocalModalityReference,
+                          remoteModality: RemoteModalityReference,
+                          state:          State }
+             | Received { localModality:  LocalModalityReference,
+                          remotePeer:     PeerAddress,
+                          state:          State }
 ```
 
 ### Interoperability Modalities
@@ -1848,23 +1830,23 @@ Define clusters of local modalities whose values are coupled by transformations.
 
 ```
 Modality(
-   id:                 "scan.vmods",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "VirtualModalityClusters",
-   inputType:          "VirtualModalityClusters"
+   id          = "scan.vmods",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(VirtualModalityClusters),
+   inputType   = TypeReference(VirtualModalityClusters)
 )
 
 VirtualModalityClusters = DynamicArray(VirtualModalityCluster)
 
-VirtualModalityCluster = Struct(
+VirtualModalityCluster {
    members: DynamicArray(ClusterMember)
-)
+}
 
-ClusterMember = Struct(
+ClusterMember {
    modality:   Modality,
    transform:  DynamicArray(Byte)    // Compiled transformation program
-)
+}
 ```
 
 A cluster defines a set of local modalities (its *members*) on the device. Each member is a fully ordinary modality:
@@ -1898,19 +1880,19 @@ Define what modalities on this device is wired to what modalities at other devic
 
 ```
 Modality(
-   id:                 "scan.wiring",
-   priority:           Management,
-   keyType:            "Unit",
-   outputType:         "Wiring",
-   inputType:          "Wiring"
+   id          = "scan.wiring",
+   priority    = Management,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Wiring),
+   inputType   = TypeReference(Wiring)
 )
 
 Wiring = DynamicArray(Wire)
 
-Wire = Struct(
+Wire {
    remoteModality:     RemoteModalityReference,
-   localModality:      RemoteModalityReference,  // Has to reference local peer
-)
+   localModality:      RemoteModalityReference   // Has to reference local peer
+}
 ```
 
 Note, that in order for these wirings to work, the necessary PSKs to contact the remote devices must be registered first.
@@ -1927,11 +1909,11 @@ Help locate the device physically.
 
 ```
 Modality(
-   id:                 "scan.locate",
-   priority:           Normal,
-   keyType:            "Unit",
-   outputType:         "Boolean",
-   inputType:          "Boolean",
+   id          = "scan.locate",
+   priority    = Normal,
+   keyType     = TypeReference(Unit),
+   outputType  = TypeReference(Boolean),
+   inputType   = TypeReference(Boolean)
 )
 ```
 
@@ -1946,42 +1928,103 @@ this locator function may switch itself off after a given time period.
 
 ```
 // A reference to a modality's index in the Modalities message.
-IndexedModalityReference = Struct(
+IndexedModalityReference {
    modalityIndex:       VariableLengthInteger(8), // The index in Modalities modality array
    modalityInstanceKey: DynamicValue              // The key of the modality instance
-)
+}
 
 // A reference to a modality in the whole system, potentially local
-RemoteModalityReference = Struct(
+RemoteModalityReference {
    peer:                 PeerAddress,
-   modalityReference:    LocalModalityReference,
-)
+   modalityReference:    LocalModalityReference
+}
 
 // A reference to a local modality, relative a peer
-LocalModalityReference = Struct(
+LocalModalityReference {
    modality:             String,
-   modalityInstanceKey:  DynamicValue,
-)
+   modalityInstanceKey:  DynamicValue
+}
 
 // Traffic priority for network-level quality of service
-Priority = Union(Critical, Normal, Management, Bulk)
+Priority = Critical | Normal | Management | Bulk
 
 // PSK (Pre-Shared Key), used for authorization
-PSK = String(minLength = 32, maxLength = 32)
+PSK = Array(Byte, size = 32)
 
 // Version
-Version = Struct(
+Version {
    major: Byte,
    minor: Byte
-)
+}
 
 URI = String
 
 // Represents content that is typed by mime-type
-Media = Struct(
+Media {
    mimeType:    String,
    content:     Stream(Byte)
-)
+}
+
+// --- Display / human-readable text ---
+
+// Plain user-facing text, no markup. Alias of String for now.
+Text = String
+
+// User-facing text in CommonMark Markdown. Alias of String for now;
+// the marker exists so administrative interfaces know to render it.
+MarkdownText = String
+
+// TODO: Icon — small embedded image for display in administrative UI.
+//       Likely a Media constrained to image/* mime types, with a recommended
+//       max size and aspect ratio. Define once UI requirements firm up.
+Icon = Media
+
+// --- Time ---
+
+// TODO: Timestamp — absolute point in time. Probably milliseconds since
+//       Unix epoch as SignedInteger(8); confirm whether ns resolution is
+//       needed for any modality, and how unsynchronised devices behave.
+Timestamp = SignedInteger(8)
+
+// TODO: TimeInterval — a span of time. Probably milliseconds as Long.
+//       Confirm range/resolution requirements (uptime can be years).
+TimeInterval = Long
+
+// Same wire shape as TimeInterval; named for use in subscription rate fields.
+Duration = TimeInterval
+
+// --- Physical quantities ---
+
+// TODO: confirm units, range, resolution for the quantities below. They are
+//       used by scan.health and may need wrapping in a Measurement-like
+//       structure that carries the unit explicitly.
+
+// Percentage 0–100, one byte.
+Percent = UnsignedInteger(1, constraint = Range(min = 0, max = 100))
+
+// TODO: Voltage — volts. FloatingPoint(4)?
+Voltage = FloatingPoint(4)
+
+// TODO: Current — amperes. FloatingPoint(4)?
+Current = FloatingPoint(4)
+
+// TODO: Temperature — degrees Celsius. FloatingPoint(4)?
+Temperature = FloatingPoint(4)
+
+// TODO: Information — bytes of memory/storage. UnsignedInteger(8)?
+Information = UnsignedInteger(8)
+
+// --- Limit-bracketed measurement ---
+
+// A measured value carried alongside the soft and hard operating bounds the
+// device declares for it. Used throughout scan.health.
+HardSoftLimited(t: Type) {
+   value:    t,
+   softMin:  t,
+   softMax:  t,
+   hardMin:  t,
+   hardMax:  t
+}
 ```
 
 ## Bring-Up
@@ -2026,18 +2069,14 @@ base32-encoded binary payload (RFC 4648 without padding, case-insensitive):
 The binary payload is:
 
 ```
-Ethernet = Unit
-SoftAP   = Unit
-BLE      = Unit
+BringUpCapability = Ethernet | SoftAP | BLE
 
-BringUpCapability = Union(Ethernet, SoftAP, BLE)
-
-QRPayload = Struct(
+QRPayload {
    version:         UnsignedInteger(1),      // 0x01 for this revision
    capabilities:    Set(BringUpCapability),
    peerAddress:     PeerAddress,
    enrollmentPsk:   PSK
-)
+}
 ```
 
 The `capabilities` field declares which bring-up channels the device offers. 
@@ -2048,10 +2087,10 @@ Both Soft-AP and BLE bring-up channels carry the same payload: a *bring-up blob*
 describing the WiFi network the device should attach to.
 
 ```
-BringUpBlob = Struct(
+BringUpBlob {
    ssid:           String,
-   passphrase:     Optional(String)
-)
+   passphrase:     Option(String)
+}
 ```
 
 The `passphrase` field is absent for open WiFi networks. No IP configuration is carried
@@ -2065,11 +2104,11 @@ enrollment PSK, so that an attacker in physical proximity cannot push bogus netw
 credentials and cause the device to join an unintended network. The wire format is:
 
 ```
-EncryptedBringUpBlob = Struct(
-   nonce:          Array(12, Byte),
+EncryptedBringUpBlob {
+   nonce:          Array(Byte, size = 12),
    ciphertext:     DynamicArray(Byte),    // AES-256-GCM encrypted BringUpBlob
-   tag:            Array(16, Byte)        // AES-256-GCM authentication tag
-)
+   tag:            Array(Byte, size = 16) // AES-256-GCM authentication tag
+}
 ```
 
 The framing reuses the AEAD already mandated by the Logical Layer Noise suite

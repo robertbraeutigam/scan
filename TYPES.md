@@ -135,12 +135,40 @@ An alias gives a new name to an existing type without introducing a new construc
 The right-hand side is a single type reference. Examples:
 
 ```
-Byte = UnsignedInteger(1)
-Double = FloatingPoint(8)
-String = DynamicArray(Byte)
+Word     = UnsignedInteger(2)
+Bytes    = DynamicArray(Byte)
+PortNumber = UnsignedInteger(2, constraint = Range(min = 1, max = 65535))
 ```
 
+(The `Byte`, `Long`, `Double`, and `String` aliases used elsewhere in this document are defined once and for all in *Library Types* below.)
+
 An alias is distinguished from a type definition by its right-hand side. If the RHS contains `|`, or ends in a `{ ... }` struct body, it defines a new type; otherwise it is an alias. The collision case — an RHS that is a bare identifier, which could in principle be read as a type definition with a single no-data constructor — is always read as an alias, since such a type would be isomorphic to `Unit` and carries no information. The collapse form (`Foo { ... }`) still covers the useful struct-definition cases.
+
+### Value Instantiation
+
+The textual language is also used to write values, not just types. A value is constructed by naming a constructor and supplying its fields:
+
+```
+<Constructor>(<field> = <value>, ...)
+```
+
+Arguments may be passed positionally or by name; named arguments use `=` (distinct from the `:` used in type-definition fields, which annotates a field with a type). For a type with multiple constructors, the constructor name is what selects the variant:
+
+```
+Some(value = 42)
+None
+MinInclusive(bound = 0)
+```
+
+For a single-constructor type the constructor name and the type name coincide, so the same syntax constructs values of struct-shaped types directly:
+
+```
+Measurement(unit = "V", value = 12.5)
+
+LogLine(severity = Error, time = now, line = "disk full")
+```
+
+Bare-identifier constructors carry no fields and are written without parentheses (`None`, `All`, `Error`).
 
 ### Constraints
 
@@ -238,6 +266,58 @@ Subset determination across constrained built-ins reduces to an implication chec
 * `Union`, `Intersection`, `Not` distribute as expected.
 
 Any new `Constraint` form added later must come with an implication rule, or the subset algorithm cannot accept it.
+
+## Library Types
+
+The following types are defined by the type system itself and are available without import in every program that uses TYPES. They are not built-ins in the language sense — they are ordinary user-level types — but every implementation ships them so the rest of the system can rely on them.
+
+### Numeric Aliases
+
+```
+Byte   = UnsignedInteger(1)
+Long   = UnsignedInteger(8)
+Double = FloatingPoint(8)
+```
+
+### Boolean
+
+```
+Boolean = True | False
+```
+
+`True` and `False` are bare-identifier constructors; the type carries one bit of information.
+
+### Option
+
+```
+Option(contentType: Type) = None | Some { value: contentType }
+```
+
+The standard "value or absence" sum type. Used everywhere a field may be missing.
+
+### String
+
+```
+String(length: Constraint = All) = DynamicArray(Byte, length)
+```
+
+A length-bounded byte string. The `length` parameter forwards to the underlying `DynamicArray`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
+
+### DynamicValue
+
+```
+DynamicValue
+```
+
+A value of any type. Wire-encoded as the bytes of the value with no embedded type tag — the receiver must know the expected type from context (typically from a sibling field or from configuration) and apply it to consume the right number of bytes. `DynamicValue` exists for protocols where the type of a field depends on a separately-carried discriminator (for example, the value carried by a SCAN modality state, whose type is determined by the modality's declared `outputType`/`inputType`).
+
+### TypeReference
+
+```
+TypeReference(t: Type)
+```
+
+A value-level reference to a type. `TypeReference(Unit)`, `TypeReference(PSK)` etc. let a type be carried as data — for example, declaring at runtime which type a `DynamicValue` field should be parsed as. The binary representation of a `TypeReference` is defined in the *Types Binary Representation* section.
 
 ## Types Binary Representation
 
