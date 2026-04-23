@@ -311,13 +311,9 @@ DynamicValue
 
 A value of any type. Wire-encoded as the bytes of the value with no embedded type tag — the receiver must know the expected type from context (typically from a sibling field or from configuration) and apply it to consume the right number of bytes. `DynamicValue` exists for protocols where the type of a field depends on a separately-carried discriminator (for example, the value carried by a SCAN modality state, whose type is determined by the modality's declared `outputType`/`inputType`).
 
-### TypeReference
+### Type
 
-```
-TypeReference(t: Type)
-```
-
-A value-level reference to a type. `TypeReference(Unit)`, `TypeReference(PSK)` etc. let a type be carried as data — for example, declaring at runtime which type a `DynamicValue` field should be parsed as. The binary representation of a `TypeReference` is defined in the *Types Binary Representation* section.
+`Type` is the type of types. It is the same `Type` already used to declare type parameters (e.g. `Option(contentType: Type)`), promoted to first-class status: a field declared `someField: Type` accepts any type as its value, and is instantiated by writing the type name directly (`someField = String`, `someField = DeviceInformation`). This lets a type be carried as data — for example, a SCAN modality declares `outputType: Type` and is instantiated with `outputType = DeviceInformation`. The binary representation of a `Type` value is defined in the *Types Binary Representation* section.
 
 ## Types Binary Representation
 

@@ -1179,9 +1179,9 @@ Modality {
    description:        MarkdownText,
    minimumIntentWait:  Duration,              // Minimum time to wait between inputs
    priority:           Priority,              // Default traffic priority for this modality
-   keyType:            TypeReference,         // The type identifying modality instances
-   outputType:         TypeReference,         // The type of the visible state of this modality
-   inputType:          TypeReference          // The type of the changeable part of the state
+   keyType:            Type,                  // The type identifying modality instances
+   outputType:         Type,                  // The type of the visible state of this modality
+   inputType:          Type                   // The type of the changeable part of the state
 }
 ```
 
@@ -1258,9 +1258,9 @@ any confidential data.
 Modality(
    id          = "scan.enroll",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Unit),
-   inputType   = TypeReference(PSK)
+   keyType     = Unit,
+   outputType  = Unit,
+   inputType   = PSK
 )
 ```
 
@@ -1277,9 +1277,9 @@ Reset the device to factory settings, including removing any and all user settin
 Modality(
    id          = "scan.reset",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Boolean),
-   inputType   = TypeReference(Boolean)
+   keyType     = Unit,
+   outputType  = Boolean,
+   inputType   = Boolean
 )
 ```
 
@@ -1296,9 +1296,9 @@ All the PSKs and associated rights on this device, expect the master adminitrati
 Modality(
    id          = "scan.grant",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Rights),
-   inputType   = TypeReference(Rights)
+   keyType     = Unit,
+   outputType  = Rights,
+   inputType   = Rights
 )
 
 Rights = DynamicArray(PskRight)
@@ -1336,9 +1336,9 @@ All the keys to other devices this device possesses.
 Modality(
    id          = "scan.keys",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Keys),
-   inputType   = TypeReference(Keys)
+   keyType     = Unit,
+   outputType  = Keys,
+   inputType   = Keys
 )
 
 Keys = DynamicArray(Key)
@@ -1360,9 +1360,9 @@ Represents the firmware on the device. All devices must support firmware updates
 Modality(
    id          = "scan.firmware",
    priority    = Bulk,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(FirmwareState),
-   inputType   = TypeReference(FirmwareUpdate)
+   keyType     = Unit,
+   outputType  = FirmwareState,
+   inputType   = FirmwareUpdate
 )
 
 FirmwareState {
@@ -1403,9 +1403,9 @@ Reboot the device.
 Modality(
    id          = "scan.reboot",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(BootState),
-   inputType   = TypeReference(BootState)
+   keyType     = Unit,
+   outputType  = BootState,
+   inputType   = BootState
 )
 
 BootGeneration = UnsignedInteger(4)
@@ -1441,9 +1441,9 @@ Provide mostly static information about the device.
 Modality(
    id          = "scan.info",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(DeviceInformation),
-   inputType   = TypeReference(UserDefinedData)
+   keyType     = Unit,
+   outputType  = DeviceInformation,
+   inputType   = UserDefinedData
 )
 
 DeviceInformation {
@@ -1492,9 +1492,9 @@ Provide runtime health information about the device.
 Modality(
    id          = "scan.health",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(DeviceHealth),
-   inputType   = TypeReference(Unit)
+   keyType     = Unit,
+   outputType  = DeviceHealth,
+   inputType   = Unit
 )
 
 DeviceHealth {
@@ -1570,9 +1570,9 @@ Stream the logs from the device.
 Modality(
    id          = "scan.logs",
    priority    = Management,
-   keyType     = TypeReference(Severity),
-   outputType  = TypeReference(Logs),
-   inputType   = TypeReference(Unit)
+   keyType     = Severity,
+   outputType  = Logs,
+   inputType   = Unit
 )
 
 // Categorization of log entries
@@ -1622,9 +1622,9 @@ Backup or Restore the device's internal state or parts thereof.
 Modality(
    id          = "scan.backup",
    priority    = Bulk,
-   keyType     = TypeReference(StateType),
-   outputType  = TypeReference(Media),
-   inputType   = TypeReference(Media)
+   keyType     = StateType,
+   outputType  = Media,
+   inputType   = Media
 )
 
 StateType = FunctionState | ConfigurationState | FullState
@@ -1668,9 +1668,9 @@ Report network statistics since startup.
 Modality(
    id          = "scan.netstat",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(NetworkStatistics),
-   inputType   = TypeReference(Unit)
+   keyType     = Unit,
+   outputType  = NetworkStatistics,
+   inputType   = Unit
 )
 
 NetworkStatistics = DynamicArray(NetworkPeerStatistics)
@@ -1696,9 +1696,9 @@ Configuration).
 Modality(
    id          = "scan.netconfig",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(NetworkConfiguration),
-   inputType   = TypeReference(NetworkConfiguration)
+   keyType     = Unit,
+   outputType  = NetworkConfiguration,
+   inputType   = NetworkConfiguration
 )
 
 NetworkConfiguration {
@@ -1796,9 +1796,9 @@ able to debug which remote states the device is receiving and what it reacts in 
 Modality(
    id          = "scan.messages",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Messages),
-   inputType   = TypeReference(Unit)
+   keyType     = Unit,
+   outputType  = Messages,
+   inputType   = Unit
 )
 
 Messages = Stream(MessageEvent)
@@ -1832,9 +1832,9 @@ Define clusters of local modalities whose values are coupled by transformations.
 Modality(
    id          = "scan.vmods",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(VirtualModalityClusters),
-   inputType   = TypeReference(VirtualModalityClusters)
+   keyType     = Unit,
+   outputType  = VirtualModalityClusters,
+   inputType   = VirtualModalityClusters
 )
 
 VirtualModalityClusters = DynamicArray(VirtualModalityCluster)
@@ -1882,9 +1882,9 @@ Define what modalities on this device is wired to what modalities at other devic
 Modality(
    id          = "scan.wiring",
    priority    = Management,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Wiring),
-   inputType   = TypeReference(Wiring)
+   keyType     = Unit,
+   outputType  = Wiring,
+   inputType   = Wiring
 )
 
 Wiring = DynamicArray(Wire)
@@ -1911,9 +1911,9 @@ Help locate the device physically.
 Modality(
    id          = "scan.locate",
    priority    = Normal,
-   keyType     = TypeReference(Unit),
-   outputType  = TypeReference(Boolean),
-   inputType   = TypeReference(Boolean)
+   keyType     = Unit,
+   outputType  = Boolean,
+   inputType   = Boolean
 )
 ```
 
