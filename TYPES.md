@@ -357,5 +357,3 @@ fitting small microcontrollers.
 
 TODO
 
-## Type Reference
-
