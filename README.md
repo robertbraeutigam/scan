@@ -970,8 +970,13 @@ makes decisions to set its own state.
 
 The "Resolution Principle" applies to both directions of data flow. Data is always replaceable by newer versions of the same.
 Devices can not expect to receive _all_ state transitions from a remote device. The only guarantee is, that they will receive the newest
-one at the earliest time possible. Devices therefore don't need a sending queue for modalities, they only need to keep the currently
-transmitting and the newest state for each modality in memory at most, if needed.
+one at the earliest time possible.
+
+Consequently, the only per-modality state a device must keep in memory is the small Lamport metadata used to order writes (see
+*Last-Writer-Wins Ordering* below). Values themselves are wire artifacts: producers generate them on demand when emitting a frame,
+and receivers consume them as they arrive — streaming chunk by chunk when the value does not fit in a single frame, and discarding
+everything but the updated Lamport pair once the value has been applied or forwarded. Devices therefore don't need a sending queue
+for modalities, and don't need to hold full values in memory even when those values are large or contain a `Stream`.
 
 While connecting modalities is semantically symmetric, as data is moving back and forth the same way between devices, with exactly same rules, the
 connection itself is not symmetric. One device, the *Initiator*, connects to the other device, the *Responder*. The Initiator will make requests
@@ -1011,14 +1016,19 @@ across all participants:
 * On local write: `counter := max(counter, seenCounter) + 1`. The frame is sent
 with `(counter, writer = self, value)`. The `writer` field is omitted on the wire
 because the sender of the frame is the writer.
-* On receive: `seenCounter := max(seenCounter, received.counter)`. The stored
-replica is replaced with the received tuple iff `(received.counter, received.writer)`
-is lexicographically greater than `(stored.counter, stored.writer)`. Counter ties
-are broken by lexicographic comparison of the 32-byte `PeerAddress` of the writer.
+* On receive: the Lamport header `(counter, writer)` is encoded before `value` in a `State` frame, so the receiver decides the LWW
+outcome before any value bytes are committed. If `(received.counter, received.writer)` is lexicographically greater than the stored
+`(counter, writer)` for this instance — counter first, ties broken by lexicographic comparison of the 32-byte `PeerAddress` of the
+writer — update `seenCounter := received.counter`, replace the stored pair with the received one, and accept the incoming value:
+apply it to local behaviour and/or relay it to downstream peers chunk by chunk as the bytes stream in. Otherwise the frame is stale;
+consume and discard the value bytes with no effect on local state and no relay to downstream peers. The full value is never required
+to be held in memory — only the Lamport pair is.
 
-All peers that have seen the same set of `State` messages converge to identical
-`(counter, writer, value)`. Message order, duplication, connection drops, and
-device restarts do not affect the result.
+All peers that have seen the same set of `State` messages converge to identical Lamport pairs `(counter, writer)` per instance, and
+therefore agree on which write is currently in effect. The associated value is carried on the winning `State` frame and is not stored
+separately; a peer that needs the value at a later moment re-acquires it by the normal subscribe flow (either because the writer
+retransmits, or because a new write produces a fresh pair). Message order, duplication, connection drops, and device restarts do
+not affect the result.
 
 When a peer relays a value it did not originate -- as happens naturally inside an
 instance group where writes from any participant may be reflected back by another
@@ -1041,25 +1051,21 @@ the Lamport metadata. These metadata-only frames are what allow write-only sides
 of a modality -- a pure sensor's input, a firmware receiver's output -- to
 participate in the group's convergence.
 
-They matter most for restart recovery. A subscriber that holds a replica written
-before a device crash can echo the Lamport pair back to the restarted device through
-a metadata-only `State`, even when the device's input type is `Nothing`. The
-restarted device's `seenCounter` catches up, its next write carries a strictly
-higher counter, and any lingering phantom replicas are overwritten everywhere.
+They matter most for restart recovery. A subscriber that still holds the Lamport pair from a write made before a device crash can
+echo that pair back to the restarted device through a metadata-only `State`, even when the device's input type is `Nothing`. The
+restarted device's `seenCounter` catches up, its next write carries a strictly higher counter, and any lingering phantom writes
+are ordered behind the recovered state everywhere.
 
 #### Restart Recovery
 
-On restart, a device reinitialises each of its instances to `(counter = 0, writer
-= self, value = configured default)` and rejoins its groups normally. Peers that
-hold later replicas send them back as part of the normal state exchange (in either
-direction, including via `Nothing`-valued frames). The restarted device's
-`seenCounter` updates from those messages, and subsequent writes carry strictly
-higher counters than any pre-crash ghost.
+On restart, a device reinitialises each of its instances to `(counter = 0, writer = self)` with the configured default as its
+current value, and rejoins its groups normally. Peers that still carry a later Lamport pair for the instance send it back as part
+of the normal state exchange (in either direction, including via `Nothing`-valued frames). The restarted device's `seenCounter`
+updates from those messages, and subsequent writes carry strictly higher counters than any pre-crash ghost.
 
-No persistent Lamport state is required on the device. If no reachable peer holds
-a later replica, the restarted device is effectively alone in the group and its
-configured default is as authoritative as any -- which is the correct behaviour,
-as no external source of truth exists to contradict it.
+No persistent Lamport state is required on the device. If no reachable peer carries a later Lamport pair, the restarted device is
+effectively alone in the group and its configured default is as authoritative as any -- which is the correct behaviour, as no
+external source of truth exists to contradict it.
 
 ### Initiator Messages
 
@@ -1218,9 +1224,12 @@ State {
 ```
 
 Note, that because of the Resolution Principle the Device must immediately
-send the newest data value upon receiving a Subscribe. This may involve taking
-an immediate measurement, or may involve sending a cached value from memory, but
-the value must always be the most current one in the given semantics.
+send the newest data value upon receiving a Subscribe. Since full values are not
+required to be held in memory, this typically means producing the value on demand
+-- taking a fresh measurement, reading configuration from persistent storage,
+re-opening a streaming source, etc. -- so long as the value reflects the most
+current state in the given semantics. A device is free to cache a value that is
+small and cheap to keep, but is never required to.
 
 Note also, that this semantic may include a month-end meter value for example. "Historical"
 values are allowed as long as its defined that way.
@@ -2273,9 +2282,12 @@ it is simply the transitive closure of instances reachable through wiring.
 **Shared state.**
 
 When instances are wired together, they share one logical state. Each
-participant holds its own replica of that state, and replicas converge to the
-same value over time. Any participant may write a new value; every other
-participant observes the change through its subscriptions.
+participant agrees on whose write is currently in effect and observes the
+associated value through its subscriptions. Any participant may write a new
+value; every other participant then observes the change. The group does not
+require every member to store the value; values flow on the wire when they
+are needed, so participants with limited memory -- and modalities whose value
+is very large or streaming -- still take part fully.
 
 The user-observable consequences are:
 

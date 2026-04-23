@@ -12,7 +12,7 @@ This type system consist of following parts:
 * A human-readable textual representation
 * A binary representation of types
 * A binary representation of values
-* An algorithm to determine if a type defines a subset of values as another type
+* An algorithm to determine if a value is a member of a type
 * A human-readable transformation language to transform values to other values
 * A binary representation of a transformation
 
@@ -183,11 +183,11 @@ Constraint = All
 
 `Number` stands for any numeric literal. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
 
-`Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate implication rule and does not appear distinctly on the wire.
+`Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate evaluation rule and does not appear distinctly on the wire.
 
 **Constraints are just parameter values.** A `Constraint` is passed to a type parameter like any other argument; nothing in the surface syntax marks it as special. The only thing that makes constraints useful is that certain **built-in** types accept `Constraint`-typed parameters and hardcode their effect on the value set. User-defined types do not interpret constraints themselves; if a user type wants its values constrainable, it declares a `Constraint`-typed parameter and threads it into a built-in that does.
 
-Consequently there is no way to "constrain an arbitrary user type" from outside. If you want a subset of a user-defined sum type, define a narrower sum type — *Subset Determination* will recognise the relationship structurally.
+Consequently there is no way to "constrain an arbitrary user type" from outside. If you want a narrower version of a user-defined sum type, define a narrower sum type — *Type Membership* recognises a value as belonging to any sum type whose constructors cover its shape, so no type-to-type relation is consulted.
 
 #### Where constraints are interpreted
 
@@ -240,25 +240,13 @@ A length-bounded byte string:
 Handshake = Array(UnsignedInteger(1), size = Range(min = 0, max = 128))
 ```
 
-Subsetting a sum type is done by defining a narrower sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
+Narrowing a sum type is done by defining a smaller sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
 
 ```
 Severity          = Error | Warning | Info | Debug
 DisplaySeverity   = Error | Warning                  // DisplaySeverity ⊆ Severity structurally
 DisplaySeverities = Set(DisplaySeverity)
 ```
-
-#### Implication
-
-Subset determination across constrained built-ins reduces to an implication check over the `Constraint` ADT: for `X(constraint = C₁)` to be a subset of `X(constraint = C₂)`, every value satisfying `C₁` must satisfy `C₂`. The rules fall out case-by-case from the constructors:
-
-* `MinInclusive(a) ⟹ MinInclusive(b)` iff `a ≥ b`; `MaxInclusive(a) ⟹ MaxInclusive(b)` iff `a ≤ b`; exclusive variants analogous.
-* Cross-cases between inclusive and exclusive follow directly, e.g. `MinInclusive(a) ⟹ MinExclusive(b)` iff `a > b`.
-* `Values(S₁) ⟹ Values(S₂)` iff `S₁ ⊆ S₂`.
-* `MultipleOf(m) ⟹ MultipleOf(n)` iff `n` divides `m`.
-* `Union`, `Intersection`, `Not` distribute as expected.
-
-Any new `Constraint` form added later must come with an implication rule, or the subset algorithm cannot accept it.
 
 ## Library Types
 
@@ -409,12 +397,44 @@ On exit the aggregate ends on a byte boundary and the enclosing scope continues 
 
 **Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
 
-## Subset Determination
+## Type Membership
 
-When invoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
-that value fits the type the command expects. These rules define when that is the case.
+When a transformation produces a value and delivers it into a typed slot — a cluster member's value, a built-in's parameter, a field of a struct under construction — the implementation must decide whether the value belongs to that slot's type. This section defines that relation.
 
-TODO
+Membership is a purely value-level decision: given a value *v* and a type *T*, answer yes or no. No reasoning relates one type to another; there is no implication algebra, no subtyping relation, no variance. Each decision is a local walk of the value driven by the shape of the type, structurally analogous to decoding.
+
+### Per-Type Rules
+
+**Unit** — the sole value is a member.
+
+**UnsignedInteger(n, constraint)**, **SignedInteger(n, constraint)**, **VariableLengthInteger(maxN, constraint)** — *v* is a member iff *v* fits the declared size and satisfies `constraint` (evaluated per *Constraint Evaluation* below).
+
+**FloatingPoint(n, constraint)** — *v* is a member iff *v* is a finite binary32 (when *n* = 4) or binary64 (when *n* = 8) value and satisfies `constraint`.
+
+**Single-constructor type** `T { f₁: T₁, ..., fₖ: Tₖ }` — *v* is a member iff *v* is built with *T*'s constructor and every field *fᵢ* is a member of *Tᵢ*.
+
+**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — *v* is a member iff the constructor used to build *v* appears among *C₀ … Cₙ₋₁* (matched by name and field signature) and, for that constructor's fields, each field value is a member of its declared field type in *T*. This is the mechanism by which a value of a narrower sum type is admitted into a slot typed by a wider sum type: no cross-type relation is consulted, only the value's shape.
+
+**Array(T, size)** — *v* is a member iff its length satisfies `size` (evaluated as a constraint over a non-negative integer) and every element is a member of *T*.
+
+**Set(T, size)** — as `Array`, with the additional requirement that elements are pairwise distinct.
+
+**Stream(T)** — each element produced or consumed through the stream is a member iff it is a member of *T*. A stream has no terminal state, so there is no membership decision over the stream as a whole.
+
+### Constraint Evaluation
+
+A `Constraint` is evaluated against a candidate value by structural recursion:
+
+* `All` — always satisfied.
+* `MinInclusive(a)` — satisfied iff `v ≥ a`. `MinExclusive(a)` iff `v > a`. `MaxInclusive(a)` iff `v ≤ a`. `MaxExclusive(a)` iff `v < a`.
+* `Range(min, max)` — evaluated as `Intersection(MinInclusive(min), MaxInclusive(max))`.
+* `Values(S)` — satisfied iff `v ∈ S`.
+* `MultipleOf(m)` — satisfied iff `v mod m = 0`.
+* `Union(a, b)` — satisfied iff either sub-constraint is.
+* `Intersection(a, b)` — satisfied iff both sub-constraints are.
+* `Not(inner)` — satisfied iff `inner` is not.
+
+Any new `Constraint` form added later must come with an evaluation rule, or the membership algorithm cannot accept it.
 
 ## Transformation Language
 

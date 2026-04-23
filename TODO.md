@@ -49,6 +49,8 @@
 
 - **Cross-cluster write contention detection.** When two `scan.vmods` clusters on different devices both write into the same target modality, LWW arbitrates each individual write, but the two clusters can oscillate by repeatedly overriding each other. The host should detect this case (its own writes on a cluster member being clobbered by another peer at a high rate) and surface it through `scan.logs` and per-modality status in `scan.health`. Define the threshold and the reporting shape. Prevention proper belongs to admin tooling that has the full wiring graph across devices.
 
+- **Rework vmod transform for streaming model.** The `scan.vmods` section still describes transforms with the signature `(state: Array<MemberValue>) -> Array<MemberValue>` and says a transform "will see all other current state of all the other members." This contradicts the streaming/no-full-value-in-memory model now described in the Modality and LWW sections. Redesign: transforms are event-driven per member (bounded write arrival or stream item arrival), invocations are pure and bounded, stream-typed members flow through as per-item invocations (no accumulation), cross-member coupling is restricted to members whose values are small enough that the host can reasonably cache them. Also revisit the Transformation Language section in `TYPES.md` in light of this.
+
 ---
 
 ## Application Layer & Modalities
