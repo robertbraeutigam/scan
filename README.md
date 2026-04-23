@@ -537,7 +537,7 @@ Noise Protocol Name and version of the logical layer.
 InitiateHandshake {
    noiseProtocolName: String(MaxInclusive(128)),
    protocolVersion:   Version,                                    // 1.0 for this specification
-   handshake:         DynamicArray(Byte, length = MaxInclusive(128))
+   handshake:         Array(Byte, size = MaxInclusive(128))
 }
 ```
 
@@ -614,7 +614,7 @@ protocol variant.
 
 ```
 ContinueHandshake {
-   handshake: DynamicArray(Byte, length = MaxInclusive(128))
+   handshake: Array(Byte, size = MaxInclusive(128))
 }
 ```
 
@@ -638,7 +638,7 @@ Payload = IntermediatePayloadChunk | LastPayloadChunk | SingleChunkPayload
 
 // Used later
 EncryptedPayload {
-   payload:   DynamicArray(Byte, length = MaxInclusive(1100)), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
+   payload:   Array(Byte, size = MaxInclusive(1100)), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
    mac:       Array(Byte, size = 16)
 }
 ```
@@ -720,7 +720,7 @@ why multiple static keys may reside at the same IP address.
 Advertisement {
    port:       UnsignedInteger(2),
    generation: VariableLengthInteger(8),
-   peers:      DynamicArray(PeerAddress, length = MaxInclusive(16))
+   peers:      Array(PeerAddress, size = MaxInclusive(16))
 }
 ```
 
@@ -788,7 +788,7 @@ the segment.
 ```
 AdvertisementRequest {
    port:      UnsignedInteger(2),
-   peers:     DynamicArray(PeerAddress, length = MaxInclusive(16))
+   peers:     Array(PeerAddress, size = MaxInclusive(16))
 }
 ```
 
@@ -1171,7 +1171,7 @@ ResponderMessage = Modalities | State
 Responders send this message as soon as a connection is established, unsolicited.
 
 ```
-Modalities = DynamicArray(Modality)
+Modalities = Array(Modality)
 
 Modality {
    id:                 String,                // Identifier of this modality on this device
@@ -1301,11 +1301,11 @@ Modality(
    inputType   = Rights
 )
 
-Rights = DynamicArray(PskRight)
+Rights = Array(PskRight)
 
 PskRight {
    psk:           PSK,
-   rights:        DynamicArray(Right)
+   rights:        Array(Right)
 }
 
 Right {
@@ -1341,7 +1341,7 @@ Modality(
    inputType   = Keys
 )
 
-Keys = DynamicArray(Key)
+Keys = Array(Key)
 
 Key {
    device:        PeerAddress,
@@ -1469,7 +1469,7 @@ VersionData {
 UserDefinedData {
    applicationName:   Option(String),        // User editable name for the current application / environment
    location:          Option(String),        // User editable location
-   tags:              DynamicArray(String)   // User editable set of tags
+   tags:              Array(String)   // User editable set of tags
 }
 ```
 
@@ -1517,7 +1517,7 @@ DeviceHealth {
    networkLatency: HardSoftLimited(TimeInterval),
 
    modalityStatus: HealthStatus,             // Sum status of all modalities
-   modalityHealths: DynamicArray(ModalityHealth)
+   modalityHealths: Array(ModalityHealth)
 }
 
 HealthStatus = Ok | Degraded { reason: String } | Error { reason: String }
@@ -1673,7 +1673,7 @@ Modality(
    inputType   = Unit
 )
 
-NetworkStatistics = DynamicArray(NetworkPeerStatistics)
+NetworkStatistics = Array(NetworkPeerStatistics)
 
 NetworkPeerStatistics {
    remotePeer:         PeerAddress,
@@ -1702,7 +1702,7 @@ Modality(
 )
 
 NetworkConfiguration {
-   interfaces:    DynamicArray(InterfaceConfig, length = MinInclusive(1)),
+   interfaces:    Array(InterfaceConfig, size = MinInclusive(1)),
    reachability:  Reachability
 }
 
@@ -1738,8 +1738,8 @@ Ipv6Address = Array(Byte, size = 16)
 IpAddress   = V4 { address: Ipv4Address } | V6 { address: Ipv6Address }
 
 Reachability = LocalOnly
-             | GatewayOnly { gateways: DynamicArray(Gateway, length = MinInclusive(1)) }
-             | Mixed       { gateways: DynamicArray(Gateway, length = MinInclusive(1)) }
+             | GatewayOnly { gateways: Array(Gateway, size = MinInclusive(1)) }
+             | Mixed       { gateways: Array(Gateway, size = MinInclusive(1)) }
 
 Gateway {
    ip:     IpAddress,
@@ -1837,15 +1837,15 @@ Modality(
    inputType   = VirtualModalityClusters
 )
 
-VirtualModalityClusters = DynamicArray(VirtualModalityCluster)
+VirtualModalityClusters = Array(VirtualModalityCluster)
 
 VirtualModalityCluster {
-   members: DynamicArray(ClusterMember)
+   members: Array(ClusterMember)
 }
 
 ClusterMember {
    modality:   Modality,
-   transform:  DynamicArray(Byte)    // Compiled transformation program
+   transform:  Array(Byte)    // Compiled transformation program
 }
 ```
 
@@ -1887,7 +1887,7 @@ Modality(
    inputType   = Wiring
 )
 
-Wiring = DynamicArray(Wire)
+Wiring = Array(Wire)
 
 Wire {
    remoteModality:     RemoteModalityReference,
@@ -2106,7 +2106,7 @@ credentials and cause the device to join an unintended network. The wire format 
 ```
 EncryptedBringUpBlob {
    nonce:          Array(Byte, size = 12),
-   ciphertext:     DynamicArray(Byte),    // AES-256-GCM encrypted BringUpBlob
+   ciphertext:     Array(Byte),    // AES-256-GCM encrypted BringUpBlob
    tag:            Array(Byte, size = 16) // AES-256-GCM authentication tag
 }
 ```

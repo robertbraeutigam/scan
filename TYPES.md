@@ -68,23 +68,16 @@ All values are stored in big-endian ordering.
 
 The type system defines following built-in aggregate types:
 * Array
-* DynamicArray
 * Set
 * Stream
 
-An `Array` is an ordered aggregation of multiple values of the given type with a compile-time fixed length. It is written like this:
+An `Array` is an ordered aggregation of multiple values of the given type. The number of items is bounded by a `Constraint` passed as the `size` parameter; an integer literal is sugar for a fixed count. When the constraint admits only a single length the count is fixed by the type and is not written on the wire; otherwise the count is written alongside the value.
 
 ```
-HourlyMeasurements = Array(Measurement, size=24)
+HourlyMeasurements = Array(Measurement, size = 24)      // exactly 24, no count on the wire
+Events             = Array(Event)                        // unbounded (size = All), count on the wire
+Handshake          = Array(Byte, size = MaxInclusive(128)) // 0..128, count on the wire
 ```
-
-The `Array` type is useful, because the number of items do not need to be written to the wire. However, if the number of items is not known a-priori there's the `DynamicArray`, which can have a different size in each value.
-
-```
-Events = DynamicArray(Event)
-```
-
-The downside is, that the length needs to be written onto the wire.
 
 A `Set` is an **unordered** collection of **distinct** values of the given type. Any element type is allowed. When the element type contains no data (thus whether it's present in the set can be described by a single bit), a `Set` wire-encodes naturally as a bitmask; otherwise it is encoded as a deduplicated variable-length sequence. The concrete encoding is defined in *Values Binary Representation* below.
 
@@ -136,7 +129,7 @@ The right-hand side is a single type reference. Examples:
 
 ```
 Word     = UnsignedInteger(2)
-Bytes    = DynamicArray(Byte)
+Bytes    = Array(Byte)
 PortNumber = UnsignedInteger(2, constraint = Range(min = 1, max = 65535))
 ```
 
@@ -202,9 +195,9 @@ Each built-in below declares the `Constraint`-typed parameters it accepts and fi
 
 * `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
 * `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
-* `DynamicArray(elementType, length: Constraint = All)` — `length` narrows the number of elements. All forms accepted; literals must be non-negative integers.
-* `Set(elementType, size: Constraint = All)` — `size` narrows set cardinality (same rules as `DynamicArray`).
-* `Array(elementType, size)`, `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Array`'s length is already fixed; `Stream` is unbounded by definition; `Unit` has exactly one value.)
+* `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
+* `Set(elementType, size: Constraint = All)` — `size` narrows set cardinality (same rules as `Array`).
+* `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
 
 #### Worked examples
 
@@ -244,7 +237,7 @@ Note that `Measurement` does not interpret `valueConstraint` — it only forward
 A length-bounded byte string:
 
 ```
-Handshake = DynamicArray(UnsignedInteger(1), length = Range(min = 0, max = 128))
+Handshake = Array(UnsignedInteger(1), size = Range(min = 0, max = 128))
 ```
 
 Subsetting a sum type is done by defining a narrower sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
@@ -298,10 +291,10 @@ The standard "value or absence" sum type. Used everywhere a field may be missing
 ### String
 
 ```
-String(length: Constraint = All) = DynamicArray(Byte, length)
+String(size: Constraint = All) = Array(Byte, size)
 ```
 
-A length-bounded byte string. The `length` parameter forwards to the underlying `DynamicArray`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
+A length-bounded byte string. The `size` parameter forwards to the underlying `Array`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
 
 Note, that strings are not bound by characters but by the overall bytes needed. This is specifically for protocol clarity.
 
@@ -324,8 +317,8 @@ A type is serialized as a value (using the *Values Binary Representation* below)
 ```
 TypeDefinition {
     name: String,
-    parameters: DynamicArray(ParameterDefinition),
-    union: DynamicArray(ConstructorDefinition, length = MinInclusive(1))
+    parameters: Array(ParameterDefinition),
+    union: Array(ConstructorDefinition, size = MinInclusive(1))
 }
 
 ParameterDefinition {
@@ -336,7 +329,7 @@ ParameterDefinition {
 
 ConstructorDefinition {
     name: String,
-    fields: DynamicArray(FieldDefinition)
+    fields: Array(FieldDefinition)
 }
 
 FieldDefinition {
@@ -344,7 +337,7 @@ FieldDefinition {
     type: Expression
 }
 
-Expression = Invocation { name: String, arguments: DynamicArray(Expression) }
+Expression = Invocation { name: String, arguments: Array(Expression) }
            | Integer    { value: SignedInteger(8) }
            | Float      { value: FloatingPoint(8) }
            | String     { value: String }
@@ -367,7 +360,7 @@ The wire form carries only the value — nothing describes the type. Both sides 
 
 ### Principles
 
-The encoding is byte-oriented for bulk data and bit-packed for sub-byte fields. Within a struct or union, sub-byte fields (union discriminators, booleans, small bare-only bitmask `Set`s) share bytes with each other — consecutive sub-byte pieces fill up the same byte even when byte-aligned fields appear between them. Aggregates (`Array`, `DynamicArray`, `Set`, `Stream`) always begin and end on a byte boundary and do not share bit state with their surroundings; their items either pack (8, 4, or 2 per byte) or are byte-aligned, one item at a time.
+The encoding is byte-oriented for bulk data and bit-packed for sub-byte fields. Within a struct or union, sub-byte fields (union discriminators, `Boolean`s, bare-only bitmask `Set`s) share bytes with each other — consecutive sub-byte pieces fill up the same byte even when byte-aligned fields appear between them. Aggregates (`Array`, `Set`, `Stream`) always begin and end on a byte boundary and do not share bit state with their surroundings; items of 1..4 bits pack as a continuous bit stream across the aggregate's byte span, while larger items are byte-aligned one at a time.
 
 ### Encoder and Decoder State
 
@@ -402,32 +395,31 @@ A byte-aligned value of *n* bytes is written at the current cursor; the cursor a
 
 **Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — a `⌈log₂ n⌉`-bit discriminator is written (via the bit-packing rule) carrying the zero-based index of the selected constructor in declaration order, followed by that constructor's fields. Bit state carries across both. If *n* = 1 the discriminator occupies 0 bits and nothing is written for it.
 
-**Array(T, size)** — on entry the aggregate is aligned to a byte boundary (any in-progress bit byte is closed in place), and bit state becomes `None`. Then `size` consecutive encodings of *T* follow, with no count. Two layouts are possible:
+**Array(T, size = C)** — on entry the aggregate is aligned to a byte boundary (any in-progress bit byte is closed in place) and bit state becomes `None`. If *C* admits more than one length, the item count is written first as `VariableLengthInteger(v)`, where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`); when *C*'s lower bound is a positive number *m*, the value written is `actualCount − m` and the decoder adds *m* back. If *C* admits exactly one length, no count is written — the decoder reads that fixed number of items straight from the type. The count (if any) is followed by that many encodings of *T* under one of two layouts:
 
-* **Packed item layout** — used when *T* has a statically fixed encoded size of exactly 1, 2, or 4 bits. Items share bytes: 8, 4, or 2 items per byte respectively. The first item occupies the highest-significance slots. If `size` is not a multiple of 8/4/2, the last byte's trailing slots remain `0`.
+* **Packed item layout** — used when *T* has a statically fixed encoded size of 1, 2, 3, or 4 bits. The items form a continuous MSB-first bit stream within the aggregate's byte span; individual items may cross byte boundaries. The first item's most-significant bit occupies the top of the first byte of item data. If the total number of item bits is not a multiple of 8, the trailing slots of the last byte remain `0`.
 * **Byte-aligned item layout** — used otherwise. Each item begins on a byte boundary and occupies `⌈item_bits / 8⌉` bytes; an item may itself use bit-packing internally (if it is a struct or union with sub-byte fields), but that bit state is contained within the item's byte span and does not carry across items.
 
 On exit the aggregate ends on a byte boundary and the enclosing scope continues with bit state `None`.
 
-**DynamicArray(T, length = C)** — entered and exited at byte boundaries, exactly as `Array`. **Always starts with the actual item count**, encoded as `VariableLengthInteger(v)` where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`). The count is followed by that many items under the same packed-or-byte-aligned rule as `Array`.
-
 **Set(T, size = C)** — takes one of two forms, selected by *T*:
 
 * **Bitmask form**, when every constructor of *T* is a bare identifier (so *T* has a fixed value space of *K* members). The set is encoded as `⌈K / 8⌉` bytes of bitmask; within each byte the highest-significance bit is considered first, and bit *i* of the stream (so bit *i* mod 8 of byte *i* div 8, counting MSB-first) is 1 iff constructor *i*, in declaration order, is a member. No count is written. Entered/exited at byte boundaries like any aggregate.
-* **Sequence form**, otherwise. Identical to `DynamicArray(T, length = C)`, including the leading count. Each value appears at most once; order is unspecified on the wire (encoders may sort for determinism).
+* **Sequence form**, otherwise. Identical to `Array(T, size = C)` — including the conditional leading count and the packed / byte-aligned item layouts. Each value appears at most once; order is unspecified on the wire (encoders may sort for determinism).
 
 **Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
 
 ### Packable Item Sizes
 
-The "statically fixed 1, 2, or 4 bits" test is met by:
+The "statically fixed 1..4 bits" test is met by:
 
 * a union of 2 bare-only constructors (1 bit),
 * a union of 3 or 4 bare-only constructors (2 bits),
+* a union of 5 to 8 bare-only constructors (3 bits),
 * a union of 9 to 16 bare-only constructors (4 bits), and
-* rarely, a single-constructor struct whose fields add up statically to exactly one of those sizes.
+* rarely, a single-constructor struct whose fields add up statically to one of those sizes.
 
-Any other item — including a union of 5 to 8 bare constructors (which needs 3 bits) and any item with variable-size or multi-byte content — is byte-aligned, one item at a time, consuming `⌈bits / 8⌉` bytes. When an item is itself sub-byte (e.g. a 3-bit discriminator), that value is written MSB-first starting at the top of its first byte, and trailing slots of its last byte remain `0`.
+Any other item — a union of 17 or more bare constructors (needs 5+ bits), or any item with variable-size or multi-byte content — is byte-aligned, one item at a time, consuming `⌈bits / 8⌉` bytes. When an item is itself sub-byte but has 5 or more bits (e.g. a 5-bit discriminator in the byte-aligned layout), its value is written MSB-first starting at the top of its first byte, and trailing slots of its last byte remain `0`.
 
 ### Library Types
 
@@ -435,7 +427,7 @@ These follow from the rules above; listed for clarity.
 
 * **Boolean** (`True | False`) — 1 bit. Value `0` selects `True`, `1` selects `False` (declaration order).
 * **Option(T)** (`None | Some { value: T }`) — 1-bit discriminator (`0` = `None`, `1` = `Some`); if `Some`, *T*'s encoding follows.
-* **String(length = C)** — identical to `DynamicArray(Byte, length = C)`.
+* **String(size = C)** — identical to `Array(Byte, size = C)`.
 * **DynamicValue** — the bytes of the contained value, encoded by these rules using the type resolved from context. No wrapper, no length.
 * **Type** — encoded via the AST given in *Types Binary Representation*.
 
@@ -447,7 +439,7 @@ From the SCAN protocol spec:
 SingleChunkPayload = EncryptedPayload
 
 EncryptedPayload {
-   payload: DynamicArray(Byte, length = MaxInclusive(1100)),
+   payload: Array(Byte, size = MaxInclusive(1100)),
    mac:     Array(Byte, size = 16)
 }
 ```
@@ -455,10 +447,10 @@ EncryptedPayload {
 Consider an instance whose `payload` is the five bytes `AA BB CC DD EE` and whose `mac` is `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
 
 1. `SingleChunkPayload` is an alias for `EncryptedPayload`; aliases do not appear on the wire. The encoding is that of a single-constructor struct with two fields — no discriminator.
-2. `payload` is a `DynamicArray`. Entering the aggregate starts on a byte boundary (here there is no prior bit state, so nothing to close).
-   * Count is written first. `MaxInclusive(1100)` requires a VLI that can represent values up to 1100, so *v* = 2 (`VLI(1)` tops out at 255; `VLI(2)` reaches 32767). The value 5 fits in a single VLI byte with high bit 0: `05`.
-   * Items are `Byte` = `UnsignedInteger(1)`, 8 bits each — not 1/2/4 bits, therefore byte-aligned, one byte per item: `AA BB CC DD EE`.
-3. Exit the aggregate on a byte boundary. `mac` is an `Array(Byte, size = 16)` — no count, 16 byte-aligned items: `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
+2. `payload` is `Array(Byte, size = MaxInclusive(1100))`. The size constraint admits 0..1100, more than one length, so a count is written. Entering the aggregate starts on a byte boundary (here there is no prior bit state, so nothing to close).
+   * Count is written first. The constraint requires a VLI that can represent values up to 1100, so *v* = 2 (`VLI(1)` tops out at 255; `VLI(2)` reaches 32767). The lower bound is 0, so no delta subtraction applies. The value 5 fits in a single VLI byte with high bit 0: `05`.
+   * Items are `Byte` = `UnsignedInteger(1)`, 8 bits each — not 1..4 bits, therefore byte-aligned, one byte per item: `AA BB CC DD EE`.
+3. Exit the aggregate on a byte boundary. `mac` is `Array(Byte, size = 16)`. The integer literal `16` is sugar for `Values({16})`, which admits exactly one length, so no count is written. 16 byte-aligned items follow: `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
 
 Wire (22 bytes):
 
@@ -468,7 +460,7 @@ Wire (22 bytes):
 
 For a maximum-sized payload (1100 bytes), the count would consume 2 VLI bytes (`84 4C` — `84` carries continuation bit plus the high 7 value bits `0000100`, `4C` carries the low 8 value bits; `4 × 256 + 76 = 1100`), and the encoding would total 1118 bytes (2 + 1100 + 16).
 
-`SingleChunkPayload` carries no sub-byte fields, so bit-packing does not surface in this example; it would come into play whenever a struct carries a `Boolean`, a small union discriminator, or a bare-only `Set` bitmask — and packed-item layout inside an `Array`/`DynamicArray`/`Set`/`Stream` surfaces when the element type matches one of the *Packable Item Sizes* above.
+`SingleChunkPayload` carries no sub-byte fields, so bit-packing does not surface in this example; it would come into play whenever a struct carries a `Boolean`, a small union discriminator, or a bare-only `Set` bitmask — and packed-item layout inside an `Array`/`Set`/`Stream` surfaces when the element type matches one of the *Packable Item Sizes* above.
 
 ## Subset Determination
 
