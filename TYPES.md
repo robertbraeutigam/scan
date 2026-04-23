@@ -409,59 +409,6 @@ On exit the aggregate ends on a byte boundary and the enclosing scope continues 
 
 **Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
 
-### Packable Item Sizes
-
-The "statically fixed 1..4 bits" test is met by:
-
-* a union of 2 bare-only constructors (1 bit),
-* a union of 3 or 4 bare-only constructors (2 bits),
-* a union of 5 to 8 bare-only constructors (3 bits),
-* a union of 9 to 16 bare-only constructors (4 bits), and
-* rarely, a single-constructor struct whose fields add up statically to one of those sizes.
-
-Any other item — a union of 17 or more bare constructors (needs 5+ bits), or any item with variable-size or multi-byte content — is byte-aligned, one item at a time, consuming `⌈bits / 8⌉` bytes. When an item is itself sub-byte but has 5 or more bits (e.g. a 5-bit discriminator in the byte-aligned layout), its value is written MSB-first starting at the top of its first byte, and trailing slots of its last byte remain `0`.
-
-### Library Types
-
-These follow from the rules above; listed for clarity.
-
-* **Boolean** (`True | False`) — 1 bit. Value `0` selects `True`, `1` selects `False` (declaration order).
-* **Option(T)** (`None | Some { value: T }`) — 1-bit discriminator (`0` = `None`, `1` = `Some`); if `Some`, *T*'s encoding follows.
-* **String(size = C)** — identical to `Array(Byte, size = C)`.
-* **DynamicValue** — the bytes of the contained value, encoded by these rules using the type resolved from context. No wrapper, no length.
-* **Type** — encoded via the AST given in *Types Binary Representation*.
-
-### Worked Example — `SingleChunkPayload`
-
-From the SCAN protocol spec:
-
-```
-SingleChunkPayload = EncryptedPayload
-
-EncryptedPayload {
-   payload: Array(Byte, size = MaxInclusive(1100)),
-   mac:     Array(Byte, size = 16)
-}
-```
-
-Consider an instance whose `payload` is the five bytes `AA BB CC DD EE` and whose `mac` is `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
-
-1. `SingleChunkPayload` is an alias for `EncryptedPayload`; aliases do not appear on the wire. The encoding is that of a single-constructor struct with two fields — no discriminator.
-2. `payload` is `Array(Byte, size = MaxInclusive(1100))`. The size constraint admits 0..1100, more than one length, so a count is written. Entering the aggregate starts on a byte boundary (here there is no prior bit state, so nothing to close).
-   * Count is written first. The constraint requires a VLI that can represent values up to 1100, so *v* = 2 (`VLI(1)` tops out at 255; `VLI(2)` reaches 32767). The lower bound is 0, so no delta subtraction applies. The value 5 fits in a single VLI byte with high bit 0: `05`.
-   * Items are `Byte` = `UnsignedInteger(1)`, 8 bits each — not 1..4 bits, therefore byte-aligned, one byte per item: `AA BB CC DD EE`.
-3. Exit the aggregate on a byte boundary. `mac` is `Array(Byte, size = 16)`. The integer literal `16` is sugar for `Values({16})`, which admits exactly one length, so no count is written. 16 byte-aligned items follow: `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
-
-Wire (22 bytes):
-
-```
-05  AA BB CC DD EE  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
-```
-
-For a maximum-sized payload (1100 bytes), the count would consume 2 VLI bytes (`84 4C` — `84` carries continuation bit plus the high 7 value bits `0000100`, `4C` carries the low 8 value bits; `4 × 256 + 76 = 1100`), and the encoding would total 1118 bytes (2 + 1100 + 16).
-
-`SingleChunkPayload` carries no sub-byte fields, so bit-packing does not surface in this example; it would come into play whenever a struct carries a `Boolean`, a small union discriminator, or a bare-only `Set` bitmask — and packed-item layout inside an `Array`/`Set`/`Stream` surfaces when the element type matches one of the *Packable Item Sizes* above.
-
 ## Subset Determination
 
 When invoking commands with some data value, possibly a transformed one, it is important to be able to tell whether
