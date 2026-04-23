@@ -319,11 +319,44 @@ A value of any type. Wire-encoded as the bytes of the value with no embedded typ
 
 ## Types Binary Representation
 
-This binary represenation is actually used by devices during normal operations, so it is parsed
-dynamically runtime by devices. This information is usually read once, then not used anymore. It is therefore more important to have an easy
-parsing instead versus an efficient encoding.
+A type is serialized as a value (using the *Values Binary Representation* below) of the following AST:
 
-TODO
+```
+TypeDefinition {
+    name: String,
+    parameters: DynamicArray(ParameterDefinition),
+    union: DynamicArray(ConstructorDefinition, length = MinInclusive(1))
+}
+
+ParameterDefinition {
+    name: String,
+    type: Expression,
+    default: Option(Expression)
+}
+
+ConstructorDefinition {
+    name: String,
+    fields: DynamicArray(FieldDefinition)
+}
+
+FieldDefinition {
+    name: String,
+    type: Expression
+}
+
+Expression = Invocation { name: String, arguments: DynamicArray(Expression) }
+           | Integer    { value: SignedInteger(8) }
+           | Float      { value: FloatingPoint(8) }
+           | String     { value: String }
+```
+
+An `Expression` is a self-describing term. `Invocation` covers every name-based form — type references, generic type applications, value-constructor calls, and bare-identifier constructors (`None`, `All`, `True`, `False` — zero-argument invocations). The three literal variants are the only non-invocation leaves that appear in the surface language.
+
+`Invocation.arguments` are positional. The textual language allows named arguments and default values for ergonomics; the compiler resolves both into a canonical positional list before emission, so the wire AST needs no per-argument name wrapper.
+
+Integer literals are bounded to the `SignedInteger(8)` range. A literal outside that range (e.g. a `MaxInclusive` bound at `UnsignedInteger(8)`'s maximum of 2⁶⁴−1) cannot be expressed in the AST and must be rewritten by the author.
+
+A `Type` value (as declared in *Library Types*) is an `Expression` — specifically, an `Invocation`. Aliases are resolved during compilation and do not appear in the AST.
 
 ## Values Binary Representation
 
