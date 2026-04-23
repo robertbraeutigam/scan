@@ -988,6 +988,29 @@ model.
 Beyond this, the only per-instance state the protocol itself requires is the small Lamport metadata used to order writes (see
 *Last-Writer-Wins Ordering* below).
 
+**Message atomicity.** A receiver processes at most one incoming `State` at a time for a given modality instance. If a peer
+attempts a new `State` for the same instance while one is already in progress, the receiver rejects the attempt with a `Busy`
+message (see *Shared Messages* below). The rejected sender stops transmitting the in-flight message, discards its partial-send
+record, and keeps only its authoritative output copy (already required above). Any further local state changes that occur while
+the sender is waiting are coalesced into that held copy. When the receiver finishes processing and is willing to accept another
+`State` for that modality, it sends a `Ready` message; the sender then transmits whatever value the held copy has at that
+moment.
+
+For `scan.vmods` cluster members the unit of serialization is the whole cluster rather than a single instance: a `State` in
+progress for any cluster member causes `Busy` on every other member of the same cluster. This is the cost of the cross-member
+consistency that a cluster exists to provide. See *Virtual Modalities* in the Application Layer for the cluster model.
+
+The cost of this mechanism is paid only under actual contention. In the common case of a single writer per modality instance
+no `Busy` or `Ready` message is ever exchanged — the sender sends, the receiver consumes, and no per-message acknowledgement
+traffic crosses the wire. This is what lets SCAN avoid per-chunk acknowledgements entirely, which would otherwise impose a
+fixed tax on every subscription whether it contended or not.
+
+**Endless-stream modalities.** A modality whose `inputType` ends in an unbounded `Stream` holds the receiver's attention for
+as long as the stream continues. Contending writers on such an input remain in `Busy` until the active writer finishes, which
+for a truly endless stream is never. Such modalities are therefore intended to have a single writer — per instance for plain
+modalities, per cluster for `scan.vmods` — and wiring is the place to enforce that at configuration time; at runtime,
+additional writers simply remain in `Busy` indefinitely.
+
 While connecting modalities is semantically symmetric, as data is moving back and forth the same way between devices, with exactly same rules, the
 connection itself is not symmetric. One device, the *Initiator*, connects to the other device, the *Responder*. The Initiator will make requests
 to the Responder, which will reply. Note also, that the Initiator will present the PSK, therefore the Responder will authorize the Initiator to
@@ -1080,7 +1103,7 @@ external source of truth exists to contradict it.
 ### Initiator Messages
 
 ```
-InitiatorMessage = Subscribe | Unsubscribe | State
+InitiatorMessage = Subscribe | Unsubscribe | State | Busy | Ready
 ```
 
 #### Subscribe
@@ -1127,8 +1150,10 @@ detection, while a dashboard displaying the same sensor leaves it unset and ride
 The Initiator may repeat this message if the waiting period, priority, or liveness
 timeout changes for some reason.
 
-The Responder must not send messages for the same data packet in parallel. It must always send messages
-for the same data sequentially.
+A Responder has at most one `State` in flight per subscribed modality instance at a
+time, per the *Message atomicity* rule in the Modalities Layer overview. Values that
+change while a `State` is being transmitted are coalesced into the authoritative
+output copy and transmitted after the current message completes.
 
 #### Unsubscribe
 
@@ -1179,7 +1204,7 @@ discussion.
 ### Responder Messages
 
 ```
-ResponderMessage = Modalities | State
+ResponderMessage = Modalities | State | Busy | Ready
 ```
 
 #### Modalities
@@ -1251,6 +1276,62 @@ side: `counter` is always present and monotonically increasing per instance;
 `writer` is omitted when the sender is itself the writer of the current value.
 See the *Modality Instance Groups and Shared State* technical discussion for
 what these fields are for.
+
+### Shared Messages
+
+These messages may be sent by either party. They implement the *Message atomicity*
+rule of the Modalities Layer: the receiver of `State` traffic pushes back when it
+cannot accept another message for a modality, and later invites the sender to resume.
+Neither message is sent in the absence of contention, so well-behaved single-writer
+subscriptions never exchange these messages at all.
+
+#### Busy
+
+Reject an incoming `State` because the receiver is already processing another `State`
+for the same modality instance (or, for `scan.vmods` cluster members, for any member
+of the same cluster).
+
+```
+Busy {
+   modality: IndexedModalityReference
+}
+```
+
+A peer that receives `Busy` for a modality must:
+
+* immediately stop transmitting further chunks of any in-flight `State` for that
+  modality on this connection (the receiver has already discarded the partial bytes),
+* discard its record of the rejected send — its Message Id becomes reusable,
+* keep its authoritative output copy for the modality (already required by the
+  Modalities Layer rules), and
+* not send another `State` for that modality on this connection until it receives a
+  matching `Ready`.
+
+Any local state changes that occur while waiting are coalesced into the held copy;
+only the value the sender holds at the moment `Ready` arrives is transmitted.
+
+`Busy` is sent only in reaction to an attempted send. A peer does not pre-emptively
+`Busy` a subscription that is silent.
+
+#### Ready
+
+Invite a previously-rejected sender to resume `State` transmission for a modality.
+
+```
+Ready {
+   modality: IndexedModalityReference
+}
+```
+
+`Ready` is sent exactly once per preceding `Busy` on a given connection, by the peer
+that sent the `Busy`, once processing of the blocking `State` has completed and the
+receiver is again willing to accept a `State` for the referenced modality. On receipt,
+the target peer sends its current authoritative value for the modality as a new `State`.
+
+If the connection drops between `Busy` and `Ready`, no replay is required. On
+reconnection the subscription starts fresh; normal send behaviour resumes and any
+held state is sent as a normal `State`, subject to `Busy`/`Ready` again if contention
+re-emerges.
 
 ## Application Layer
 
@@ -2332,11 +2413,20 @@ reconnected, or replaced without disrupting the rest of the group.
 
 ### Network Backpressure
 
-Network Backpressure is the mechanism by which consumers of messages can tell producers to slow
-down producing messages in the event that they can't consume them fast enough, or if
-the network is saturated and can't handle more traffic.
+SCAN uses two distinct, complementary backpressure mechanisms.
 
-If a consumer
+**Modality-level backpressure** is an explicit application-level mechanism using the
+`Busy` and `Ready` shared messages of the Modalities Layer. It is scoped to a single
+modality instance — or to a whole `scan.vmods` cluster, which is serialized as one
+unit — and enforces message-level atomicity: while a receiver is processing one
+incoming `State`, any further `State` for the same scope is rejected with `Busy`;
+the sender keeps its authoritative copy (already required), coalesces further local
+updates into it, and re-sends on receipt of `Ready`. In the common case of a single
+writer per modality instance this mechanism is entirely silent — no `Busy` or
+`Ready` is ever exchanged, and no per-chunk acknowledgement traffic is paid for by
+subscriptions that do not contend.
+
+**Network-level backpressure** is the ambient TCP-level mechanism. If a consumer
 is not ready to process another message it will not empty the TCP receive buffer,
 therefore eventually the buffer runs full, which will result in not acknowledging
 packets. This will eventually result in the send buffer of the producer to fill up as well.
@@ -2353,6 +2443,11 @@ the first place.
 * In case of streaming messages implement custom *drop* policy based on the data. For example
 in video streams drop obsolete frames, or in case of progressive video drop literal resolution
 until the backpressure is eased.
+
+The two mechanisms are orthogonal. Modality-level backpressure handles per-modality
+receiver-processing contention precisely, at zero cost when there is no contention.
+Network-level backpressure handles transport-wide congestion coarsely, across all
+modalities that share a connection, and must always be honoured regardless.
 
 ### Quality of Service
 
