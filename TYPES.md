@@ -363,7 +363,112 @@ A `Type` value (as declared in *Library Types*) is an `Expression` — specifica
 Values are sent between devices during runtime. It is what the network is designed for, therefore it is important
 to have the most space efficient encoding possible.
 
-TODO
+The wire form carries only the value — nothing describes the type. Both sides are assumed to hold the same type definition and to walk it in lockstep, the encoder emitting bytes and bits in a fixed order derived from the type and the decoder reading them back by replaying the same walk. Multi-byte numeric primitives are big-endian (as already stated under *Built-in "Primitive" Types*).
+
+### Principles
+
+The encoding is byte-oriented for bulk data and bit-packed for sub-byte fields. Within a struct or union, sub-byte fields (union discriminators, booleans, small bare-only bitmask `Set`s) share bytes with each other — consecutive sub-byte pieces fill up the same byte even when byte-aligned fields appear between them. Aggregates (`Array`, `DynamicArray`, `Set`, `Stream`) always begin and end on a byte boundary and do not share bit state with their surroundings; their items either pack (8, 4, or 2 per byte) or are byte-aligned, one item at a time.
+
+### Encoder and Decoder State
+
+Both sides keep:
+
+* a **cursor** — current byte offset into the output or input, and
+* an **active bit byte** — either `None`, or a pair (byte position, bits already used, `0..7`).
+
+The state carries across fields of a struct, across the discriminator and body of a union, and into embedded structs and unions. It **resets to `None`** on entry to any aggregate and again on exit from it; the aggregate's own content is encoded/decoded with a fresh bit state that does not leak in either direction. When bit state is reset with an active bit byte that is only partially filled, the byte is simply closed in place — its unused slots remain `0`.
+
+### Writing a k-bit Value
+
+Used for union discriminators (`1..8` bits), `Boolean`s, and other sub-byte fields within a struct or union scope.
+
+If the active bit byte has at least *k* free bits, the *k* bits are written into the next free slots, the most-significant bit of the value into the highest-significance free slot. The used-bit counter is incremented by *k*; when it reaches 8 the state returns to `None`. Otherwise, a fresh byte is allocated at the current cursor, the cursor advances by one, and that byte becomes the active bit byte with 0 bits used; the *k* bits are then written into it. For *k* > 8, the value is split into groups from the MSB end and each group is written by this rule.
+
+### Writing Byte-Aligned Data
+
+A byte-aligned value of *n* bytes is written at the current cursor; the cursor advances by *n*. **Byte-aligned writes do not close the active bit byte.** A bit written before and a bit written after such a field may share the same byte — the byte physically sits before the intervening bytes in the stream, but its remaining slots are still open. This is the lever that keeps a `Boolean` sitting between two integers from costing a whole extra byte.
+
+### Per-Type Encoding
+
+**Unit** — zero bytes.
+
+**UnsignedInteger(n)**, **SignedInteger(n)** — *n* bytes, big-endian; two's complement for signed.
+
+**FloatingPoint(n)** — *n* bytes, IEEE 754 (binary32 for *n* = 4, binary64 for *n* = 8), big-endian.
+
+**VariableLengthInteger(maxN)** — 1 to *maxN* bytes, most-significant group first. Each non-final byte has its high bit set to 1 and carries 7 value bits. The final byte carries 8 value bits; it is the final byte either because its high bit is 0 or because *maxN* bytes have already been read/written.
+
+**Single-constructor type** `T { ...fields }` — the fields are encoded in declaration order. Bit state carries across them.
+
+**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — a `⌈log₂ n⌉`-bit discriminator is written (via the bit-packing rule) carrying the zero-based index of the selected constructor in declaration order, followed by that constructor's fields. Bit state carries across both. If *n* = 1 the discriminator occupies 0 bits and nothing is written for it.
+
+**Array(T, size)** — on entry the aggregate is aligned to a byte boundary (any in-progress bit byte is closed in place), and bit state becomes `None`. Then `size` consecutive encodings of *T* follow, with no count. Two layouts are possible:
+
+* **Packed item layout** — used when *T* has a statically fixed encoded size of exactly 1, 2, or 4 bits. Items share bytes: 8, 4, or 2 items per byte respectively. The first item occupies the highest-significance slots. If `size` is not a multiple of 8/4/2, the last byte's trailing slots remain `0`.
+* **Byte-aligned item layout** — used otherwise. Each item begins on a byte boundary and occupies `⌈item_bits / 8⌉` bytes; an item may itself use bit-packing internally (if it is a struct or union with sub-byte fields), but that bit state is contained within the item's byte span and does not carry across items.
+
+On exit the aggregate ends on a byte boundary and the enclosing scope continues with bit state `None`.
+
+**DynamicArray(T, length = C)** — entered and exited at byte boundaries, exactly as `Array`. **Always starts with the actual item count**, encoded as `VariableLengthInteger(v)` where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`). The count is followed by that many items under the same packed-or-byte-aligned rule as `Array`.
+
+**Set(T, size = C)** — takes one of two forms, selected by *T*:
+
+* **Bitmask form**, when every constructor of *T* is a bare identifier (so *T* has a fixed value space of *K* members). The set is encoded as `⌈K / 8⌉` bytes of bitmask; within each byte the highest-significance bit is considered first, and bit *i* of the stream (so bit *i* mod 8 of byte *i* div 8, counting MSB-first) is 1 iff constructor *i*, in declaration order, is a member. No count is written. Entered/exited at byte boundaries like any aggregate.
+* **Sequence form**, otherwise. Identical to `DynamicArray(T, length = C)`, including the leading count. Each value appears at most once; order is unspecified on the wire (encoders may sort for determinism).
+
+**Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
+
+### Packable Item Sizes
+
+The "statically fixed 1, 2, or 4 bits" test is met by:
+
+* a union of 2 bare-only constructors (1 bit),
+* a union of 3 or 4 bare-only constructors (2 bits),
+* a union of 9 to 16 bare-only constructors (4 bits), and
+* rarely, a single-constructor struct whose fields add up statically to exactly one of those sizes.
+
+Any other item — including a union of 5 to 8 bare constructors (which needs 3 bits) and any item with variable-size or multi-byte content — is byte-aligned, one item at a time, consuming `⌈bits / 8⌉` bytes. When an item is itself sub-byte (e.g. a 3-bit discriminator), that value is written MSB-first starting at the top of its first byte, and trailing slots of its last byte remain `0`.
+
+### Library Types
+
+These follow from the rules above; listed for clarity.
+
+* **Boolean** (`True | False`) — 1 bit. Value `0` selects `True`, `1` selects `False` (declaration order).
+* **Option(T)** (`None | Some { value: T }`) — 1-bit discriminator (`0` = `None`, `1` = `Some`); if `Some`, *T*'s encoding follows.
+* **String(length = C)** — identical to `DynamicArray(Byte, length = C)`.
+* **DynamicValue** — the bytes of the contained value, encoded by these rules using the type resolved from context. No wrapper, no length.
+* **Type** — encoded via the AST given in *Types Binary Representation*.
+
+### Worked Example — `SingleChunkPayload`
+
+From the SCAN protocol spec:
+
+```
+SingleChunkPayload = EncryptedPayload
+
+EncryptedPayload {
+   payload: DynamicArray(Byte, length = MaxInclusive(1100)),
+   mac:     Array(Byte, size = 16)
+}
+```
+
+Consider an instance whose `payload` is the five bytes `AA BB CC DD EE` and whose `mac` is `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
+
+1. `SingleChunkPayload` is an alias for `EncryptedPayload`; aliases do not appear on the wire. The encoding is that of a single-constructor struct with two fields — no discriminator.
+2. `payload` is a `DynamicArray`. Entering the aggregate starts on a byte boundary (here there is no prior bit state, so nothing to close).
+   * Count is written first. `MaxInclusive(1100)` requires a VLI that can represent values up to 1100, so *v* = 2 (`VLI(1)` tops out at 255; `VLI(2)` reaches 32767). The value 5 fits in a single VLI byte with high bit 0: `05`.
+   * Items are `Byte` = `UnsignedInteger(1)`, 8 bits each — not 1/2/4 bits, therefore byte-aligned, one byte per item: `AA BB CC DD EE`.
+3. Exit the aggregate on a byte boundary. `mac` is an `Array(Byte, size = 16)` — no count, 16 byte-aligned items: `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F`.
+
+Wire (22 bytes):
+
+```
+05  AA BB CC DD EE  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
+```
+
+For a maximum-sized payload (1100 bytes), the count would consume 2 VLI bytes (`84 4C` — `84` carries continuation bit plus the high 7 value bits `0000100`, `4C` carries the low 8 value bits; `4 × 256 + 76 = 1100`), and the encoding would total 1118 bytes (2 + 1100 + 16).
+
+`SingleChunkPayload` carries no sub-byte fields, so bit-packing does not surface in this example; it would come into play whenever a struct carries a `Boolean`, a small union discriminator, or a bare-only `Set` bitmask — and packed-item layout inside an `Array`/`DynamicArray`/`Set`/`Stream` surfaces when the element type matches one of the *Packable Item Sizes* above.
 
 ## Subset Determination
 
