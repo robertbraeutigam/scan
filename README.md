@@ -1005,11 +1005,9 @@ no `Busy` or `Ready` message is ever exchanged — the sender sends, the receive
 traffic crosses the wire. This is what lets SCAN avoid per-chunk acknowledgements entirely, which would otherwise impose a
 fixed tax on every subscription whether it contended or not.
 
-**Endless-stream modalities.** A modality whose `inputType` ends in an unbounded `Stream` holds the receiver's attention for
+**Endless-stream modalities.** A modality whose `inputType` contains an unbounded `Stream` holds the receiver's attention for
 as long as the stream continues. Contending writers on such an input remain in `Busy` until the active writer finishes, which
-for a truly endless stream is never. Such modalities are therefore intended to have a single writer — per instance for plain
-modalities, per cluster for `scan.vmods` — and wiring is the place to enforce that at configuration time; at runtime,
-additional writers simply remain in `Busy` indefinitely.
+for a truly endless stream is never.
 
 While connecting modalities is semantically symmetric, as data is moving back and forth the same way between devices, with exactly same rules, the
 connection itself is not symmetric. One device, the *Initiator*, connects to the other device, the *Responder*. The Initiator will make requests
