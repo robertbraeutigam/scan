@@ -132,26 +132,112 @@ An alias gives a new name to an existing type without introducing a new construc
 <name> = <type reference>
 ```
 
-The right-hand side is a single type reference, optionally with constraints. Examples:
+The right-hand side is a single type reference. Examples:
 
 ```
 Byte = UnsignedInteger(1)
 Double = FloatingPoint(8)
 String = DynamicArray(Byte)
-TableLegNumber = Byte {1 to 4}
 ```
 
 An alias is distinguished from a type definition by its right-hand side. If the RHS contains `|`, or ends in a `{ ... }` struct body, it defines a new type; otherwise it is an alias. The collision case — an RHS that is a bare identifier, which could in principle be read as a type definition with a single no-data constructor — is always read as an alias, since such a type would be isomorphic to `Unit` and carries no information. The collapse form (`Foo { ... }`) still covers the useful struct-definition cases.
 
 ### Constraints
 
-Number types may be refined to a subset of values, e.g.:
+A `Constraint` narrows the set of legal values admitted by a type. The type system defines it as a built-in ADT over numeric literals:
 
 ```
-TableLegNumber = Byte {1 to 4}
+Constraint = All
+           | MinInclusive  { bound: Number }
+           | MinExclusive  { bound: Number }
+           | MaxInclusive  { bound: Number }
+           | MaxExclusive  { bound: Number }
+           | Range         { min: Number,   max: Number   }
+           | Values        { allowed: Set(Number)         }
+           | MultipleOf    { divisor: Number              }
+           | Union         { a: Constraint, b: Constraint }
+           | Intersection  { a: Constraint, b: Constraint }
+           | Not           { inner: Constraint            }
 ```
 
-Several equivalent forms exist (such as `{1,2,3,4}` and `{min 1, max 4}`), and constraints compose. The full grammar is given in the *Type Reference* section below.
+`Number` stands for any numeric literal. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
+
+`Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate implication rule and does not appear distinctly on the wire.
+
+**Constraints are just parameter values.** A `Constraint` is passed to a type parameter like any other argument; nothing in the surface syntax marks it as special. The only thing that makes constraints useful is that certain **built-in** types accept `Constraint`-typed parameters and hardcode their effect on the value set. User-defined types do not interpret constraints themselves; if a user type wants its values constrainable, it declares a `Constraint`-typed parameter and threads it into a built-in that does.
+
+Consequently there is no way to "constrain an arbitrary user type" from outside. If you want a subset of a user-defined sum type, define a narrower sum type — *Subset Determination* will recognise the relationship structurally.
+
+#### Where constraints are interpreted
+
+Each built-in below declares the `Constraint`-typed parameters it accepts and fixes what they mean:
+
+* `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
+* `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
+* `DynamicArray(elementType, length: Constraint = All)` — `length` narrows the number of elements. All forms accepted; literals must be non-negative integers.
+* `Set(elementType, size: Constraint = All)` — `size` narrows set cardinality (same rules as `DynamicArray`).
+* `Array(elementType, size)`, `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Array`'s length is already fixed; `Stream` is unbounded by definition; `Unit` has exactly one value.)
+
+#### Worked examples
+
+A percentage and a table leg index, using the `Range` sugar:
+
+```
+Percentage     = UnsignedInteger(1, constraint = Range(min = 0, max = 100))
+TableLegNumber = UnsignedInteger(1, constraint = Range(min = 1, max = 4))
+```
+
+"1 to 100, excluding 50" — composition with `Not`:
+
+```
+OddPercent = UnsignedInteger(1, constraint =
+    Intersection(Range(min = 1, max = 100), Not(Values(50))))
+```
+
+A thermostat setpoint in 0.5° increments, between 15° and 30° inclusive — combining a range with `MultipleOf`, where the target type must be integer since `MultipleOf` is not accepted on `FloatingPoint`. One way is to represent the setpoint as tenths of a degree:
+
+```
+Setpoint = UnsignedInteger(2, constraint =
+    Intersection(Range(min = 150, max = 300), MultipleOf(5)))
+```
+
+A `Measurement` that wants its value constrainable declares a `Constraint` parameter and threads it into its value field. Exclusive upper bound here:
+
+```
+Measurement(unit: String, valueConstraint: Constraint = All) {
+    value: FloatingPoint(8, constraint = valueConstraint)
+}
+
+Voltage = Measurement("V", Intersection(MinInclusive(0.0), MaxExclusive(48.0)))
+```
+
+Note that `Measurement` does not interpret `valueConstraint` — it only forwards the value to `FloatingPoint`, which does.
+
+A length-bounded byte string:
+
+```
+Handshake = DynamicArray(UnsignedInteger(1), length = Range(min = 0, max = 128))
+```
+
+Subsetting a sum type is done by defining a narrower sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
+
+```
+Severity          = Error | Warning | Info | Debug
+DisplaySeverity   = Error | Warning                  // DisplaySeverity ⊆ Severity structurally
+DisplaySeverities = Set(DisplaySeverity)
+```
+
+#### Implication
+
+Subset determination across constrained built-ins reduces to an implication check over the `Constraint` ADT: for `X(constraint = C₁)` to be a subset of `X(constraint = C₂)`, every value satisfying `C₁` must satisfy `C₂`. The rules fall out case-by-case from the constructors:
+
+* `MinInclusive(a) ⟹ MinInclusive(b)` iff `a ≥ b`; `MaxInclusive(a) ⟹ MaxInclusive(b)` iff `a ≤ b`; exclusive variants analogous.
+* Cross-cases between inclusive and exclusive follow directly, e.g. `MinInclusive(a) ⟹ MinExclusive(b)` iff `a > b`.
+* `Values(S₁) ⟹ Values(S₂)` iff `S₁ ⊆ S₂`.
+* `MultipleOf(m) ⟹ MultipleOf(n)` iff `n` divides `m`.
+* `Union`, `Intersection`, `Not` distribute as expected.
+
+Any new `Constraint` form added later must come with an implication rule, or the subset algorithm cannot accept it.
 
 ## Types Binary Representation
 
