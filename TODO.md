@@ -75,10 +75,6 @@
   - Customizable data: name, location, floor, etc.
   - Metering domain
 
-- **i18n.** Devices should not do i18n, but think about how display devices should handle it.
-  - `Message = Struct(origin: PeerAddress, messageId: String, parameters: Array(???))`
-  - A modality to fetch translations.
-
 - **Command confirmation / ACK.** Do commands need confirmation?
   - If based on data: data will be repeated (safe). But data coming back may not be the same + long-running jobs + firmware update.
   - If not based on data: look at events whether the change is reflected.
