@@ -2,25 +2,7 @@
 
 ## Type System
 
-- **`Set` aggregate.** The bring-up QR payload uses `Set(BringUpCapability)`, which relies on a built-in `Set` aggregate that is not yet listed in `TYPES.md` alongside `Array`, `DynamicArray`, `Struct`, `Union`, and `Stream`. Decide whether `Set` is a first-class aggregate (naturally compiled to a bitmask when the element type is a closed Union of `Unit` variants, to a sorted-unique vector otherwise) or whether it should be expressed as `DynamicArray` with a uniqueness constraint.
-
-- **Collection-size constraints on `DynamicArray`.** `README.md` uses `DynamicArray(T, min=N)` and `DynamicArray(T, max=N)` in multiple places (e.g. `EncryptedPayload`, `Advertisement`, `scan.netconfig`), but `TYPES.md`'s §Constraints only documents constraints for numeric primitive types. Extend that section to formally cover size constraints on collection aggregates.
-
-- **Type tier names.** Give type tiers better names (e.g. Primitive → … → Generic → Application).
-
 - **Tier −1.** Introduce Tier −1: types with fixed length, typed with variable-length integer indicating size — makes it easier to skip and thus extendable. Alternatively: make value type code contain size on 3 bits, exact semantics on lower bits.
-
-- **Fixed-length integers.** Primitive integer type should support fixed lengths: 1-, 2-, 4-, 8-byte.
-
-- **Variable-length string size.** Should strings be defined with a variable-length integer instead of a 2-byte size?
-
-- **Stream termination.** Stream and Sequence are the same if Stream has "batches" (i.e. can be terminated). A dynamically-sized sequence can use the same mechanism.
-
-- **Byte Stream length.** Does Byte Stream have to include a length?
-
-- **Fahrenheit.** Either add Fahrenheit as a built-in unit or make the language capable of expressing it.
-
-- **Double on constrained CPUs.** Do we need to think about `double` being too much for some CPUs?
 
 - **Locale.** Do we really need Locale?
 
@@ -107,8 +89,6 @@
 
 - **Button/control input ranges.** Ranges for control inputs (0–100%, etc.).
   - Or: expressions as validations (problem: how to detect two controls accepting the same range?).
-
-- **If both data and action share a "modality ID"**, one can associate actions with data.
 
 - **Network stats.** Make it per interface, reflecting netconfig
 
