@@ -2025,7 +2025,7 @@ All devices must implement these modalities.
 
 #### Virtual Modalities
 
-Define clusters of local modalities whose values are coupled by transformations.
+Define clusters of local modalities whose outputs are computed by transformations from a small piece of host-held cluster state.
 
 ```
 Modality(
@@ -2039,12 +2039,13 @@ Modality(
 VirtualModalityClusters = Array(VirtualModalityCluster)
 
 VirtualModalityCluster {
-   members: Array(ClusterMember)
+   stateType:  Type,                  // bounded; must contain no Stream
+   members:    Array(ClusterMember)
 }
 
 ClusterMember {
    modality:   Modality,
-   transform:  Array(Byte)    // Compiled transformation program
+   transform:  Array(Byte)            // Compiled transformation program
 }
 ```
 
@@ -2053,25 +2054,67 @@ it appears in the device's `Modalities` advertisement, can be subscribed to, can
 remote modalities through `scan.wiring` like any other modality. Other peers see no difference between a cluster
 member and a native modality. The cluster itself is a host-internal arrangement and does not appear on the wire.
 
-Each member declares a transformation program. Transformations are platform-independent,
-interpreted programs, whose interpreter is described with the SCAN Type System.
+A cluster also has a single piece of **cluster state** of the declared `stateType`. This state is private to the
+cluster, structurally bounded (it must contain no `Stream`), held in host memory, and is the only persistent
+context shared between the transformations of different members. Member output values are not cached anywhere —
+they are projections of cluster state, produced live by transformations as events are emitted. On cold boot the
+cluster state is initialized to its type's default value.
 
-A transformation has the signature `(state: Array<MemberValue>) -> Array<MemberValue>`. The input is the current
-value of every cluster member, in the order declared in `members`. The output is the new value of every member,
-in the same order, with the same types. Transformations are pure functions of the cluster state.
+Each member declares a transformation program. Transformations are platform-independent, interpreted programs whose
+interpreter is described with the SCAN Type System. A transformation has the logical signature
 
-A member's transformation runs exactly once whenever that member receives an external state write (a `State` message
-from a peer in its LWW group). When that change is received, it will see all other current state of all the other
-members.
+```
+transform_m : (state, event) -> (state', emissions)
+```
 
-After a transformation runs, the host compares each output element against the corresponding member's current state.
-Elements that differ are written as ordinary LWW writes on each member's group, using the host's own monotonically
-increasing counter. Writes the transformation produces do not retrigger any cluster member's transformation. A single
-external write therefore produces at most one transformation run and at most one outgoing write per member.
+where `state` and `state'` are values of the cluster's declared `stateType`, `event` is a value-decoding event drawn
+from the input message currently being processed on member *m* (see *Value Decoding Events* in `TYPES.md`), and
+`emissions` is:
 
-Each cluster member participates in its own LWW group, formed by wiring. Counters and writers are independent across
-groups and do not propagate through transformations. The host is just another writer in each member's group. Causality
-crosses the cluster — a change on one member can cause a write on another — but LWW state does not.
+```
+Emission {
+   memberIndex: VariableLengthInteger,
+   event:       Event
+}
+```
+
+A transformation is a pure function: it reads no state other than the supplied `state` and produces no effect other
+than the returned `(state', emissions)`.
+
+A member's transformation runs once per decoding event of an external state write to that member (a `State`
+message from a peer in the member's LWW group). The host invokes `transform_m` with the current cluster state and
+the next event from the input's decoder, applies the returned `state'` immediately, and routes each emission to the
+corresponding member's outgoing path. The next input event is processed against the just-applied state. There is
+no buffering of input events and no roll-back of cluster state: cluster state advances incrementally as the input
+is consumed, and a connection drop mid-message leaves it at whatever the last successful invocation produced.
+Transformations that need all-or-nothing semantics encode them in cluster state themselves (typically with an
+explicit "in-progress" field cleared by the end-of-input signal that the host delivers to the transformation when
+the input value structurally completes; endless-stream inputs never reach this signal).
+
+Emissions are events targeted at cluster members' outgoing values. The host maintains an open outgoing `State`
+frame per member it is currently emitting for, writing events into it as they are produced:
+
+* For a member whose `outputType` contains a top-level `Stream`, the outgoing frame stays open as long as the
+  cluster keeps emitting events for it; items flow live to subscribers.
+* For a member whose `outputType` contains no `Stream`, the outgoing frame carries one complete value. The host
+  tracks structural depth and closes the frame when depth returns to zero; that closure is the LWW write, stamped
+  with the host's monotonically increasing counter for that member's group. A later emission for the same member
+  opens a fresh frame with a new counter.
+
+Emission is itself the act of declaring a new state for the targeted member: the host performs no comparison
+against any prior output, and not emitting is the no-op. A single external write may therefore produce zero, one,
+or many outgoing writes per member, interleaved arbitrarily across members.
+
+Writes the host produces from emissions do not retrigger any cluster member's transformation; they flow only
+outward to wired peers via LWW. Each cluster member participates in its own LWW group: counters and writers are
+independent across groups and LWW state does not propagate through transformations. Causality does cross the
+cluster — a change on one member can cause writes on others — but only through cluster state, never as LWW
+propagation.
+
+The cluster is the unit of serialization: at most one external `State` is processed across all members of a cluster
+at a time. A `State` in progress on any member causes `Busy` on every other member of the same cluster (see
+*Message atomicity* in §Modality Instances). This guarantees that cluster state evolves under a single linear
+sequence of invocations and that each invocation observes the full effect of every prior one.
 
 #### Wiring
 
