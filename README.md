@@ -1639,22 +1639,19 @@ Non-`Text` parameter variants (`Integer`, `Number`, `Timestamp`, `Duration`, `Ra
 user's locale conventions (decimal separator, date/time presentation, etc.). The bundle's format string selects *which* parameter
 appears where, never *how* a numeric or temporal value is rendered — that is a presentation decision owned by the display.
 
-##### Format string subset
+##### Format string semantics
 
-To keep the runtime feasible on small display-class devices (an ESP32-class wall panel should implement this in a few kilobytes
-of code, without shipping CLDR data files), the format string is a strict subset of ICU MessageFormat. A full ICU runtime handles
-the subset natively; a minimal runtime can implement it with a recursive-descent parser, a one-vs-other plural classifier, and
-string-equality matching for `select`.
+Format strings follow ICU MessageFormat syntax. To keep runtimes feasible on small display-class devices (an ESP32-class wall
+panel should implement this in a few kilobytes of code, without shipping CLDR data files), constructs split into two tiers:
+those whose semantics every runtime MUST implement, and those a runtime MAY implement. The split is drawn on the Resolution
+Principle — a runtime that omits MAY-tier features still renders meaningful text, just at lower presentation resolution.
 
-**Required (MUST implement):**
+**MUST honor (selection semantics — getting these wrong would change meaning):**
 
 * Literal text and parameter insertion: `Door {door} is {state}`.
 * Escaping: `'{'`, `'}'`, and `''` (literal apostrophe); characters between matched `'` are literal.
 * Select: `{name, select, open {it is open} closed {it is closed} other {state unknown}}`. The `other` arm is required. The
   selector matches a parameter of variant `Raw` against arm keys by string equality.
-
-**Required when the device emits countable quantities (MUST if used):**
-
 * Plural: `{count, plural, =0 {no items} =1 {one item} other {# items}}`. The `#` token renders the argument in place. Explicit
   `=N` arms take precedence over keyword arms.
   * Keyword arms `one` and `other` MUST be understood for every locale the device serves. A runtime without CLDR plural rule
@@ -1664,20 +1661,27 @@ string-equality matching for `select`.
     Bundles targeting Slavic, Celtic, or Arabic locales SHOULD therefore prefer explicit `=N` arms, or require that the display
     ship CLDR plural data.
 
-**Not part of the subset:**
+**MAY honor (styling — degrades safely to bare substitution):**
 
-* Number, date, time, currency, and percent style selection inside the format string (e.g. `{n, number, percent}`). Displays
-  format non-`Text` parameters using the user's own locale conventions; bundles express content, not presentation.
-* `selectordinal`, `choice`, and other ICU formatters.
-* Inline markup hints. When the surrounding field is typed as `LocalizedMarkdownText`, the rendered output is interpreted as
-  CommonMark; otherwise it is plain text.
+* Number, date, time, currency, and percent style selection (e.g. `{n, number, percent}`, `{when, date, short}`, `{amt, number,
+  currency}`). A runtime that recognises the modifier SHOULD render accordingly; a runtime that does not MUST render the
+  parameter as if the modifier were absent — i.e. as the bare placeholder — using the user's own locale conventions for
+  non-`Text` parameter variants. Bundles therefore remain meaningful when delivered to a runtime that does not implement the
+  modifier; only presentation resolution is reduced.
+* `selectordinal`, `choice`, and other ICU formatters not listed in the MUST tier. Same rule: runtimes that do not recognise
+  them MUST render the parameter as a bare placeholder rather than failing.
+
+When a `LocalizedMarkdownText`-typed field is being rendered the resolved output is interpreted as CommonMark; for plain
+`LocalizedText` it is plain text.
 
 ##### Minimal runtime footprint
 
-A MUST-only implementation (placeholders, escapes, and `select`) can be written in roughly 1–2 KB of code with no locale data.
-Adding plural with `=N` and the `one`/`other` fallback costs another kilobyte or so. Devices that also ship CLDR plural rule
-tables for additional locale families add a few hundred bytes per family. Full ICU4C is appropriate only on Linux-class display
-hardware; constrained displays are expected to ship the subset.
+A MUST-tier-only implementation (placeholders, escapes, `select`, plural with `=N` and the `one`/`other` fallback) can be
+written in roughly 2–3 KB of code with no locale data files. Devices that also ship CLDR plural rule tables for additional
+locale families add a few hundred bytes per family. Honoring MAY-tier styling features adds whatever a locale-aware number/date
+formatter costs; on most displays this is already present in the host UI toolkit. Full ICU4C is appropriate only on Linux-class
+display hardware; constrained displays are expected to ship the MUST-tier core only and rely on the safe-degradation rule for
+anything richer.
 
 #### Health
 
