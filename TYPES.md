@@ -540,40 +540,92 @@ walk of its structure. The streamability rules below apply uniformly.
 ### Streamability Classification
 
 The standard library is closed under streamability: every primitive operation has a known event-driven lowering,
-every composition of streamable operations is streamable, and the compiler computes the scratch budget of the
-composition as the sum of its parts. Operations not in this list are not in the library; programs that attempt to
-realise them by composition are rejected at compile time.
+every composition of streamable operations is streamable, and each operation's contribution to the enclosing
+frame's size is fixed by its lowering. Operations not in this list are not in the library; programs that attempt
+to realise them by composition are rejected at compile time.
 
 * **Pointwise** — one input element produces exactly one output element with no cross-element dependency:
   `map(s, f)`, arithmetic (`+`, `-`, `*`, `/`), comparison (`<`, `==`, ...), boolean (`and`, `or`, `not`), type
-  coercions. Lowering: per input event, evaluate `f` and emit one output event. Scratch: none.
+  coercions. Lowering: per input event, evaluate `f` and emit one output event. Frame contribution: none.
 
 * **Predicated pointwise** — zero or one output per input: `filter(s, p)`, `takeWhile(s, p)`. Lowering: per input
-  event, evaluate the predicate; emit if true. Scratch: none.
+  event, evaluate the predicate; emit if true. Frame contribution: none.
 
 * **Folded** — consume the whole stream, produce one value: `fold(s, f, z)`, `sum(s)`, `count(s)`, `max(s)`,
-  `min(s)`, `any(s, p)`, `all(s, p)`. Lowering: maintain an accumulator slot; update on each input event; on
-  end-of-input the accumulator is the result, ready to be emitted or fed downstream. Scratch: one slot of the
-  accumulator's type.
+  `min(s)`, `any(s, p)`, `all(s, p)`. Lowering: maintain an accumulator in the enclosing aggregate's frame;
+  update on each input event; on end-of-input the accumulator is the result, ready to be emitted or fed
+  downstream. Frame contribution: one slot of the accumulator's type, in the frame of the aggregate being folded.
 
 * **Field projection** — select a sub-tree of a structured value: struct-field access (`v.f`), union case
   selection (`v as C`). Lowering: forward events that fall inside the projected sub-tree to the consumer; ignore
-  events outside it. Scratch: none beyond the structural-depth tracking the host's decoder already maintains.
+  events outside it. Frame contribution: none — the structural depth tracking is the decoder's own.
 
 * **Concatenation** — `concat(s1, s2)`. Lowering: dispatch s1's events to s1's handlers; on s1 end, switch to s2.
-  Scratch: a small phase tag per concat node.
+  Frame contribution: a small phase tag per concat node, in the enclosing frame.
 
 * **Bounded windowing** — operations parameterised by a static integer *n*: `take(s, n)`, `drop(s, n)`,
   `chunkBy(s, n)`. Lowering: maintain a counter (`take`, `drop`) or a buffer of *n* elements (`chunkBy`).
-  Scratch: one integer slot, or *n* element slots.
+  Frame contribution: one counter slot, or *n* element slots, in the enclosing frame.
 
 Operations explicitly excluded because they have no streamable lowering: `reverse`, `sort` over arbitrary input,
 last-element extraction without bound, `zip` over two streams unless one is statically bounded and small,
 arbitrary indexing, second-pass scans. Their absence is the discipline that keeps every program a one-pass
 event-driven program.
 
-A composition of streamable operations is streamable; its scratch is the sum of its components' scratch and is
-statically computable from the program text.
+A composition of streamable operations is streamable. Its memory cost is computed structurally from the input
+type and the expression — see *Structural Alignment* below.
+
+### Structural Alignment
+
+Beyond per-operation streamability, a transformation must align *structurally*: the output events it must produce,
+ordered by the output type's traversal, must be fillable from the input events the decoder produces, ordered by
+the input type's traversal, with bounded look-ahead only. The look-ahead is exactly the run stack described in
+*Virtual Modalities* in `README.md`.
+
+The stack mirrors the input type's structural tree. As the decoder enters an aggregate sub-element (a struct, a
+union variant, an array / set / stream item), the bytecode pushes a frame for that sub-element; on leaving, it
+pops. A frame for sub-type *T* under expression *E* holds the bounded compiler-managed memory needed to keep the
+output schedule fed while the input is inside *T*:
+
+* **Captures** — values of input scalars (and bounded sub-aggregates) seen earlier in this frame whose value the
+  output references at a structurally later position.
+* **Fold accumulators** — slots for any fold operation consuming a stream or array under this frame.
+* **Discriminator** — for a union's variant frame, the constructor tag.
+
+The frame's size, written `frame(T, E)`, is computed structurally:
+
+```
+frame(Primitive, E)     = bytes needed to capture this scalar at this position (0 if not captured)
+frame(Struct fs, E)     = sum of capture slots for fields whose value is read by structurally-later siblings
+                        + max(frame(f.T, E_f) for f ∈ fs)         -- one child active at a time
+                        + any fold-accumulator slot for this struct, if folded
+frame(Union cs, E)      = 1 byte discriminator
+                        + max(frame(c.T, E_c) for c ∈ cs)
+frame(Array T', E)      = any fold-accumulator slot for the array, if folded
+                        + frame(T', E')                            -- one item active at a time
+frame(Stream T', E)     = same as Array
+```
+
+The total stack budget is `frame(T_in, E)` evaluated at the input type's root for the transformation expression
+*E*. The maximum stack depth is the maximum nesting of the input type. Both are static properties of *T_in* and
+*E* alone — readable off the types and the expression without any data-flow analysis.
+
+A transformation is **structurally streamable** iff the alignment between input and output is satisfiable under
+bounded captures only:
+
+* **Bounded reordering allowed.** Output positions may be filled by input scalars (or bounded sub-aggregates)
+  declared earlier in the input than the output position, by adding capture slots to the appropriate frames.
+* **Stream reordering forbidden.** A stream-typed output position must be filled by a stream-typed input
+  sub-element whose events the bytecode is currently consuming under the active frame. The output schedule cannot
+  "skip past" a stream to reach events that come after it, because a stream may be unbounded and capturing it
+  would require unbounded memory.
+* **Folds bridge the gap.** A fold over a stream produces a bounded value that may be placed anywhere
+  structurally later than the stream itself; the fold accumulator lives in the frame and is consumed after the
+  stream has been fully walked.
+
+A program that violates structural streamability is rejected at compile time with a precise diagnostic naming the
+output position whose dependency is unsatisfiable, the input position whose events would have had to be buffered
+or revisited, and which of the rules above was violated.
 
 ### Accumulator and Outputs
 
@@ -601,23 +653,20 @@ The compiler in the admin tool, given a cluster declaration and a member's trans
 
 * Type-checks the expression against the bindings (`input : member.inputType`, `acc : accType`) and against the
   return type `{ acc: accType, outputs: ClusterOutputs }`.
-* Verifies streamability of every operation on stream- and aggregate-typed sub-expressions by structural
-  classification against the table above.
-* Performs **structural alignment**: walks the input and output type trees in parallel, identifying for every
-  output position the input events whose values it depends on. The expression is *streamable in place* iff, for
-  every output event in the output's emission order, all its input dependencies have arrived (or have been
-  captured into scratch within bounded lookahead) by the time it must be produced. Stream-typed output positions
-  must be filled by stream-typed input positions whose events arrive concurrently with the output's events;
-  buffering an unbounded stream is never permitted.
-* Allocates the scratch layout and computes the total scratch size for each member's transformation; emits this
-  in the bytecode preamble.
-* Lowers the expression tree into per-event dispatch bytecode (see *Transformation Language Binary
-  Representation*).
-* Rejects programs that fail any of the above: not type-correct, not streamable, alignment infeasible, scratch
-  budget exceeds what the target device advertises, or attempting effects outside the permitted set.
+* Verifies streamability of every operation on stream- and aggregate-typed sub-expressions by per-operation
+  classification against the table in *Streamability Classification*.
+* Verifies *Structural Alignment* (see above): the joint walk of input and output type trees is satisfiable
+  under bounded captures only.
+* Computes `frame(T_in, E)` recursively, lays out each frame, and emits the total stack budget and per-frame
+  layout in the bytecode preamble.
+* Lowers the expression tree into per-event dispatch bytecode driven by the decoder's structural events; push and
+  pop instructions correspond exactly to entry into and exit from input aggregates (see *Transformation Language
+  Binary Representation*).
+* Rejects programs that fail any of the above: not type-correct, an excluded operation, structurally unalignable,
+  total stack budget exceeds what the target device advertises, or attempting effects outside the permitted set.
 
 The device-side VM has no notion of the source language. It executes a flat bytecode program against the
-accumulator slot, the scratch buffer, and an input-event stream, producing per-member output events as it goes —
+accumulator slot, the run stack, and an input-event stream, producing per-member output events as it goes —
 nothing more.
 
 ## Transformation Language Binary Representation
@@ -627,5 +676,278 @@ a VM to run these transformation programs in memory. The point of the binary rep
 small VM implementation. Since these program are "just" statelessly transforming values, efficiency is less important than
 fitting small microcontrollers.
 
-TODO
+The binary representation reuses this type system: a compiled transformation is a value of type `CompiledTransformation`,
+encoded under *Values Binary Representation*. The same decoder a device already needs to consume SCAN values consumes its
+bytecode. Opcodes and operands bit-pack across instructions; frame descriptors, jump tables, and scalar widths share the
+discriminator-and-bit-packing rules of every other union. There is no separate bytecode format to specify — the compiled
+program is just a value.
+
+### Virtual Machine Model
+
+The VM exposes three regions of state, all stack-discipline (no heap, no allocation at runtime):
+
+* A **frame stack** of typed slots that mirrors the input decoder's depth: a frame is pushed on entry to an input aggregate and
+  popped on exit. Frames hold values that must outlive a single event — captures, fold accumulators, union discriminators.
+* An **operand stack** of 64-bit slots used within a single handler for expression evaluation. It empties between events.
+* An **output emitter** the device's encoder drains. The bytecode produces structural events (start-field, constructor, scalar,
+  ...); the encoder serializes them per *Values Binary Representation*. The bytecode never sees wire bytes.
+
+Execution is event-driven. The runtime fetches the next decoder event, looks up a handler for the `(input position, event)`
+pair, and runs it to completion. Handlers do not suspend. Total RAM is `frameStackBytes + operandStackSlots × 8` plus a small
+output buffer; all three are statically known per program.
+
+### Top-Level Structure
+
+```
+CompiledTransformation {
+    memory:           MemoryRequirements,
+    frameDescriptors: Array(FrameDescriptor),
+    jumpTables:       Array(JumpTable),
+    handlers:         Array(Handler)
+}
+```
+
+A device parses `memory` first and decides whether it can accept the program before allocating buffers; only then does it load
+the rest. The four sections are independent — none cross-references the others except by zero-based index.
+
+### Memory Requirements
+
+```
+MemoryRequirements {
+    frameStackBytes:   VariableLengthInteger(2),
+    operandStackSlots: VariableLengthInteger(1),
+    maxFrameDepth:     VariableLengthInteger(1)
+}
+```
+
+* `frameStackBytes` — peak total bytes of the frame stack across all reachable input traversals. Computed by the compiler as
+  the maximum over all reachable input traversals of the sum of `FrameDescriptor` sizes simultaneously on the stack.
+* `operandStackSlots` — peak operand stack depth in 64-bit slots, taken as the maximum across all handlers.
+* `maxFrameDepth` — peak number of frames simultaneously on the stack, equal to the maximum nesting of input aggregates the
+  program touches.
+
+A device that cannot satisfy these requirements rejects the program at load time and reports the shortfall through
+`scan.health`. No instruction has been executed at that point.
+
+### Frame Descriptors
+
+```
+FrameDescriptor {
+    slots: Array(SlotType)
+}
+
+SlotType = SlotI8  | SlotI16 | SlotI32 | SlotI64
+        |  SlotU8  | SlotU16 | SlotU32 | SlotU64
+        |  SlotF32 | SlotF64
+        |  SlotBytes { size: VariableLengthInteger(2) }
+```
+
+A frame descriptor declares the layout of one kind of frame. Slots are laid out in declaration order, byte-packed (no inserted
+padding); their sizes follow the slot type — 1, 2, 4, or 8 bytes for the integer / float widths and `size` bytes for
+`SlotBytes`. The total frame size is the sum of slot sizes.
+
+Slots are addressed by their zero-based index. The slot's declared type fixes how `LoadSlot` widens (sign-extending for signed
+integer slots, zero-extending for unsigned, no-op for `SlotI64` / `SlotU64` / `SlotF64`) and how `StoreSlot` narrows
+(truncating). Float slots permit only float instructions; integer slots permit only integer instructions. Type mismatch is a
+compile-time error; devices need not check at runtime.
+
+`frameDescriptors[0]` is the top-level frame. It is pushed automatically by the runtime before any handler runs, with its
+leading slots populated from the prior cluster accumulator value (see *Accumulator Loading* below). All other frames are
+pushed and popped explicitly by `PushFrame` and `PopFrame` instructions.
+
+### Jump Tables
+
+```
+JumpTable {
+    targets: Array(SignedInteger(2))
+}
+```
+
+A jump table is a small array of instruction-relative offsets within the handler that consults it. The `JmpTable` instruction
+pops an integer index off the operand stack and branches to `targets[index]`. The index must be in range; out-of-range indices
+are a compile-time error. Tables are referenced by their zero-based index in the program's `jumpTables` array. Multiple
+handlers may share the same table when the compiler detects identical dispatch patterns.
+
+### Handlers and Triggers
+
+```
+Handler {
+    trigger: HandlerTrigger,
+    code:    Array(Instruction)
+}
+
+HandlerTrigger = ProgramStart
+              |  TransportEnd
+              |  AtNode { node: VariableLengthInteger(2), event: EventKind }
+
+EventKind = OnStartField | OnEndField
+         |  OnConstructor
+         |  OnStartContainer | OnEndContainer
+         |  OnStartItem | OnEndItem
+         |  OnScalar | OnChunk
+```
+
+A handler runs in response to one specific decoder event at one specific input position. The trigger identifies that position:
+
+* `ProgramStart` — fires once, before any input event, after the runtime has pushed the top-level frame and loaded the prior
+  accumulator into it.
+* `TransportEnd` — fires once, after the last input event, while every frame is still on the stack.
+* `AtNode { node, event }` — fires when the decoder produces `event` at input-tree node `node`. Node IDs are assigned by the
+  compiler in a canonical pre-order walk of the input type; the runtime maintains the current node as it advances and uses it
+  to look up handlers.
+
+The handler list is unordered; the runtime builds whatever dispatch index it needs at load time. Multiple handlers for the
+same trigger are not allowed — the compiler fuses overlapping work. A program with no handler for some `(node, event)` does
+nothing at that event, which is the normal case for events the program does not observe.
+
+A handler runs to completion before the runtime fetches the next event. There is no in-handler suspension. The handler
+terminates with `EndHandler`, which returns to the dispatch loop. Falling off the end of `code` without `EndHandler` is a
+compile-time error.
+
+### Instructions
+
+```
+Instruction = ConstI    { value: SignedInteger(8) }
+           |  ConstF    { value: FloatingPoint(8) }
+           |  Dup | Drop | Swap
+
+           |  LoadSlot   { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
+           |  StoreSlot  { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
+           |  AddToSlotI { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
+           |  AddToSlotF { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
+
+           |  PushFrame  { descriptor: VariableLengthInteger(1) }
+           |  PopFrame
+
+           |  AddI | SubI | MulI | DivI | ModI | NegI
+           |  AddF | SubF | MulF | DivF | NegF
+           |  And  | Or   | Xor  | Not  | Shl  | Shr  | Sar
+           |  EqI  | LtI  | GtI  | LeI  | GeI
+           |  EqF  | LtF  | GtF  | LeF  | GeF
+
+           |  Jmp        { offset: SignedInteger(2) }
+           |  JmpIfZero  { offset: SignedInteger(2) }
+           |  JmpTable   { table:  VariableLengthInteger(1) }
+           |  EndHandler
+
+           |  ReadScalar { kind: ScalarType }
+           |  ReadChunk  { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
+                           count: VariableLengthInteger(2) }
+
+           |  EmitStartField     { index: VariableLengthInteger(2) }
+           |  EmitEndField       { index: VariableLengthInteger(2) }
+           |  EmitConstructor    { index: VariableLengthInteger(2) }
+           |  EmitStartContainer { kind:  ContainerKind }
+           |  EmitEndContainer   { kind:  ContainerKind }
+           |  EmitStartItem | EmitEndItem
+           |  EmitScalar         { kind:  ScalarType }
+           |  EmitChunk          { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
+                                   count: VariableLengthInteger(2) }
+
+ScalarType = U8 | U16 | U32 | U64
+          |  I8 | I16 | I32 | I64
+          |  F32 | F64
+          |  Vli { maxBytes: VariableLengthInteger(1) }
+
+ContainerKind = ArrayKind | SetKind | StreamKind
+```
+
+The instruction set has 54 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with the
+discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 0, 3` is roughly three bytes
+after VLI encoding.
+
+Behaviour by group:
+
+* **Constants and operand stack.** `ConstI` / `ConstF` push a literal. `Dup`, `Drop`, `Swap` are the standard operand-stack
+  primitives. The operand stack is untyped 64-bit slots; the instruction's variant determines whether the value is treated as
+  integer or float.
+
+* **Slot access.** `LoadSlot { depth, slot }` pushes the value of slot `slot` in the frame `depth` levels below the top of the
+  frame stack (depth 0 = current top), widened to 64 bits according to the slot's declared type. `StoreSlot` pops one operand
+  and narrows to the slot's declared type. `AddToSlotI` and `AddToSlotF` are read-modify-write shortcuts: pop one operand, add
+  to the slot in place. They exist because fold updates are the dominant pattern in compiled programs and would otherwise
+  cost three instructions each.
+
+* **Frame management.** `PushFrame { descriptor }` pushes a fresh frame whose layout is `frameDescriptors[descriptor]`. All
+  slots are zero-initialised. `PopFrame` removes the top frame. Pushing or popping mismatched against the input decoder's
+  structural state is a compile-time error.
+
+* **Arithmetic, logic, comparison.** Each pops its operands and pushes the result. Integer / float variants must match the
+  type of operands the bytecode placed on the stack. Comparisons push 0 or 1 as integer. Bitwise shifts (`Shl`, `Shr`, `Sar`)
+  take a 64-bit shift amount masked to its low 6 bits before shifting.
+
+* **Control flow.** `Jmp { offset }` advances the current handler's instruction cursor by `offset` (positive forward, negative
+  backward; 0 is invalid). `JmpIfZero { offset }` pops one integer and jumps if it is zero. `JmpTable { table }` pops one
+  integer index and branches by `jumpTables[table].targets[index]`. `EndHandler` returns to the dispatch loop.
+
+* **Event input.** `ReadScalar { kind }` consumes the active `Scalar` event from the decoder and pushes its value at the width
+  given by `kind`. `ReadChunk { depth, slot, count }` consumes `count` bytes from a `Chunk` event and writes them into the
+  frame slot at `(depth, slot)`; the slot must be a `SlotBytes` of size at least `count`.
+
+* **Event output.** Each `Emit*` instruction produces one output event. Structural events (`EmitStartField`, `EmitEndField`,
+  `EmitConstructor`, `EmitStartContainer`, `EmitEndContainer`, `EmitStartItem`, `EmitEndItem`) carry their own descriptor.
+  `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits raw bytes from a frame
+  slot region.
+
+### Accumulator Loading
+
+The prior cluster accumulator is loaded into the leading slots of the top-level frame before `ProgramStart` runs. The compiler
+reserves slots in `frameDescriptors[0]` whose layout matches the wire form of `accType`; the runtime decodes the persisted
+accumulator into those slots in lock-step with their declared widths. From the bytecode's perspective, `acc` is data already
+sitting in known slots when the first instruction runs.
+
+The new accumulator is emitted as part of the program's output: the compiled output type is structurally
+`{ acc, outputs }` (per *Accumulator and Outputs* in the surface language), so the bytecode emits a
+`StartField(0)` / `EmitScalar` / ... sequence for the `acc` field as it would for any other field. The runtime intercepts that
+sub-sequence and persists the bytes for the next invocation.
+
+### Worked Example
+
+The transformation `acc + sum(input.values)` over `input: { tag: Byte, values: Stream(Double) }`, `accType: Double`, output
+`{ sum: Option(Double) }` (so the cluster's compiled output type is `{ acc: Double, outputs: { sum: Option(Double) } }`)
+compiles to:
+
+```
+memory:
+    frameStackBytes:   16
+    operandStackSlots: 2
+    maxFrameDepth:     2
+
+frameDescriptors:
+    [0]: { SlotF64 }              -- top-level: prior acc
+    [1]: { SlotF64 }              -- stream:    running total
+
+jumpTables: []
+
+handlers:
+    trigger = ProgramStart
+    code    = [ EndHandler ]
+
+    trigger = AtNode { node = <values stream>, event = OnStartContainer }
+    code    = [ PushFrame 1
+              , ConstF 0.0
+              , StoreSlot 0, 0      -- frame[0].total = 0
+              , EndHandler ]
+
+    trigger = AtNode { node = <stream item>, event = OnScalar }
+    code    = [ ReadScalar F64
+              , AddToSlotF 0, 0     -- total += incoming
+              , EndHandler ]
+
+    trigger = TransportEnd
+    code    = [ LoadSlot 1, 0       -- acc (one frame down)
+              , LoadSlot 0, 0       -- total (current frame)
+              , AddF                 -- acc + total
+              , Dup
+              , EmitStartField 0
+              , EmitScalar F64       -- new acc
+              , EmitEndField 0
+              , EmitStartField 1
+              , EmitStartField 0
+              , EmitConstructor 1    -- Some
+              , EmitScalar F64
+              , EmitEndField 0
+              , EmitEndField 1
+              , EndHandler ]
+```
 

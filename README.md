@@ -2082,20 +2082,24 @@ accumulator with the returned `acc`, and streams the events of every `Some(...)`
 
 Although the contract is described as a per-message function, the host evaluates it incrementally. The compiled
 bytecode is a per-event dispatch program: as each input event arrives from the decoder, the bytecode advances
-along the joint structural traversal of the input and output types, updates host-held scratch as needed, advances
+along the joint structural traversal of the input and output types, manipulates the run stack as needed, advances
 the accumulator, and produces any output events whose input dependencies are now available. Neither the input
 value nor any output value is ever materialized in full; both are walked as event streams. The compiler in the
 admin tool is responsible for proving that the source expression admits this incremental evaluation — see
 *Transformation Language* in `TYPES.md`.
 
-Alongside the accumulator, the host holds a **run scratch** buffer of bounded size for the duration of one run.
-Scratch is private to the run, opaque at the cluster declaration level, and compiler-managed: its size is declared
-in the compiled program's preamble, the compiler chooses the layout, and the host's role is only to provide the
-bytes. At cluster install the host validates each member's declared scratch size against the device's per-cluster
-budget and rejects the install if any is too large. Scratch is initialized to zero at the start of each run and
-discarded at the end; it never crosses message boundaries. The author never sees scratch — the compiler uses it to
-hold input field values that the output schedule references later than they arrive, and to hold intra-message
-fold accumulators.
+Alongside the accumulator, the host holds a **run stack** for the duration of one run. The stack is a sequence of
+typed frames that mirrors the input value's structural traversal: each frame corresponds to entry into one of the
+input's structural sub-elements (a struct's content, a union's variant, an array/set/stream's item) and is pushed
+on entering that sub-element and popped on leaving. A frame holds bounded per-sub-element compiler-managed memory:
+sibling captures (input scalars seen earlier whose values an output position references at a structurally later
+moment), in-flight fold accumulators, and union discriminators. Each frame's size and the maximum stack depth are
+statically determined by the input type and the source expression — see *Transformation Language* in `TYPES.md`.
+The compiled program declares the resulting stack budget in its preamble; at cluster install the host validates
+this against the device's per-cluster budget and rejects the install if any member's stack is too large. The stack
+is initialized empty at the start of each run and discarded at the end; it never crosses message boundaries. The
+author never sees frames directly — they are derived from the input type tree and the source expression by the
+compiler.
 
 There is no buffering of input events and no roll-back of accumulator changes: the accumulator advances
 incrementally as the input is consumed, and a connection drop mid-message leaves it at whatever the last
