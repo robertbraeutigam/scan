@@ -488,11 +488,137 @@ Any new `Constraint` form added later must come with an evaluation rule, or the 
 ## Transformation Language
 
 Since SCAN does not define devices at all, the transformation language's goal is to make devices compatible, by
-being able to join current data and transform them into a proper format for modalilties. The textual language,
-similar to the type textual language, is only designed to interact with at the administrative interface. Devices
-do not have to parse or understand it.
+being able to join current data and transform them into a proper format for modalities. The textual language,
+similar to the type textual language, is only designed for interaction at the administrative interface. Devices
+do not parse or understand it; they execute only the compiled bytecode the admin tool produces (see
+*Transformation Language Binary Representation*).
 
-TODO
+The split is deliberate: the textual surface is functional, expressive, and convenient to write; the compiled
+form is a small per-event dispatch program for a tiny VM that fits on a constrained microcontroller. The compiler
+sits in the admin tool — running on a large device with no memory constraints — and absorbs all the complexity of
+bridging the two.
+
+### Surface Language
+
+The textual language is a pure functional expression language over typed values. There are no statements, no
+mutation, no loops, no user-defined recursion, and no side effects of any kind. A program declares one
+entry-point expression per cluster member: an expression of type `{ acc: accType, outputs: ClusterOutputs }` with
+two free variables in scope, `input` of the member's declared `inputType` and `acc` of the cluster's declared
+`accType` (see *Virtual Modalities* in `README.md` for both). The expression's two fields are the entire effect of
+the transformation: the new accumulator and the per-member output map. Entry points may share helper definitions
+(named expressions, generic functions over types from the SCAN Type System).
+
+The language admits:
+
+* Primitive literals and structured-value constructors (struct, union, array, set, stream).
+* Named bindings (`let x = expr in expr`).
+* Function definitions and applications, generic over types.
+* Field projection on structured types (`v.f` for struct fields, `v as C` for union cases).
+* Conditionals (`if cond then a else b`) and exhaustive match on union constructors.
+* A standard library of stream-valued operations (see *Streamability Classification* below).
+
+What it does not admit:
+
+* User-defined recursion. All iteration goes through the standard library.
+* Operations with no streamable lowering (see below).
+* Side effects of any kind — there is no `emit`, no mutable cluster-state binding, no I/O, and no ambient input
+  beyond `acc` and `input`. The transformation's effect on the world is exactly its return value.
+* Reflection, dynamic dispatch on values, or any computation over types at runtime.
+
+The exact concrete syntax is not yet fixed (TODO), but the semantics described here pin down the design space.
+
+### Streams
+
+`Stream(T)` is a first-class type in the source language as it is in the type system. Every transformation works,
+ultimately, by consuming events from `input` and constructing the events of the returned `outputs`. Stream-valued
+expressions name stages of the dataflow; the compiler fuses them into a single event-driven traversal that walks
+the input and the output type trees in lockstep.
+
+A finite value (a struct, a primitive) can be treated as a degenerate stream: its event sequence is a complete
+walk of its structure. The streamability rules below apply uniformly.
+
+### Streamability Classification
+
+The standard library is closed under streamability: every primitive operation has a known event-driven lowering,
+every composition of streamable operations is streamable, and the compiler computes the scratch budget of the
+composition as the sum of its parts. Operations not in this list are not in the library; programs that attempt to
+realise them by composition are rejected at compile time.
+
+* **Pointwise** — one input element produces exactly one output element with no cross-element dependency:
+  `map(s, f)`, arithmetic (`+`, `-`, `*`, `/`), comparison (`<`, `==`, ...), boolean (`and`, `or`, `not`), type
+  coercions. Lowering: per input event, evaluate `f` and emit one output event. Scratch: none.
+
+* **Predicated pointwise** — zero or one output per input: `filter(s, p)`, `takeWhile(s, p)`. Lowering: per input
+  event, evaluate the predicate; emit if true. Scratch: none.
+
+* **Folded** — consume the whole stream, produce one value: `fold(s, f, z)`, `sum(s)`, `count(s)`, `max(s)`,
+  `min(s)`, `any(s, p)`, `all(s, p)`. Lowering: maintain an accumulator slot; update on each input event; on
+  end-of-input the accumulator is the result, ready to be emitted or fed downstream. Scratch: one slot of the
+  accumulator's type.
+
+* **Field projection** — select a sub-tree of a structured value: struct-field access (`v.f`), union case
+  selection (`v as C`). Lowering: forward events that fall inside the projected sub-tree to the consumer; ignore
+  events outside it. Scratch: none beyond the structural-depth tracking the host's decoder already maintains.
+
+* **Concatenation** — `concat(s1, s2)`. Lowering: dispatch s1's events to s1's handlers; on s1 end, switch to s2.
+  Scratch: a small phase tag per concat node.
+
+* **Bounded windowing** — operations parameterised by a static integer *n*: `take(s, n)`, `drop(s, n)`,
+  `chunkBy(s, n)`. Lowering: maintain a counter (`take`, `drop`) or a buffer of *n* elements (`chunkBy`).
+  Scratch: one integer slot, or *n* element slots.
+
+Operations explicitly excluded because they have no streamable lowering: `reverse`, `sort` over arbitrary input,
+last-element extraction without bound, `zip` over two streams unless one is statically bounded and small,
+arbitrary indexing, second-pass scans. Their absence is the discipline that keeps every program a one-pass
+event-driven program.
+
+A composition of streamable operations is streamable; its scratch is the sum of its components' scratch and is
+statically computable from the program text.
+
+### Accumulator and Outputs
+
+The two free variables `acc` and `input` are ordinary value bindings of the language: read-only, typed by the
+cluster declaration, and used like any other. The transformation's only output is the record it returns:
+
+```
+{
+   acc:     <expression of type accType>,
+   outputs: <expression of type ClusterOutputs>
+}
+```
+
+`ClusterOutputs` is auto-derived from the cluster declaration as a struct with one field per member, each typed
+`Optional(member.outputType)`. A field set to `Some(value)` declares a new output for the corresponding member;
+a field set to `None` indicates no output update for that member in this invocation. Constructing `Some(...)` is
+itself the act of declaring new state — the host does no comparison against any prior output value (see
+*Virtual Modalities* in `README.md`).
+
+Cross-member coupling travels through `acc`; multi-member updates from a single input travel through `outputs`.
+
+### Compiler Obligation
+
+The compiler in the admin tool, given a cluster declaration and a member's transformation expression:
+
+* Type-checks the expression against the bindings (`input : member.inputType`, `acc : accType`) and against the
+  return type `{ acc: accType, outputs: ClusterOutputs }`.
+* Verifies streamability of every operation on stream- and aggregate-typed sub-expressions by structural
+  classification against the table above.
+* Performs **structural alignment**: walks the input and output type trees in parallel, identifying for every
+  output position the input events whose values it depends on. The expression is *streamable in place* iff, for
+  every output event in the output's emission order, all its input dependencies have arrived (or have been
+  captured into scratch within bounded lookahead) by the time it must be produced. Stream-typed output positions
+  must be filled by stream-typed input positions whose events arrive concurrently with the output's events;
+  buffering an unbounded stream is never permitted.
+* Allocates the scratch layout and computes the total scratch size for each member's transformation; emits this
+  in the bytecode preamble.
+* Lowers the expression tree into per-event dispatch bytecode (see *Transformation Language Binary
+  Representation*).
+* Rejects programs that fail any of the above: not type-correct, not streamable, alignment infeasible, scratch
+  budget exceeds what the target device advertises, or attempting effects outside the permitted set.
+
+The device-side VM has no notion of the source language. It executes a flat bytecode program against the
+accumulator slot, the scratch buffer, and an input-event stream, producing per-member output events as it goes —
+nothing more.
 
 ## Transformation Language Binary Representation
 

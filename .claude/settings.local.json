@@ -51,7 +51,8 @@
       "WebFetch(domain:www.hirschmann.com)",
       "WebFetch(domain:www.iana.org)",
       "WebFetch(domain:www.rfc-editor.org)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(awk '/^## Transformation Language$/,/^## Transformation Language Binary/' /home/robert/personal/scan/TYPES.md)"
     ]
   }
 }

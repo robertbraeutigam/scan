@@ -2025,7 +2025,8 @@ All devices must implement these modalities.
 
 #### Virtual Modalities
 
-Define clusters of local modalities whose outputs are computed by transformations from a small piece of host-held cluster state.
+Define clusters of local modalities whose outputs are computed from incoming inputs and a small host-held
+accumulator by pure transformations.
 
 ```
 Modality(
@@ -2039,7 +2040,7 @@ Modality(
 VirtualModalityClusters = Array(VirtualModalityCluster)
 
 VirtualModalityCluster {
-   stateType:  Type,                  // bounded; must contain no Stream
+   accType:    Type,                  // bounded; must contain no Stream
    members:    Array(ClusterMember)
 }
 
@@ -2054,67 +2055,73 @@ it appears in the device's `Modalities` advertisement, can be subscribed to, can
 remote modalities through `scan.wiring` like any other modality. Other peers see no difference between a cluster
 member and a native modality. The cluster itself is a host-internal arrangement and does not appear on the wire.
 
-A cluster also has a single piece of **cluster state** of the declared `stateType`. This state is private to the
-cluster, structurally bounded (it must contain no `Stream`), held in host memory, and is the only persistent
-context shared between the transformations of different members. Member output values are not cached anywhere —
-they are projections of cluster state, produced live by transformations as events are emitted. On cold boot the
-cluster state is initialized to its type's default value.
+A cluster has a single **accumulator** of the declared `accType`. The accumulator is private to the cluster,
+structurally bounded (it must contain no `Stream`), held in host memory, and is the only persistent cross-message
+context. It is also the only carrier of cross-member coupling between successive invocations. On cold boot the
+accumulator is initialized to its type's default value.
 
-Each member declares a transformation program. Transformations are platform-independent, interpreted programs whose
-interpreter is described with the SCAN Type System. A transformation has the logical signature
-
-```
-transform_m : (state, event) -> (state', emissions)
-```
-
-where `state` and `state'` are values of the cluster's declared `stateType`, `event` is a value-decoding event drawn
-from the input message currently being processed on member *m* (see *Value Decoding Events* in `TYPES.md`), and
-`emissions` is:
+Each member declares a transformation. Transformations are platform-independent, interpreted programs whose source
+language is described with the SCAN Type System. A transformation is a pure function from the current accumulator
+and the arriving input to a new accumulator and a per-member output map:
 
 ```
-Emission {
-   memberIndex: VariableLengthInteger,
-   event:       Event
-}
+transform_m : (acc, input) -> { acc: accType, outputs: ClusterOutputs }
 ```
 
-A transformation is a pure function: it reads no state other than the supplied `state` and produces no effect other
-than the returned `(state', emissions)`.
+`ClusterOutputs` is auto-derived from the cluster declaration: a struct with one field per member, each typed
+`Optional(member.outputType)`. A field set to `Some(value)` declares a new output for the corresponding member;
+`None` indicates no output update for that member in this invocation. Constructing `Some(...)` is itself the act
+of declaring a new state for that member — the host performs no comparison against any prior output. The
+transformation has no other effects: there is no `emit`, no I/O, no ambient inputs, and no mutation outside the
+returned record.
 
-A member's transformation runs once per decoding event of an external state write to that member (a `State`
-message from a peer in the member's LWW group). The host invokes `transform_m` with the current cluster state and
-the next event from the input's decoder, applies the returned `state'` immediately, and routes each emission to the
-corresponding member's outgoing path. The next input event is processed against the just-applied state. There is
-no buffering of input events and no roll-back of cluster state: cluster state advances incrementally as the input
-is consumed, and a connection drop mid-message leaves it at whatever the last successful invocation produced.
-Transformations that need all-or-nothing semantics encode them in cluster state themselves (typically with an
-explicit "in-progress" field cleared by the end-of-input signal that the host delivers to the transformation when
-the input value structurally completes; endless-stream inputs never reach this signal).
+A transformation runs once per external state write to its member (a `State` message from a peer in the member's
+LWW group). The host evaluates `transform_m` against the current accumulator and the arriving input, replaces the
+accumulator with the returned `acc`, and streams the events of every `Some(...)` field of `outputs` into outgoing
+`State` frames for the corresponding members.
 
-Emissions are events targeted at cluster members' outgoing values. The host maintains an open outgoing `State`
-frame per member it is currently emitting for, writing events into it as they are produced:
+Although the contract is described as a per-message function, the host evaluates it incrementally. The compiled
+bytecode is a per-event dispatch program: as each input event arrives from the decoder, the bytecode advances
+along the joint structural traversal of the input and output types, updates host-held scratch as needed, advances
+the accumulator, and produces any output events whose input dependencies are now available. Neither the input
+value nor any output value is ever materialized in full; both are walked as event streams. The compiler in the
+admin tool is responsible for proving that the source expression admits this incremental evaluation — see
+*Transformation Language* in `TYPES.md`.
+
+Alongside the accumulator, the host holds a **run scratch** buffer of bounded size for the duration of one run.
+Scratch is private to the run, opaque at the cluster declaration level, and compiler-managed: its size is declared
+in the compiled program's preamble, the compiler chooses the layout, and the host's role is only to provide the
+bytes. At cluster install the host validates each member's declared scratch size against the device's per-cluster
+budget and rejects the install if any is too large. Scratch is initialized to zero at the start of each run and
+discarded at the end; it never crosses message boundaries. The author never sees scratch — the compiler uses it to
+hold input field values that the output schedule references later than they arrive, and to hold intra-message
+fold accumulators.
+
+There is no buffering of input events and no roll-back of accumulator changes: the accumulator advances
+incrementally as the input is consumed, and a connection drop mid-message leaves it at whatever the last
+successful step produced. Transformations that need all-or-nothing semantics encode them in the accumulator
+themselves (typically with an explicit "in-progress" field cleared by the end-of-input signal the bytecode
+receives when the input value structurally completes; endless-stream inputs never reach this signal).
+
+The host maintains, per member whose output is being produced in the current run, an open outgoing `State` frame
+to wired peers, writing events into it as the bytecode produces them:
 
 * For a member whose `outputType` contains a top-level `Stream`, the outgoing frame stays open as long as the
-  cluster keeps emitting events for it; items flow live to subscribers.
+  bytecode keeps producing events for it; items flow live to subscribers.
 * For a member whose `outputType` contains no `Stream`, the outgoing frame carries one complete value. The host
   tracks structural depth and closes the frame when depth returns to zero; that closure is the LWW write, stamped
-  with the host's monotonically increasing counter for that member's group. A later emission for the same member
-  opens a fresh frame with a new counter.
+  with the host's monotonically increasing counter for that member's group.
 
-Emission is itself the act of declaring a new state for the targeted member: the host performs no comparison
-against any prior output, and not emitting is the no-op. A single external write may therefore produce zero, one,
-or many outgoing writes per member, interleaved arbitrarily across members.
+Outgoing writes the host produces from a transformation's outputs do not retrigger any cluster member's
+transformation; they flow only outward to wired peers via LWW. Each cluster member participates in its own LWW
+group: counters and writers are independent across groups and LWW state does not propagate through transformations.
+Causality does cross the cluster — a change on one member can cause writes on others — but only through the
+accumulator and the per-invocation outputs map, never as LWW propagation.
 
-Writes the host produces from emissions do not retrigger any cluster member's transformation; they flow only
-outward to wired peers via LWW. Each cluster member participates in its own LWW group: counters and writers are
-independent across groups and LWW state does not propagate through transformations. Causality does cross the
-cluster — a change on one member can cause writes on others — but only through cluster state, never as LWW
-propagation.
-
-The cluster is the unit of serialization: at most one external `State` is processed across all members of a cluster
-at a time. A `State` in progress on any member causes `Busy` on every other member of the same cluster (see
-*Message atomicity* in §Modality Instances). This guarantees that cluster state evolves under a single linear
-sequence of invocations and that each invocation observes the full effect of every prior one.
+The cluster is the unit of serialization: at most one external `State` is processed across all members of a
+cluster at a time. A `State` in progress on any member causes `Busy` on every other member of the same cluster
+(see *Message atomicity* in §Modality Instances). This guarantees that the accumulator evolves under a single
+linear sequence of invocations and that each invocation observes the full effect of every prior one.
 
 #### Wiring
 
