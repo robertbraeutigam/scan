@@ -42,10 +42,13 @@ public final class ValueDecoder {
     }
 
     public void feed(byte[] bytes, int offset, int length) {
+        Objects.requireNonNull(bytes, "bytes");
+        if (length == 0) {
+            return;
+        }
         if (complete) {
             throw new IllegalStateException("decoder is complete; no more bytes accepted");
         }
-        Objects.requireNonNull(bytes, "bytes");
         buffer.append(bytes, offset, length);
         tryProgress();
     }
@@ -72,6 +75,15 @@ public final class ValueDecoder {
             stack.push(new UnionFrame(u));
             return;
         }
+        if (t instanceof Type.Array a) {
+            requireArrayElementSupported(a.element());
+            stack.push(new ArrayFrame(a));
+            return;
+        }
+        if (t instanceof Type.Set || t instanceof Type.Stream) {
+            throw new UnsupportedOperationException(
+                    "type not supported in iteration 5: " + t);
+        }
         stack.push(new PrimitiveFrame(t));
     }
 
@@ -88,13 +100,19 @@ public final class ValueDecoder {
                 stack.pop();
                 continue;
             }
+            if (top instanceof ArrayFrame af) {
+                handler.onEvent(new DecodingEvent.EndItem());
+                af.itemStarted = false;
+                af.itemsCompleted++;
+                resetBitState();
+                return;
+            }
             throw new IllegalStateException("unexpected frame at child-complete: " + top);
         }
         complete = true;
     }
 
     private void tryProgress() {
-        outer:
         while (!complete && !stack.isEmpty()) {
             Frame top = stack.peek();
 
@@ -135,6 +153,13 @@ public final class ValueDecoder {
                 continue;
             }
 
+            if (top instanceof ArrayFrame af) {
+                if (!progressArray(af)) {
+                    return;
+                }
+                continue;
+            }
+
             if (top instanceof PrimitiveFrame p) {
                 if (!tryReadPrimitive(p)) {
                     return;
@@ -145,6 +170,128 @@ public final class ValueDecoder {
             }
 
             throw new IllegalStateException("unknown frame: " + top);
+        }
+    }
+
+    private boolean progressArray(ArrayFrame af) {
+        if (!af.entered) {
+            resetBitState();
+            handler.onEvent(new DecodingEvent.StartContainer(DecodingEvent.ContainerKind.ARRAY));
+            af.entered = true;
+            af.primitiveItems = isPrimitiveItem(af.array.element());
+            if (af.primitiveItems) {
+                af.itemByteSize = primitiveByteSize(af.array.element());
+            }
+        }
+        if (!af.countRead) {
+            SizeConstraint sc = af.array.size();
+            if (sc.isFixed()) {
+                af.declaredCount = ((SizeConstraint.Range) sc).min();
+                af.countRead = true;
+            } else {
+                int v = ValueEncoder.pickCountVarintSize(sc);
+                if (!tryReadCountVarint(af, v)) {
+                    return false;
+                }
+                af.declaredCount = (int) (af.countAccumulator + ValueEncoder.lowerBound(sc));
+                af.countRead = true;
+            }
+            if (af.primitiveItems) {
+                af.bytesRemaining = (long) af.declaredCount * af.itemByteSize;
+            }
+        }
+        if (af.primitiveItems) {
+            if (af.bytesRemaining > 0) {
+                if (buffer.available() == 0) {
+                    return false;
+                }
+                int n = (int) Math.min(buffer.available(), af.bytesRemaining);
+                byte[] chunk = new byte[n];
+                buffer.readInto(chunk, 0, n);
+                handler.onEvent(new DecodingEvent.Chunk(chunk));
+                af.bytesRemaining -= n;
+                if (af.bytesRemaining > 0) {
+                    return false;
+                }
+            }
+            resetBitState();
+            handler.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
+            stack.pop();
+            childCompleted();
+            return true;
+        }
+        if (af.itemsCompleted >= af.declaredCount) {
+            resetBitState();
+            handler.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
+            stack.pop();
+            childCompleted();
+            return true;
+        }
+        if (!af.itemStarted) {
+            handler.onEvent(new DecodingEvent.StartItem());
+            af.itemStarted = true;
+            descendInto(af.array.element());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean tryReadCountVarint(ArrayFrame af, int v) {
+        while (af.countBytesRead < v && buffer.available() > 0) {
+            int b = buffer.readOne() & 0xFF;
+            af.countBytesRead++;
+            if (af.countBytesRead == v) {
+                af.countAccumulator = (af.countAccumulator << 8) | b;
+                return true;
+            }
+            if ((b & 0x80) == 0) {
+                af.countAccumulator = (af.countAccumulator << 7) | b;
+                return true;
+            }
+            af.countAccumulator = (af.countAccumulator << 7) | (b & 0x7F);
+        }
+        return false;
+    }
+
+    private void resetBitState() {
+        activeBit = false;
+        bitsUsed = 0;
+    }
+
+    private static boolean isPrimitiveItem(Type t) {
+        return t instanceof Type.Unit
+                || t instanceof Type.UnsignedInteger
+                || t instanceof Type.SignedInteger
+                || t instanceof Type.FloatingPoint
+                || t instanceof Type.VariableLengthInteger;
+    }
+
+    private static int primitiveByteSize(Type t) {
+        if (t instanceof Type.Unit) {
+            return 0;
+        }
+        if (t instanceof Type.UnsignedInteger u) {
+            return u.byteSize();
+        }
+        if (t instanceof Type.SignedInteger s) {
+            return s.byteSize();
+        }
+        if (t instanceof Type.FloatingPoint f) {
+            return f.byteSize();
+        }
+        throw new IllegalStateException("not a fixed-byte primitive: " + t);
+    }
+
+    private static void requireArrayElementSupported(Type element) {
+        if (element instanceof Type.VariableLengthInteger) {
+            throw new UnsupportedOperationException(
+                    "Array of VariableLengthInteger not supported in iteration 5");
+        }
+        java.util.OptionalInt sb = ValueEncoder.staticBitSize(element);
+        if (sb.isPresent() && sb.getAsInt() >= 1 && sb.getAsInt() <= 4) {
+            throw new UnsupportedOperationException(
+                    "packed-bit array items not supported in iteration 5 (element size "
+                            + sb.getAsInt() + " bits)");
         }
     }
 
@@ -284,6 +431,24 @@ public final class ValueDecoder {
             this.fields = fields;
             this.fieldIndex = 0;
             this.startEmitted = false;
+        }
+    }
+
+    private static final class ArrayFrame implements Frame {
+        final Type.Array array;
+        boolean entered;
+        boolean countRead;
+        boolean primitiveItems;
+        int itemByteSize;
+        int declaredCount;
+        int itemsCompleted;
+        boolean itemStarted;
+        long bytesRemaining;
+        long countAccumulator;
+        int countBytesRead;
+
+        ArrayFrame(Type.Array array) {
+            this.array = array;
         }
     }
 }

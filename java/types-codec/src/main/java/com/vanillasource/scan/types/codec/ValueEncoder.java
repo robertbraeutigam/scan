@@ -94,6 +94,41 @@ public final class ValueEncoder {
         }
     }
 
+    /**
+     * Declares an {@link Type.Array}'s element count. The count is validated
+     * against the array's {@link SizeConstraint}; for non-fixed constraints it is
+     * also written to the wire as a {@link Type.VariableLengthInteger} sized to
+     * fit every admitted length (TYPES.md §"Per-Type Encoding" / Array). Items
+     * follow as ordinary primitive / struct / union writes.
+     */
+    public void startArray(int count) {
+        ensureWritable();
+        Frame top = stack.peek();
+        if (!(top instanceof ArrayFrame af)) {
+            throw new IllegalStateException("expected " + describe(top) + ", not an array");
+        }
+        if (af.declared) {
+            throw new IllegalStateException("array count already declared");
+        }
+        SizeConstraint sc = af.array.size();
+        validateArraySize(count, sc);
+        bits.closeBitByte();
+        if (!sc.isFixed()) {
+            int v = pickCountVarintSize(sc);
+            long encoded = (long) count - lowerBound(sc);
+            writeVarInt(encoded, v);
+        }
+        af.declaredCount = count;
+        af.declared = true;
+        if (count == 0) {
+            bits.closeBitByte();
+            stack.pop();
+            childCompleted();
+        } else {
+            descendInto(af.array.element());
+        }
+    }
+
     public boolean isComplete() {
         return complete;
     }
@@ -132,6 +167,15 @@ public final class ValueEncoder {
             stack.push(new UnionFrame(u));
             return;
         }
+        if (t instanceof Type.Array a) {
+            requireArrayElementSupported(a.element());
+            stack.push(new ArrayFrame(a));
+            return;
+        }
+        if (t instanceof Type.Set || t instanceof Type.Stream) {
+            throw new UnsupportedOperationException(
+                    "type not supported in iteration 5: " + t);
+        }
         stack.push(new PrimitiveFrame(t));
     }
 
@@ -145,6 +189,16 @@ public final class ValueEncoder {
                     continue;
                 }
                 descendInto(f.fields.get(f.fieldIndex).type());
+                return;
+            }
+            if (top instanceof ArrayFrame af) {
+                af.itemsCompleted++;
+                bits.closeBitByte();
+                if (af.itemsCompleted >= af.declaredCount) {
+                    stack.pop();
+                    continue;
+                }
+                descendInto(af.array.element());
                 return;
             }
             throw new IllegalStateException("unexpected frame at child-complete: " + top);
@@ -164,6 +218,11 @@ public final class ValueEncoder {
         }
         if (f instanceof FieldsFrame ff) {
             return "field " + ff.fieldIndex + " of " + ff.fields.size();
+        }
+        if (f instanceof ArrayFrame af) {
+            return af.declared
+                    ? ("array item " + af.itemsCompleted + " of " + af.declaredCount)
+                    : "array (count not yet declared)";
         }
         return f.toString();
     }
@@ -235,6 +294,119 @@ public final class ValueEncoder {
         return 32 - Integer.numberOfLeadingZeros(n - 1);
     }
 
+    private static void validateArraySize(int count, SizeConstraint sc) {
+        if (count < 0) {
+            throw new IllegalArgumentException("count must be non-negative: " + count);
+        }
+        if (sc instanceof SizeConstraint.Range r) {
+            if (count < r.min() || count > r.max()) {
+                throw new IllegalArgumentException(
+                        "count " + count + " not in [" + r.min() + ", " + r.max() + "]");
+            }
+        }
+    }
+
+    static int pickCountVarintSize(SizeConstraint sc) {
+        if (sc instanceof SizeConstraint.All) {
+            return 8;
+        }
+        if (sc instanceof SizeConstraint.Range r) {
+            long range = (long) r.max() - r.min();
+            int bitsNeeded = (range == 0) ? 1 : (64 - Long.numberOfLeadingZeros(range));
+            for (int v = 1; v <= 8; v++) {
+                int cap = 7 * (v - 1) + 8;
+                if (cap >= bitsNeeded) {
+                    return v;
+                }
+            }
+            throw new IllegalStateException("size range too large for VarInt(8): " + range);
+        }
+        throw new IllegalStateException("unknown size constraint: " + sc);
+    }
+
+    static int lowerBound(SizeConstraint sc) {
+        if (sc instanceof SizeConstraint.All) {
+            return 0;
+        }
+        if (sc instanceof SizeConstraint.Range r) {
+            return r.min();
+        }
+        throw new IllegalStateException("unknown size constraint: " + sc);
+    }
+
+    /**
+     * Iteration 5 supports only byte-aligned item layouts; an element type whose
+     * static encoding is 1..4 bits would need the packed layout (TYPES.md
+     * §"Per-Type Encoding" / Array → packed item layout) and is rejected here so
+     * a future iteration can add it without silently corrupting earlier wire data.
+     * VarInt-element arrays are also deferred — supporting them on the decoder
+     * needs item-level parsing of the chunk stream to stop at the right byte.
+     */
+    private static void requireArrayElementSupported(Type element) {
+        if (element instanceof Type.VariableLengthInteger) {
+            throw new UnsupportedOperationException(
+                    "Array of VariableLengthInteger not supported in iteration 5");
+        }
+        java.util.OptionalInt staticBits = staticBitSize(element);
+        if (staticBits.isPresent()) {
+            int b = staticBits.getAsInt();
+            if (b >= 1 && b <= 4) {
+                throw new UnsupportedOperationException(
+                        "packed-bit array items not supported in iteration 5 (element size " + b + " bits)");
+            }
+        }
+    }
+
+    static java.util.OptionalInt staticBitSize(Type t) {
+        if (t instanceof Type.Unit) {
+            return java.util.OptionalInt.of(0);
+        }
+        if (t instanceof Type.UnsignedInteger u) {
+            return java.util.OptionalInt.of(u.byteSize() * 8);
+        }
+        if (t instanceof Type.SignedInteger s) {
+            return java.util.OptionalInt.of(s.byteSize() * 8);
+        }
+        if (t instanceof Type.FloatingPoint f) {
+            return java.util.OptionalInt.of(f.byteSize() * 8);
+        }
+        if (t instanceof Type.VariableLengthInteger) {
+            return java.util.OptionalInt.empty();
+        }
+        if (t instanceof Type.Struct s) {
+            int total = 0;
+            for (Type.Field f : s.fields()) {
+                java.util.OptionalInt sub = staticBitSize(f.type());
+                if (sub.isEmpty()) {
+                    return java.util.OptionalInt.empty();
+                }
+                total += sub.getAsInt();
+            }
+            return java.util.OptionalInt.of(total);
+        }
+        if (t instanceof Type.Union u) {
+            int discBits = ceilLog2(u.constructors().size());
+            Integer ctorSize = null;
+            for (Type.Constructor c : u.constructors()) {
+                int total = 0;
+                for (Type.Field f : c.fields()) {
+                    java.util.OptionalInt sub = staticBitSize(f.type());
+                    if (sub.isEmpty()) {
+                        return java.util.OptionalInt.empty();
+                    }
+                    total += sub.getAsInt();
+                }
+                if (ctorSize == null) {
+                    ctorSize = total;
+                } else if (ctorSize != total) {
+                    return java.util.OptionalInt.empty();
+                }
+            }
+            return java.util.OptionalInt.of(discBits + (ctorSize == null ? 0 : ctorSize));
+        }
+        return java.util.OptionalInt.empty();
+    }
+
     private sealed interface Frame {}
 
     private static final class PrimitiveFrame implements Frame {
@@ -260,6 +432,17 @@ public final class ValueEncoder {
         FieldsFrame(List<Type.Field> fields) {
             this.fields = fields;
             this.fieldIndex = 0;
+        }
+    }
+
+    private static final class ArrayFrame implements Frame {
+        final Type.Array array;
+        boolean declared;
+        int declaredCount;
+        int itemsCompleted;
+
+        ArrayFrame(Type.Array array) {
+            this.array = array;
         }
     }
 }
