@@ -128,7 +128,7 @@ public final class ValueDecoder {
 
             if (top instanceof UnionFrame u) {
                 int n = u.union.constructors().size();
-                int k = TypeLayout.ceilLog2(n);
+                int k = u.union.discriminatorBits();
                 int j;
                 if (k == 0) {
                     j = 0;
@@ -190,11 +190,11 @@ public final class ValueDecoder {
                 af.countRead = true;
             } else {
                 if (af.countDecoder == null) {
-                    af.countDecoder = new VarIntDecoder(TypeLayout.pickCountVarintSize(sc));
+                    af.countDecoder = new VarIntDecoder(sc.countVarintSize());
                 }
                 while (buffer.available() > 0) {
                     if (af.countDecoder.feed(buffer.readOne() & 0xFF)) {
-                        af.declaredCount = (int) (af.countDecoder.value() + TypeLayout.lowerBound(sc));
+                        af.declaredCount = (int) (af.countDecoder.value() + sc.lowerBound());
                         af.countRead = true;
                         break;
                     }

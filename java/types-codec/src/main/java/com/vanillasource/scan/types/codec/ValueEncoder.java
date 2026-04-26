@@ -78,7 +78,7 @@ public final class ValueEncoder {
             throw new IllegalArgumentException(
                     "constructor index " + index + " out of range [0," + ctors.size() + ")");
         }
-        int k = TypeLayout.ceilLog2(ctors.size());
+        int k = u.union.discriminatorBits();
         if (k > 0) {
             bits.writeBits(k, index);
         }
@@ -112,9 +112,8 @@ public final class ValueEncoder {
         validateArraySize(count, sc);
         bits.closeBitByte();
         if (!sc.isFixed()) {
-            int v = TypeLayout.pickCountVarintSize(sc);
-            long encoded = (long) count - TypeLayout.lowerBound(sc);
-            writeVarInt(encoded, v);
+            long encoded = (long) count - sc.lowerBound();
+            writeVarInt(encoded, sc.countVarintSize());
         }
         af.declaredCount = count;
         af.declared = true;

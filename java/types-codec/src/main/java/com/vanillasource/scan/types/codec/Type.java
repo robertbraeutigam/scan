@@ -2,6 +2,7 @@ package com.vanillasource.scan.types.codec;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 
 /**
  * Static description of a SCAN value's shape. Pure data; encoders and decoders walk
@@ -18,48 +19,43 @@ public sealed interface Type {
      * last field of its enclosing struct or constructor (TYPES.md line 96: "a type
      * may contain at most one Stream, transitively").
      */
-    default boolean containsStream() {
-        if (this instanceof Stream) {
-            return true;
-        }
-        if (this instanceof Struct s) {
-            return anyFieldContainsStream(s.fields());
-        }
-        if (this instanceof Union u) {
-            for (Constructor c : u.constructors()) {
-                if (anyFieldContainsStream(c.fields())) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        if (this instanceof Array a) {
-            return a.element().containsStream();
-        }
-        if (this instanceof Set s) {
-            return s.element().containsStream();
-        }
-        return false;
-    }
+    boolean containsStream();
 
-    record Unit() implements Type {}
+    /**
+     * Static bit size of values of this type, if it has one. Empty for
+     * {@link VariableLengthInteger}, {@link Stream}, {@link Array}, {@link Set},
+     * and any {@link Struct} or {@link Union} that transitively contains one of
+     * those (or, for {@code Union}, whose constructors disagree on size).
+     */
+    OptionalInt staticBitSize();
+
+    record Unit() implements Type {
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.of(0); }
+    }
 
     record UnsignedInteger(int byteSize) implements Type {
         public UnsignedInteger {
             requireByteSize1to8(byteSize);
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.of(byteSize * 8); }
     }
 
     record SignedInteger(int byteSize) implements Type {
         public SignedInteger {
             requireByteSize1to8(byteSize);
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.of(byteSize * 8); }
     }
 
     record VariableLengthInteger(int maxBytes) implements Type {
         public VariableLengthInteger {
             requireByteSize1to8(maxBytes);
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.empty(); }
     }
 
     record FloatingPoint(int byteSize) implements Type {
@@ -68,12 +64,20 @@ public sealed interface Type {
                 throw new IllegalArgumentException("FloatingPoint byteSize must be 4 or 8: " + byteSize);
             }
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.of(byteSize * 8); }
     }
 
     record Struct(List<Field> fields) implements Type {
         public Struct {
             fields = List.copyOf(fields);
             requireStreamLastIfPresent(fields);
+        }
+        @Override public boolean containsStream() {
+            return anyFieldContainsStream(fields);
+        }
+        @Override public OptionalInt staticBitSize() {
+            return sumFieldBitSizes(fields);
         }
     }
 
@@ -83,6 +87,38 @@ public sealed interface Type {
             if (constructors.isEmpty()) {
                 throw new IllegalArgumentException("Union must have at least one constructor");
             }
+        }
+        @Override public boolean containsStream() {
+            for (Constructor c : constructors) {
+                if (anyFieldContainsStream(c.fields())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        @Override public OptionalInt staticBitSize() {
+            Integer ctorSize = null;
+            for (Constructor c : constructors) {
+                OptionalInt sub = sumFieldBitSizes(c.fields());
+                if (sub.isEmpty()) {
+                    return OptionalInt.empty();
+                }
+                int s = sub.getAsInt();
+                if (ctorSize == null) {
+                    ctorSize = s;
+                } else if (ctorSize != s) {
+                    return OptionalInt.empty();
+                }
+            }
+            return OptionalInt.of(discriminatorBits() + (ctorSize == null ? 0 : ctorSize));
+        }
+        /** Bits the encoder writes / decoder reads for this union's discriminator. */
+        public int discriminatorBits() {
+            int n = constructors.size();
+            if (n <= 1) {
+                return 0;
+            }
+            return 32 - Integer.numberOfLeadingZeros(n - 1);
         }
     }
 
@@ -94,6 +130,8 @@ public sealed interface Type {
                 throw new IllegalArgumentException("Array element must not contain a Stream");
             }
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.empty(); }
     }
 
     record Set(Type element, SizeConstraint size) implements Type {
@@ -104,6 +142,8 @@ public sealed interface Type {
                 throw new IllegalArgumentException("Set element must not contain a Stream");
             }
         }
+        @Override public boolean containsStream() { return false; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.empty(); }
     }
 
     record Stream(Type element) implements Type {
@@ -113,6 +153,8 @@ public sealed interface Type {
                 throw new IllegalArgumentException("Stream element must not contain a Stream");
             }
         }
+        @Override public boolean containsStream() { return true; }
+        @Override public OptionalInt staticBitSize() { return OptionalInt.empty(); }
     }
 
     record Field(String name, Type type) {
@@ -152,5 +194,17 @@ public sealed interface Type {
             }
         }
         return false;
+    }
+
+    private static OptionalInt sumFieldBitSizes(List<Field> fields) {
+        int total = 0;
+        for (Field f : fields) {
+            OptionalInt sub = f.type().staticBitSize();
+            if (sub.isEmpty()) {
+                return OptionalInt.empty();
+            }
+            total += sub.getAsInt();
+        }
+        return OptionalInt.of(total);
     }
 }

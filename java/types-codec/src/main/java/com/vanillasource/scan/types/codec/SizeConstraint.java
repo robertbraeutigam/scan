@@ -13,6 +13,20 @@ public sealed interface SizeConstraint {
      */
     boolean isFixed();
 
+    /**
+     * Smallest count this constraint admits. The wire encodes {@code count - lowerBound()}
+     * as a {@link Type.VariableLengthInteger} of {@link #countVarintSize()} bytes.
+     */
+    int lowerBound();
+
+    /**
+     * {@code maxBytes} of the {@link Type.VariableLengthInteger} used for the
+     * on-wire count. Sized to fit every admitted length per TYPES.md
+     * §"Per-Type Encoding" / Array. Not meaningful for {@link #isFixed()} constraints
+     * (no count is written), but defined for both variants for uniformity.
+     */
+    int countVarintSize();
+
     record Range(int min, int max) implements SizeConstraint {
         public Range {
             if (min < 0) {
@@ -27,12 +41,40 @@ public sealed interface SizeConstraint {
         public boolean isFixed() {
             return min == max;
         }
+
+        @Override
+        public int lowerBound() {
+            return min;
+        }
+
+        @Override
+        public int countVarintSize() {
+            long range = (long) max - min;
+            int bitsNeeded = (range == 0) ? 1 : (64 - Long.numberOfLeadingZeros(range));
+            for (int v = 1; v <= 8; v++) {
+                int cap = 7 * (v - 1) + 8;
+                if (cap >= bitsNeeded) {
+                    return v;
+                }
+            }
+            throw new IllegalStateException("size range too large for VarInt(8): " + range);
+        }
     }
 
     record All() implements SizeConstraint {
         @Override
         public boolean isFixed() {
             return false;
+        }
+
+        @Override
+        public int lowerBound() {
+            return 0;
+        }
+
+        @Override
+        public int countVarintSize() {
+            return 8;
         }
     }
 
