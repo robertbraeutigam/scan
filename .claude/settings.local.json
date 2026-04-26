@@ -52,7 +52,8 @@
       "WebFetch(domain:www.iana.org)",
       "WebFetch(domain:www.rfc-editor.org)",
       "Bash(git *)",
-      "Bash(awk '/^## Transformation Language$/,/^## Transformation Language Binary/' /home/robert/personal/scan/TYPES.md)"
+      "Bash(awk '/^## Transformation Language$/,/^## Transformation Language Binary/' /home/robert/personal/scan/TYPES.md)",
+      "Bash(mvn -pl types-codec -am test)"
     ]
   }
 }
