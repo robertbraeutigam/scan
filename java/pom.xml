@@ -9,7 +9,7 @@
     <name>SCAN Project</name>
 
     <modules>
-        <module>client</module>
+        <module>types-codec</module>
     </modules>
 
     <properties>
