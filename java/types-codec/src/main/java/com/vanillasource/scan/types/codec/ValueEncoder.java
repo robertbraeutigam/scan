@@ -249,7 +249,7 @@ public final class ValueEncoder {
         for (int i = 0; i < byteSize; i++) {
             out[i] = (byte) ((value >>> ((byteSize - 1 - i) * 8)) & 0xFF);
         }
-        bits.write(out);
+        bits.writeBytes(out);
     }
 
     private void writeVarInt(long value, int maxN) {
@@ -278,7 +278,7 @@ public final class ValueEncoder {
             int byteValue = (i < k - 1) ? (0x80 | groupValue) : groupValue;
             out[i] = (byte) byteValue;
         }
-        bits.write(out);
+        bits.writeBytes(out);
     }
 
     private static void validateArraySize(int count, SizeConstraint sc) {

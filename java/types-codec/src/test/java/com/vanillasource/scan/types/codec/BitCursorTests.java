@@ -59,7 +59,7 @@ public final class BitCursorTests {
         ByteArrayOutputStream sink = new ByteArrayOutputStream();
         BitWriter w = new BitWriter(sink);
         w.writeBits(1, 1);
-        w.write(new byte[] { 0x12, 0x34, 0x56, 0x78 });
+        w.writeBytes(new byte[] { 0x12, 0x34, 0x56, 0x78 });
         w.writeBits(1, 1);
         w.closeBitByte();
         // bit-byte (with both bits set) physically precedes the four data bytes.
@@ -73,7 +73,7 @@ public final class BitCursorTests {
         ByteArrayOutputStream sink = new ByteArrayOutputStream();
         BitWriter w = new BitWriter(sink);
         w.writeBits(8, 0x55);
-        w.write(new byte[] { 0x11, 0x22 });
+        w.writeBytes(new byte[] { 0x11, 0x22 });
         w.writeBits(2, 0b10);
         w.closeBitByte();
         // 0x55, 0x11, 0x22, 10_000000 = 0x80
@@ -111,9 +111,9 @@ public final class BitCursorTests {
         // Pure byte stream — every write should reach the delegate immediately.
         RecordingStream sink = new RecordingStream();
         BitWriter w = new BitWriter(sink);
-        w.write(new byte[] { 0x01, 0x02, 0x03 });
+        w.writeBytes(new byte[] { 0x01, 0x02, 0x03 });
         assertEquals(sink.flushedSoFar(), new byte[] { 0x01, 0x02, 0x03 });
-        w.write(0x04);
+        w.writeBytes(new byte[] { 0x04 });
         assertEquals(sink.flushedSoFar(), new byte[] { 0x01, 0x02, 0x03, 0x04 });
     }
 
@@ -122,7 +122,7 @@ public final class BitCursorTests {
         RecordingStream sink = new RecordingStream();
         BitWriter w = new BitWriter(sink);
         w.writeBits(2, 0b10);
-        w.write(new byte[] { 0x42, 0x43 });
+        w.writeBytes(new byte[] { 0x42, 0x43 });
         // Nothing has been emitted yet — the bit byte is still open.
         assertEquals(sink.flushedSoFar(), new byte[0]);
         w.closeBitByte();
@@ -148,7 +148,7 @@ public final class BitCursorTests {
     public void roundTripInterleavedBitsAndBytes() {
         BitReader r = roundTrip(w -> {
             w.writeBits(1, 1);
-            w.write(new byte[] { 0x12, 0x34, 0x56, 0x78 });
+            w.writeBytes(new byte[] { 0x12, 0x34, 0x56, 0x78 });
             w.writeBits(1, 1);
             w.writeBits(6, 0b101010);
         });
@@ -230,7 +230,7 @@ public final class BitCursorTests {
         ByteArrayOutputStream sink = new ByteArrayOutputStream();
         BitWriter w = new BitWriter(sink);
         w.writeBits(1, 1);
-        w.write(new byte[] { 0x10, 0x20 });
+        w.writeBytes(new byte[] { 0x10, 0x20 });
         w.writeBits(1, 1);
         w.writeBits(6, 0b010101);
         byte[] encoded = sink.toByteArray();

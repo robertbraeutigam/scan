@@ -16,15 +16,14 @@ import java.util.Arrays;
  *
  * <p>Worst-case in-flight memory is the bytes between an open bit byte and its
  * close — typically single digits in SCAN encoding, since aggregate boundaries
- * close the bit state. Without an open bit byte, {@code write} calls pass straight
- * through to the delegate.
+ * close the bit state. Without an open bit byte, {@code writeBytes} calls pass
+ * straight through to the delegate.
  *
- * <p>{@link OutputStream#write} overrides drop the {@code throws IOException}
- * declaration and wrap delegate failures as {@link UncheckedIOException}, matching
- * the rest of the codec's exception style. Callers typed as {@code OutputStream}
- * still satisfy the parent's checked-exception signature.
+ * <p>Dual of {@link BitReader}: the reader is push-fed by the caller and the writer
+ * pushes to a delegate. Neither participates in the {@link java.io} type hierarchy
+ * — both are codec-owned mechanics with their own typed read/write API.
  */
-final class BitWriter extends OutputStream {
+final class BitWriter {
     private final OutputStream delegate;
     private int activeBitByte;
     private int bitsUsed;
@@ -35,39 +34,6 @@ final class BitWriter extends OutputStream {
     BitWriter(OutputStream delegate) {
         this.delegate = delegate;
         this.suffix = new byte[16];
-    }
-
-    @Override
-    public void write(int b) {
-        try {
-            if (active) {
-                appendSuffix((byte) b);
-            } else {
-                delegate.write(b & 0xFF);
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    @Override
-    public void write(byte[] b) {
-        write(b, 0, b.length);
-    }
-
-    @Override
-    public void write(byte[] b, int off, int len) {
-        try {
-            if (active) {
-                ensureSuffixCapacity(suffixLen + len);
-                System.arraycopy(b, off, suffix, suffixLen, len);
-                suffixLen += len;
-            } else {
-                delegate.write(b, off, len);
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     void writeBits(int k, long value) {
@@ -105,28 +71,27 @@ final class BitWriter extends OutputStream {
         }
     }
 
+    void writeBytes(byte[] src, int off, int len) {
+        try {
+            if (active) {
+                ensureSuffixCapacity(suffixLen + len);
+                System.arraycopy(src, off, suffix, suffixLen, len);
+                suffixLen += len;
+            } else {
+                delegate.write(src, off, len);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    void writeBytes(byte[] src) {
+        writeBytes(src, 0, src.length);
+    }
+
     void closeBitByte() {
         if (active) {
             emitActive();
-        }
-    }
-
-    @Override
-    public void flush() {
-        try {
-            delegate.flush();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    @Override
-    public void close() {
-        try {
-            closeBitByte();
-            delegate.close();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         }
     }
 
@@ -143,11 +108,6 @@ final class BitWriter extends OutputStream {
         active = false;
         activeBitByte = 0;
         bitsUsed = 0;
-    }
-
-    private void appendSuffix(byte b) {
-        ensureSuffixCapacity(suffixLen + 1);
-        suffix[suffixLen++] = b;
     }
 
     private void ensureSuffixCapacity(int needed) {
