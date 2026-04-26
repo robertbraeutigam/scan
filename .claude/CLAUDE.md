@@ -4,14 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Status
 
-This repository currently contains **only a protocol specification** — there is no active codebase to build, test, or lint. The `java/` directory contains stale reference-implementation scaffolding that is out of sync with the current spec; do not treat it as authoritative and do not work in it unless explicitly asked.
+The repository contains the SCAN protocol specification in Markdown plus an active Java implementation under `java/`. The `java/client/*` subtree (visible as deleted in `git status`) is **stale reference-implementation scaffolding** out of sync with the current spec; do not resurrect it.
 
-All work happens in Markdown:
+Specification documents:
 
 - `README.md` — the SCAN protocol specification (the main document).
 - `TYPES.md` — the SCAN Type System specification (separate, stand-alone type/transform language used by the protocol).
 - `COMPARISON.md` — reference comparison against existing IoT protocols (MQTT, CoAP, Matter, NMEA 2000, DDS, etc.). Useful for design-rationale questions.
 - `TODO.md` — organized list of open design questions and follow-ups, grouped by layer/topic.
+
+## Java Implementation
+
+Maven multi-module project rooted at `java/pom.xml`. Currently active module: `java/types-codec/` — the L0+L1+L3 part of the TYPES library layering (values codec, decoding events, types-as-values). Built bottom-up across iterations; the implementation plan lives in user memory.
+
+- **Java 17** source/target. **Android compatibility is a hard requirement** (Android 14+ supports Java 17 natively). Do **not** use Java 21 features such as pattern matching for switch — write `instanceof` chains instead.
+- **Testing:** TestNG via `maven-surefire-plugin`. Test classes must end in `Tests` (e.g. `BitCursorTests`); the surefire include pattern is `**/*Tests.java` and other names are silently skipped.
+- **Build:** `mvn -pl types-codec test` from `java/`.
+- **Package:** `com.vanillasource.scan.types.codec`.
 
 ## What SCAN Is (Big Picture)
 

@@ -53,7 +53,10 @@
       "WebFetch(domain:www.rfc-editor.org)",
       "Bash(git *)",
       "Bash(awk '/^## Transformation Language$/,/^## Transformation Language Binary/' /home/robert/personal/scan/TYPES.md)",
-      "Bash(mvn -pl types-codec -am test)"
+      "Bash(mvn -pl types-codec -am test)",
+      "Bash(mvn -pl types-codec -am -q test)",
+      "Bash(mvn -pl types-codec test)",
+      "Bash(mvn -pl types-codec clean test)"
     ]
   }
 }
