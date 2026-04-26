@@ -26,17 +26,8 @@ import static org.testng.Assert.assertTrue;
 
 public final class StructUnionCodecTests {
 
-    private static final class Capture implements DecodingEventHandler {
-        final List<DecodingEvent> events = new ArrayList<>();
-
-        @Override
-        public void onEvent(DecodingEvent event) {
-            events.add(event);
-        }
-    }
-
     private static List<DecodingEvent> decode(Type root, byte[] bytes) {
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(root, cap);
         dec.feed(bytes);
         assertTrue(dec.isComplete(), "decoder should complete after full feed");
@@ -329,7 +320,7 @@ public final class StructUnionCodecTests {
         enc.writeInteger(20000);
         byte[] bytes = enc.toByteArray();
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
             dec.feed(new byte[] { bytes[i] });
@@ -347,7 +338,7 @@ public final class StructUnionCodecTests {
     public void decoderRejectsInvalidDiscriminator() {
         // 3 constructors -> 2-bit discriminator. Encoded byte 0xC0 = 0b11000000 -> disc = 3 (out of range).
         Union t = new Union(List.of(ctor("A"), ctor("B"), ctor("C")));
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         assertThrows(IllegalStateException.class, () -> dec.feed(new byte[] { (byte) 0xC0 }));
     }
@@ -382,7 +373,7 @@ public final class StructUnionCodecTests {
         assertTrue(enc.isComplete());
         assertEquals(enc.toByteArray(), new byte[0]);
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         assertTrue(dec.isComplete());
         assertTrue(cap.events.isEmpty());

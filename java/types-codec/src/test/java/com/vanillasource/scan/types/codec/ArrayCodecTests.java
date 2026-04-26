@@ -21,7 +21,6 @@ import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
@@ -31,17 +30,8 @@ import static org.testng.Assert.assertTrue;
 
 public final class ArrayCodecTests {
 
-    private static final class Capture implements DecodingEventHandler {
-        final List<DecodingEvent> events = new ArrayList<>();
-
-        @Override
-        public void onEvent(DecodingEvent event) {
-            events.add(event);
-        }
-    }
-
     private static List<DecodingEvent> decode(Type root, byte[] bytes) {
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(root, cap);
         dec.feed(bytes);
         assertTrue(dec.isComplete(), "decoder should complete after full feed");
@@ -337,7 +327,7 @@ public final class ArrayCodecTests {
         }
         byte[] bytes = enc.toByteArray();
         // Verify round trip — count bytes split across feeds too.
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         for (byte b : bytes) {
             dec.feed(new byte[] { b });
@@ -358,7 +348,7 @@ public final class ArrayCodecTests {
     public void decoderEmitsMultipleChunksAcrossFeeds() {
         Array t = new Array(new UnsignedInteger(1), SizeConstraint.exact(4));
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         // First feed: StartContainer comes out at construction.
         assertEquals(cap.events, List.of(new StartContainer(ContainerKind.ARRAY)));
@@ -415,7 +405,7 @@ public final class ArrayCodecTests {
         }
         byte[] bytes = enc.toByteArray();
 
-        Capture incremental = new Capture();
+        EventCapture incremental = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, incremental);
         for (int i = 0; i < bytes.length - 1; i++) {
             dec.feed(new byte[] { bytes[i] });
@@ -424,7 +414,7 @@ public final class ArrayCodecTests {
         dec.feed(new byte[] { bytes[bytes.length - 1] });
         assertTrue(dec.isComplete());
 
-        Capture oneShot = new Capture();
+        EventCapture oneShot = new EventCapture();
         ValueDecoder oneShotDec = new ValueDecoder(t, oneShot);
         oneShotDec.feed(bytes);
         assertEquals(incremental.events, oneShot.events);

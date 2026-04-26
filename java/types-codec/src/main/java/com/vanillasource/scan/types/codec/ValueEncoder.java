@@ -40,7 +40,7 @@ public final class ValueEncoder {
             throw new IllegalStateException("expected " + describe(top) + ", not an integer");
         }
         if (p.type instanceof Type.UnsignedInteger u) {
-            writeUnsignedBigEndian(value, u.byteSize(), false);
+            writeUnsignedBigEndian(value, u.byteSize());
         } else if (p.type instanceof Type.SignedInteger s) {
             writeSignedBigEndian(value, s.byteSize());
         } else if (p.type instanceof Type.VariableLengthInteger v) {
@@ -59,11 +59,9 @@ public final class ValueEncoder {
             throw new IllegalStateException("expected " + describe(top) + ", not a float");
         }
         if (f.byteSize() == 4) {
-            int b32 = Float.floatToRawIntBits((float) value);
-            writeUnsignedBigEndian(b32 & 0xFFFFFFFFL, 4, true);
+            writeBigEndianBytes(Float.floatToRawIntBits((float) value) & 0xFFFFFFFFL, 4);
         } else {
-            long b64 = Double.doubleToRawLongBits(value);
-            writeUnsignedBigEndian(b64, 8, true);
+            writeBigEndianBytes(Double.doubleToRawLongBits(value), 8);
         }
         stack.pop();
         childCompleted();
@@ -80,7 +78,7 @@ public final class ValueEncoder {
             throw new IllegalArgumentException(
                     "constructor index " + index + " out of range [0," + ctors.size() + ")");
         }
-        int k = ceilLog2(ctors.size());
+        int k = TypeLayout.ceilLog2(ctors.size());
         if (k > 0) {
             bits.writeBits(k, index);
         }
@@ -114,8 +112,8 @@ public final class ValueEncoder {
         validateArraySize(count, sc);
         bits.closeBitByte();
         if (!sc.isFixed()) {
-            int v = pickCountVarintSize(sc);
-            long encoded = (long) count - lowerBound(sc);
+            int v = TypeLayout.pickCountVarintSize(sc);
+            long encoded = (long) count - TypeLayout.lowerBound(sc);
             writeVarInt(encoded, v);
         }
         af.declaredCount = count;
@@ -144,9 +142,6 @@ public final class ValueEncoder {
         if (complete) {
             throw new IllegalStateException("encoder is complete");
         }
-        if (stack.isEmpty()) {
-            throw new IllegalStateException("encoder is complete");
-        }
     }
 
     private void descendInto(Type t) {
@@ -168,7 +163,7 @@ public final class ValueEncoder {
             return;
         }
         if (t instanceof Type.Array a) {
-            requireArrayElementSupported(a.element());
+            TypeLayout.requireArrayElementSupported(a.element());
             stack.push(new ArrayFrame(a));
             return;
         }
@@ -227,19 +222,15 @@ public final class ValueEncoder {
         return f.toString();
     }
 
-    private void writeUnsignedBigEndian(long value, int byteSize, boolean skipRangeCheck) {
-        if (!skipRangeCheck && byteSize < 8) {
+    private void writeUnsignedBigEndian(long value, int byteSize) {
+        if (byteSize < 8) {
             long max = (1L << (byteSize * 8)) - 1;
             if (value < 0 || value > max) {
                 throw new IllegalArgumentException(
                         "value " + value + " does not fit in " + byteSize + " unsigned bytes");
             }
         }
-        byte[] out = new byte[byteSize];
-        for (int i = 0; i < byteSize; i++) {
-            out[i] = (byte) ((value >>> ((byteSize - 1 - i) * 8)) & 0xFF);
-        }
-        bits.writeBytes(out);
+        writeBigEndianBytes(value, byteSize);
     }
 
     private void writeSignedBigEndian(long value, int byteSize) {
@@ -251,6 +242,10 @@ public final class ValueEncoder {
                         "value " + value + " does not fit in " + byteSize + " signed bytes");
             }
         }
+        writeBigEndianBytes(value, byteSize);
+    }
+
+    private void writeBigEndianBytes(long value, int byteSize) {
         byte[] out = new byte[byteSize];
         for (int i = 0; i < byteSize; i++) {
             out[i] = (byte) ((value >>> ((byteSize - 1 - i) * 8)) & 0xFF);
@@ -287,13 +282,6 @@ public final class ValueEncoder {
         bits.writeBytes(out);
     }
 
-    static int ceilLog2(int n) {
-        if (n <= 1) {
-            return 0;
-        }
-        return 32 - Integer.numberOfLeadingZeros(n - 1);
-    }
-
     private static void validateArraySize(int count, SizeConstraint sc) {
         if (count < 0) {
             throw new IllegalArgumentException("count must be non-negative: " + count);
@@ -304,107 +292,6 @@ public final class ValueEncoder {
                         "count " + count + " not in [" + r.min() + ", " + r.max() + "]");
             }
         }
-    }
-
-    static int pickCountVarintSize(SizeConstraint sc) {
-        if (sc instanceof SizeConstraint.All) {
-            return 8;
-        }
-        if (sc instanceof SizeConstraint.Range r) {
-            long range = (long) r.max() - r.min();
-            int bitsNeeded = (range == 0) ? 1 : (64 - Long.numberOfLeadingZeros(range));
-            for (int v = 1; v <= 8; v++) {
-                int cap = 7 * (v - 1) + 8;
-                if (cap >= bitsNeeded) {
-                    return v;
-                }
-            }
-            throw new IllegalStateException("size range too large for VarInt(8): " + range);
-        }
-        throw new IllegalStateException("unknown size constraint: " + sc);
-    }
-
-    static int lowerBound(SizeConstraint sc) {
-        if (sc instanceof SizeConstraint.All) {
-            return 0;
-        }
-        if (sc instanceof SizeConstraint.Range r) {
-            return r.min();
-        }
-        throw new IllegalStateException("unknown size constraint: " + sc);
-    }
-
-    /**
-     * Iteration 5 supports only byte-aligned item layouts; an element type whose
-     * static encoding is 1..4 bits would need the packed layout (TYPES.md
-     * §"Per-Type Encoding" / Array → packed item layout) and is rejected here so
-     * a future iteration can add it without silently corrupting earlier wire data.
-     * VarInt-element arrays are also deferred — supporting them on the decoder
-     * needs item-level parsing of the chunk stream to stop at the right byte.
-     */
-    private static void requireArrayElementSupported(Type element) {
-        if (element instanceof Type.VariableLengthInteger) {
-            throw new UnsupportedOperationException(
-                    "Array of VariableLengthInteger not supported in iteration 5");
-        }
-        java.util.OptionalInt staticBits = staticBitSize(element);
-        if (staticBits.isPresent()) {
-            int b = staticBits.getAsInt();
-            if (b >= 1 && b <= 4) {
-                throw new UnsupportedOperationException(
-                        "packed-bit array items not supported in iteration 5 (element size " + b + " bits)");
-            }
-        }
-    }
-
-    static java.util.OptionalInt staticBitSize(Type t) {
-        if (t instanceof Type.Unit) {
-            return java.util.OptionalInt.of(0);
-        }
-        if (t instanceof Type.UnsignedInteger u) {
-            return java.util.OptionalInt.of(u.byteSize() * 8);
-        }
-        if (t instanceof Type.SignedInteger s) {
-            return java.util.OptionalInt.of(s.byteSize() * 8);
-        }
-        if (t instanceof Type.FloatingPoint f) {
-            return java.util.OptionalInt.of(f.byteSize() * 8);
-        }
-        if (t instanceof Type.VariableLengthInteger) {
-            return java.util.OptionalInt.empty();
-        }
-        if (t instanceof Type.Struct s) {
-            int total = 0;
-            for (Type.Field f : s.fields()) {
-                java.util.OptionalInt sub = staticBitSize(f.type());
-                if (sub.isEmpty()) {
-                    return java.util.OptionalInt.empty();
-                }
-                total += sub.getAsInt();
-            }
-            return java.util.OptionalInt.of(total);
-        }
-        if (t instanceof Type.Union u) {
-            int discBits = ceilLog2(u.constructors().size());
-            Integer ctorSize = null;
-            for (Type.Constructor c : u.constructors()) {
-                int total = 0;
-                for (Type.Field f : c.fields()) {
-                    java.util.OptionalInt sub = staticBitSize(f.type());
-                    if (sub.isEmpty()) {
-                        return java.util.OptionalInt.empty();
-                    }
-                    total += sub.getAsInt();
-                }
-                if (ctorSize == null) {
-                    ctorSize = total;
-                } else if (ctorSize != total) {
-                    return java.util.OptionalInt.empty();
-                }
-            }
-            return java.util.OptionalInt.of(discBits + (ctorSize == null ? 0 : ctorSize));
-        }
-        return java.util.OptionalInt.empty();
     }
 
     private sealed interface Frame {}

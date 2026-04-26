@@ -76,7 +76,7 @@ public final class ValueDecoder {
             return;
         }
         if (t instanceof Type.Array a) {
-            requireArrayElementSupported(a.element());
+            TypeLayout.requireArrayElementSupported(a.element());
             stack.push(new ArrayFrame(a));
             return;
         }
@@ -128,7 +128,7 @@ public final class ValueDecoder {
 
             if (top instanceof UnionFrame u) {
                 int n = u.union.constructors().size();
-                int k = ValueEncoder.ceilLog2(n);
+                int k = TypeLayout.ceilLog2(n);
                 int j;
                 if (k == 0) {
                     j = 0;
@@ -189,12 +189,19 @@ public final class ValueDecoder {
                 af.declaredCount = ((SizeConstraint.Range) sc).min();
                 af.countRead = true;
             } else {
-                int v = ValueEncoder.pickCountVarintSize(sc);
-                if (!tryReadCountVarint(af, v)) {
+                if (af.countDecoder == null) {
+                    af.countDecoder = new VarIntDecoder(TypeLayout.pickCountVarintSize(sc));
+                }
+                while (buffer.available() > 0) {
+                    if (af.countDecoder.feed(buffer.readOne() & 0xFF)) {
+                        af.declaredCount = (int) (af.countDecoder.value() + TypeLayout.lowerBound(sc));
+                        af.countRead = true;
+                        break;
+                    }
+                }
+                if (!af.countRead) {
                     return false;
                 }
-                af.declaredCount = (int) (af.countAccumulator + ValueEncoder.lowerBound(sc));
-                af.countRead = true;
             }
             if (af.primitiveItems) {
                 af.bytesRemaining = (long) af.declaredCount * af.itemByteSize;
@@ -236,23 +243,6 @@ public final class ValueDecoder {
         return false;
     }
 
-    private boolean tryReadCountVarint(ArrayFrame af, int v) {
-        while (af.countBytesRead < v && buffer.available() > 0) {
-            int b = buffer.readOne() & 0xFF;
-            af.countBytesRead++;
-            if (af.countBytesRead == v) {
-                af.countAccumulator = (af.countAccumulator << 8) | b;
-                return true;
-            }
-            if ((b & 0x80) == 0) {
-                af.countAccumulator = (af.countAccumulator << 7) | b;
-                return true;
-            }
-            af.countAccumulator = (af.countAccumulator << 7) | (b & 0x7F);
-        }
-        return false;
-    }
-
     private void resetBitState() {
         activeBit = false;
         bitsUsed = 0;
@@ -280,19 +270,6 @@ public final class ValueDecoder {
             return f.byteSize();
         }
         throw new IllegalStateException("not a fixed-byte primitive: " + t);
-    }
-
-    private static void requireArrayElementSupported(Type element) {
-        if (element instanceof Type.VariableLengthInteger) {
-            throw new UnsupportedOperationException(
-                    "Array of VariableLengthInteger not supported in iteration 5");
-        }
-        java.util.OptionalInt sb = ValueEncoder.staticBitSize(element);
-        if (sb.isPresent() && sb.getAsInt() >= 1 && sb.getAsInt() <= 4) {
-            throw new UnsupportedOperationException(
-                    "packed-bit array items not supported in iteration 5 (element size "
-                            + sb.getAsInt() + " bits)");
-        }
     }
 
     private boolean tryReadPrimitive(PrimitiveFrame p) {
@@ -325,20 +302,13 @@ public final class ValueDecoder {
             return true;
         }
         if (p.type instanceof Type.VariableLengthInteger v) {
-            int maxN = v.maxBytes();
+            if (p.varint == null) {
+                p.varint = new VarIntDecoder(v.maxBytes());
+            }
             while (buffer.available() > 0) {
-                int b = buffer.readOne() & 0xFF;
-                p.varintBytesRead++;
-                if (p.varintBytesRead == maxN) {
-                    p.varintAccumulator = (p.varintAccumulator << 8) | b;
-                    handler.onEvent(new DecodingEvent.IntegerScalar(p.varintAccumulator));
+                if (p.varint.feed(buffer.readOne() & 0xFF)) {
+                    handler.onEvent(new DecodingEvent.IntegerScalar(p.varint.value()));
                     return true;
-                } else if ((b & 0x80) == 0) {
-                    p.varintAccumulator = (p.varintAccumulator << 7) | b;
-                    handler.onEvent(new DecodingEvent.IntegerScalar(p.varintAccumulator));
-                    return true;
-                } else {
-                    p.varintAccumulator = (p.varintAccumulator << 7) | (b & 0x7F);
                 }
             }
             return false;
@@ -406,8 +376,7 @@ public final class ValueDecoder {
 
     private static final class PrimitiveFrame implements Frame {
         final Type type;
-        long varintAccumulator;
-        int varintBytesRead;
+        VarIntDecoder varint;
 
         PrimitiveFrame(Type type) {
             this.type = type;
@@ -444,8 +413,7 @@ public final class ValueDecoder {
         int itemsCompleted;
         boolean itemStarted;
         long bytesRemaining;
-        long countAccumulator;
-        int countBytesRead;
+        VarIntDecoder countDecoder;
 
         ArrayFrame(Type.Array array) {
             this.array = array;

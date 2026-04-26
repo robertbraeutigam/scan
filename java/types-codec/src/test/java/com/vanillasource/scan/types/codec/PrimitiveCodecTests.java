@@ -10,9 +10,6 @@ import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -20,20 +17,11 @@ import static org.testng.Assert.assertTrue;
 
 public final class PrimitiveCodecTests {
 
-    private static final class Capture implements DecodingEventHandler {
-        final List<DecodingEvent> events = new ArrayList<>();
-
-        @Override
-        public void onEvent(DecodingEvent event) {
-            events.add(event);
-        }
-    }
-
     private static long roundTripInteger(Type type, long value) {
         ValueEncoder enc = new ValueEncoder(type);
         enc.writeInteger(value);
         byte[] bytes = enc.toByteArray();
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
         dec.feed(bytes);
         assertTrue(dec.isComplete(), "decoder should complete");
@@ -46,7 +34,7 @@ public final class PrimitiveCodecTests {
         ValueEncoder enc = new ValueEncoder(type);
         enc.writeFloat(value);
         byte[] bytes = enc.toByteArray();
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
         dec.feed(bytes);
         FloatingPointScalar event = (FloatingPointScalar) cap.events.get(0);
@@ -60,7 +48,7 @@ public final class PrimitiveCodecTests {
         assertTrue(enc.isComplete(), "Unit encoder is complete at construction");
         assertEquals(enc.toByteArray(), new byte[0]);
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
         assertTrue(dec.isComplete(), "Unit decoder is complete at construction");
         assertEquals(cap.events.size(), 1);
@@ -121,7 +109,7 @@ public final class PrimitiveCodecTests {
         byte[] bytes = enc.toByteArray();
         assertEquals(bytes, new byte[] { (byte) 0xFF });
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(s1, cap);
         dec.feed(bytes);
         assertEquals(((IntegerScalar) cap.events.get(0)).value(), -1L);
@@ -278,7 +266,7 @@ public final class PrimitiveCodecTests {
         enc.writeInteger(0xCAFEBABEL);
         byte[] bytes = enc.toByteArray();
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(u4, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
             dec.feed(new byte[] { bytes[i] });
@@ -299,7 +287,7 @@ public final class PrimitiveCodecTests {
         byte[] bytes = enc.toByteArray();
         assertTrue(bytes.length > 1, "value should require multiple bytes");
 
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(v4, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
             dec.feed(new byte[] { bytes[i] });
@@ -313,7 +301,7 @@ public final class PrimitiveCodecTests {
     @Test
     public void decoderRangeFeedConsumesOnlyDeclaredSlice() {
         UnsignedInteger u2 = new UnsignedInteger(2);
-        Capture cap = new Capture();
+        EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(u2, cap);
         byte[] padded = new byte[] { 0x00, (byte) 0xAB, (byte) 0xCD, 0x00 };
         dec.feed(padded, 1, 2);
