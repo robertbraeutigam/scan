@@ -20,18 +20,14 @@ import java.util.Objects;
 public final class ValueDecoder {
     private final Type rootType;
     private final DecodingEventHandler handler;
-    private final ByteAccumulator buffer;
+    private final BitReader bits;
     private final Deque<Frame> stack;
     private boolean complete;
-
-    private boolean activeBit;
-    private int activeBitByte;
-    private int bitsUsed;
 
     public ValueDecoder(Type rootType, DecodingEventHandler handler) {
         this.rootType = Objects.requireNonNull(rootType, "rootType");
         this.handler = Objects.requireNonNull(handler, "handler");
-        this.buffer = new ByteAccumulator();
+        this.bits = new BitReader();
         this.stack = new ArrayDeque<>();
         descendInto(rootType);
         tryProgress();
@@ -49,7 +45,7 @@ public final class ValueDecoder {
         if (complete) {
             throw new IllegalStateException("decoder is complete; no more bytes accepted");
         }
-        buffer.append(bytes, offset, length);
+        bits.feed(bytes, offset, length);
         tryProgress();
     }
 
@@ -104,7 +100,7 @@ public final class ValueDecoder {
                 handler.onEvent(new DecodingEvent.EndItem());
                 af.itemStarted = false;
                 af.itemsCompleted++;
-                resetBitState();
+                bits.closeBitByte();
                 return;
             }
             throw new IllegalStateException("unexpected frame at child-complete: " + top);
@@ -133,10 +129,10 @@ public final class ValueDecoder {
                 if (k == 0) {
                     j = 0;
                 } else {
-                    if (!hasBits(k)) {
+                    if (!bits.hasBits(k)) {
                         return;
                     }
-                    j = (int) readBits(k);
+                    j = (int) bits.readBits(k);
                     if (j >= n) {
                         throw new IllegalStateException(
                                 "invalid discriminator " + j + " for union with " + n + " constructors");
@@ -175,7 +171,7 @@ public final class ValueDecoder {
 
     private boolean progressArray(ArrayFrame af) {
         if (!af.entered) {
-            resetBitState();
+            bits.closeBitByte();
             handler.onEvent(new DecodingEvent.StartContainer(DecodingEvent.ContainerKind.ARRAY));
             af.entered = true;
             af.primitiveItems = isPrimitiveItem(af.array.element());
@@ -192,8 +188,8 @@ public final class ValueDecoder {
                 if (af.countDecoder == null) {
                     af.countDecoder = new VarIntDecoder(sc.countVarintSize());
                 }
-                while (buffer.available() > 0) {
-                    if (af.countDecoder.feed(buffer.readOne() & 0xFF)) {
+                while (bits.available() > 0) {
+                    if (af.countDecoder.feed(bits.readOneByte())) {
                         af.declaredCount = (int) (af.countDecoder.value() + sc.lowerBound());
                         af.countRead = true;
                         break;
@@ -209,26 +205,26 @@ public final class ValueDecoder {
         }
         if (af.primitiveItems) {
             if (af.bytesRemaining > 0) {
-                if (buffer.available() == 0) {
+                if (bits.available() == 0) {
                     return false;
                 }
-                int n = (int) Math.min(buffer.available(), af.bytesRemaining);
+                int n = (int) Math.min(bits.available(), af.bytesRemaining);
                 byte[] chunk = new byte[n];
-                buffer.readInto(chunk, 0, n);
+                bits.readBytes(chunk, 0, n);
                 handler.onEvent(new DecodingEvent.Chunk(chunk));
                 af.bytesRemaining -= n;
                 if (af.bytesRemaining > 0) {
                     return false;
                 }
             }
-            resetBitState();
+            bits.closeBitByte();
             handler.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
             stack.pop();
             childCompleted();
             return true;
         }
         if (af.itemsCompleted >= af.declaredCount) {
-            resetBitState();
+            bits.closeBitByte();
             handler.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
             stack.pop();
             childCompleted();
@@ -241,11 +237,6 @@ public final class ValueDecoder {
             return true;
         }
         return false;
-    }
-
-    private void resetBitState() {
-        activeBit = false;
-        bitsUsed = 0;
     }
 
     private static boolean isPrimitiveItem(Type t) {
@@ -275,7 +266,7 @@ public final class ValueDecoder {
     private boolean tryReadPrimitive(PrimitiveFrame p) {
         if (p.type instanceof Type.UnsignedInteger u) {
             int n = u.byteSize();
-            if (buffer.available() < n) {
+            if (!bits.hasBytes(n)) {
                 return false;
             }
             handler.onEvent(new DecodingEvent.IntegerScalar(readUnsignedBigEndian(n)));
@@ -283,7 +274,7 @@ public final class ValueDecoder {
         }
         if (p.type instanceof Type.SignedInteger s) {
             int n = s.byteSize();
-            if (buffer.available() < n) {
+            if (!bits.hasBytes(n)) {
                 return false;
             }
             handler.onEvent(new DecodingEvent.IntegerScalar(readSignedBigEndian(n)));
@@ -291,7 +282,7 @@ public final class ValueDecoder {
         }
         if (p.type instanceof Type.FloatingPoint f) {
             int n = f.byteSize();
-            if (buffer.available() < n) {
+            if (!bits.hasBytes(n)) {
                 return false;
             }
             long bb = readUnsignedBigEndian(n);
@@ -305,8 +296,8 @@ public final class ValueDecoder {
             if (p.varint == null) {
                 p.varint = new VarIntDecoder(v.maxBytes());
             }
-            while (buffer.available() > 0) {
-                if (p.varint.feed(buffer.readOne() & 0xFF)) {
+            while (bits.available() > 0) {
+                if (p.varint.feed(bits.readOneByte())) {
                     handler.onEvent(new DecodingEvent.IntegerScalar(p.varint.value()));
                     return true;
                 }
@@ -316,47 +307,10 @@ public final class ValueDecoder {
         throw new IllegalStateException("unsupported primitive: " + p.type);
     }
 
-    private boolean hasBits(int k) {
-        int free = activeBit ? (8 - bitsUsed) : 0;
-        if (free >= k) {
-            return true;
-        }
-        int needed = (k - free + 7) / 8;
-        return buffer.available() >= needed;
-    }
-
-    private long readBits(int k) {
-        long result = 0L;
-        int remaining = k;
-        while (remaining > 0) {
-            int free = activeBit ? (8 - bitsUsed) : 0;
-            int groupSize;
-            if (free > 0) {
-                groupSize = Math.min(remaining, free);
-            } else {
-                activeBitByte = buffer.readOne() & 0xFF;
-                bitsUsed = 0;
-                activeBit = true;
-                free = 8;
-                groupSize = Math.min(remaining, free);
-            }
-            int shift = (8 - bitsUsed) - groupSize;
-            long bitsValue = (activeBitByte >>> shift) & ((1L << groupSize) - 1);
-            result = (result << groupSize) | bitsValue;
-            bitsUsed += groupSize;
-            if (bitsUsed == 8) {
-                activeBit = false;
-                bitsUsed = 0;
-            }
-            remaining -= groupSize;
-        }
-        return result;
-    }
-
     private long readUnsignedBigEndian(int n) {
         long result = 0L;
         for (int i = 0; i < n; i++) {
-            result = (result << 8) | (buffer.readOne() & 0xFF);
+            result = (result << 8) | bits.readOneByte();
         }
         return result;
     }

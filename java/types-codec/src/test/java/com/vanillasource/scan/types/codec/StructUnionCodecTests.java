@@ -16,6 +16,7 @@ import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,13 +49,14 @@ public final class StructUnionCodecTests {
                 f("a", new UnsignedInteger(1)),
                 f("b", new UnsignedInteger(2))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         assertFalse(enc.isComplete());
         enc.writeInteger(0x07);
         assertFalse(enc.isComplete());
         enc.writeInteger(0xBEEF);
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         assertEquals(bytes, new byte[] { 0x07, (byte) 0xBE, (byte) 0xEF });
 
         List<DecodingEvent> events = decode(t, bytes);
@@ -73,13 +75,14 @@ public final class StructUnionCodecTests {
                 f("inner", inner),
                 f("c", new UnsignedInteger(1))));
 
-        ValueEncoder enc = new ValueEncoder(outer);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(outer, baos);
         enc.writeInteger(0x01);  // a
         enc.writeInteger(0x02);  // inner.x
         enc.writeInteger(0x03);  // inner.y
         enc.writeInteger(0x04);  // c
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         assertEquals(bytes, new byte[] { 0x01, 0x02, 0x03, 0x04 });
 
         List<DecodingEvent> events = decode(outer, bytes);
@@ -98,10 +101,11 @@ public final class StructUnionCodecTests {
                 f("u", new Unit()),
                 f("v", new UnsignedInteger(1))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeInteger(0x42);  // Unit field auto-skipped
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         assertEquals(bytes, new byte[] { 0x42 });
 
         List<DecodingEvent> events = decode(t, bytes);
@@ -117,11 +121,12 @@ public final class StructUnionCodecTests {
                 ctor("None"),
                 ctor("Some", f("value", new UnsignedInteger(1)))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(0);  // None
         assertTrue(enc.isComplete());
         // 1-bit disc 0 in MSB of byte 0; 7 unused bits remain 0.
-        assertEquals(enc.toByteArray(), new byte[] { 0x00 });
+        assertEquals(baos.toByteArray(), new byte[] { 0x00 });
 
         List<DecodingEvent> events = decode(t, new byte[] { 0x00 });
         assertEquals(events, List.of(new Constructor(0)));
@@ -133,11 +138,12 @@ public final class StructUnionCodecTests {
                 ctor("None"),
                 ctor("Some", f("value", new UnsignedInteger(1)))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(1);
         enc.writeInteger(0x5A);
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         // Disc bit 1 in MSB of byte 0 (= 0x80), then 1 byte byte-aligned for value.
         // Byte 0: 0x80, byte 1: 0x5A.
         assertEquals(bytes, new byte[] { (byte) 0x80, 0x5A });
@@ -162,10 +168,11 @@ public final class StructUnionCodecTests {
         int chosen = 279;
         assertTrue(chosen < 300);
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(chosen);
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
 
         // 9-bit MSB-first encoding:
         //   byte 0 = top 8 bits of discriminator
@@ -192,12 +199,13 @@ public final class StructUnionCodecTests {
                 f("b", u2b),
                 f("c", new UnsignedInteger(1))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(1);  // a -> Y
         enc.writeConstructor(0);  // b -> P
         enc.writeInteger(0x5A);   // c
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         // Byte 0: 1 0 0 0 0 0 0 0 = 0x80 (a=1 in MSB, b=0 next, six zero bits)
         // Byte 1: 0x5A
         assertEquals(bytes, new byte[] { (byte) 0x80, 0x5A });
@@ -221,12 +229,13 @@ public final class StructUnionCodecTests {
                 f("b", new UnsignedInteger(1)),
                 f("c", u2)));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(1);  // a=Y -> bit byte 0 bit 7 = 1
         enc.writeInteger(0xAB);   // b -> byte 1 = 0xAB
         enc.writeConstructor(1);  // c=Y -> bit byte 0 bit 6 = 1
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         // Byte 0: 1 1 0 0 0 0 0 0 = 0xC0
         // Byte 1: 0xAB
         assertEquals(bytes, new byte[] { (byte) 0xC0, (byte) 0xAB });
@@ -243,11 +252,12 @@ public final class StructUnionCodecTests {
         // n=1 -> 0-bit discriminator; nothing is written for it.
         Union t = new Union(List.of(ctor("Only", f("value", new UnsignedInteger(2)))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(0);
         enc.writeInteger(0x1234);
         assertTrue(enc.isComplete());
-        assertEquals(enc.toByteArray(), new byte[] { 0x12, 0x34 });
+        assertEquals(baos.toByteArray(), new byte[] { 0x12, 0x34 });
 
         List<DecodingEvent> events = decode(t, new byte[] { 0x12, 0x34 });
         assertEquals(events, List.of(
@@ -261,12 +271,13 @@ public final class StructUnionCodecTests {
         Union inner = new Union(List.of(ctor("A"), ctor("B", f("x", new UnsignedInteger(1)))));
         Struct outer = new Struct(List.of(f("inner", inner)));
 
-        ValueEncoder enc = new ValueEncoder(outer);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(outer, baos);
         enc.writeConstructor(1);  // inner -> B
         enc.writeInteger(0x77);
         assertTrue(enc.isComplete());
         // Byte 0: 1-bit disc in MSB = 0x80, byte 1: 0x77.
-        assertEquals(enc.toByteArray(), new byte[] { (byte) 0x80, 0x77 });
+        assertEquals(baos.toByteArray(), new byte[] { (byte) 0x80, 0x77 });
 
         List<DecodingEvent> events = decode(outer, new byte[] { (byte) 0x80, 0x77 });
         assertEquals(events, List.of(
@@ -278,30 +289,30 @@ public final class StructUnionCodecTests {
 
     @Test
     public void encoderRejectsConstructorAtPrimitivePosition() {
-        ValueEncoder enc = new ValueEncoder(new UnsignedInteger(1));
+        ValueEncoder enc = new ValueEncoder(new UnsignedInteger(1), new ByteArrayOutputStream());
         assertThrows(IllegalStateException.class, () -> enc.writeConstructor(0));
     }
 
     @Test
     public void encoderRejectsIntegerAtUnionPosition() {
         Union t = new Union(List.of(ctor("A"), ctor("B")));
-        ValueEncoder enc = new ValueEncoder(t);
+        ValueEncoder enc = new ValueEncoder(t, new ByteArrayOutputStream());
         assertThrows(IllegalStateException.class, () -> enc.writeInteger(0));
     }
 
     @Test
     public void encoderRejectsConstructorIndexOutOfRange() {
         Union t = new Union(List.of(ctor("A"), ctor("B")));
-        ValueEncoder enc = new ValueEncoder(t);
+        ValueEncoder enc = new ValueEncoder(t, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc.writeConstructor(2));
-        ValueEncoder enc2 = new ValueEncoder(t);
+        ValueEncoder enc2 = new ValueEncoder(t, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc2.writeConstructor(-1));
     }
 
     @Test
     public void encoderRejectsWriteAfterStructCompletes() {
         Struct t = new Struct(List.of(f("a", new UnsignedInteger(1))));
-        ValueEncoder enc = new ValueEncoder(t);
+        ValueEncoder enc = new ValueEncoder(t, new ByteArrayOutputStream());
         enc.writeInteger(1);
         assertTrue(enc.isComplete());
         assertThrows(IllegalStateException.class, () -> enc.writeInteger(0));
@@ -314,11 +325,12 @@ public final class StructUnionCodecTests {
                 f("flag", u),
                 f("tail", new VariableLengthInteger(3))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeConstructor(1);
         enc.writeInteger(0x1234);
         enc.writeInteger(20000);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
 
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
@@ -349,11 +361,12 @@ public final class StructUnionCodecTests {
                 f("temp", new FloatingPoint(4)),
                 f("flag", new SignedInteger(1))));
 
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         enc.writeFloat(1.5f);
         enc.writeInteger(-2);
         assertTrue(enc.isComplete());
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
 
         List<DecodingEvent> events = decode(t, bytes);
         assertEquals(events.size(), 6);
@@ -369,9 +382,10 @@ public final class StructUnionCodecTests {
     @Test
     public void emptyStructIsCompleteAtConstruction() {
         Struct t = new Struct(List.of());
-        ValueEncoder enc = new ValueEncoder(t);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(t, baos);
         assertTrue(enc.isComplete());
-        assertEquals(enc.toByteArray(), new byte[0]);
+        assertEquals(baos.toByteArray(), new byte[0]);
 
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);

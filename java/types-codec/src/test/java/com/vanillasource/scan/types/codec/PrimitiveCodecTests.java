@@ -10,6 +10,8 @@ import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayOutputStream;
+
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -18,9 +20,10 @@ import static org.testng.Assert.assertTrue;
 public final class PrimitiveCodecTests {
 
     private static long roundTripInteger(Type type, long value) {
-        ValueEncoder enc = new ValueEncoder(type);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(type, baos);
         enc.writeInteger(value);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
         dec.feed(bytes);
@@ -31,9 +34,10 @@ public final class PrimitiveCodecTests {
     }
 
     private static double roundTripFloat(Type type, double value) {
-        ValueEncoder enc = new ValueEncoder(type);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(type, baos);
         enc.writeFloat(value);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
         dec.feed(bytes);
@@ -44,9 +48,10 @@ public final class PrimitiveCodecTests {
     @Test
     public void unitRoundTripIsZeroBytes() {
         Unit type = new Unit();
-        ValueEncoder enc = new ValueEncoder(type);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(type, baos);
         assertTrue(enc.isComplete(), "Unit encoder is complete at construction");
-        assertEquals(enc.toByteArray(), new byte[0]);
+        assertEquals(baos.toByteArray(), new byte[0]);
 
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
@@ -69,22 +74,23 @@ public final class PrimitiveCodecTests {
     @Test
     public void unsignedIntegerBigEndianBytes() {
         UnsignedInteger u4 = new UnsignedInteger(4);
-        ValueEncoder enc = new ValueEncoder(u4);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(u4, baos);
         enc.writeInteger(0x12345678L);
-        assertEquals(enc.toByteArray(), new byte[] { 0x12, 0x34, 0x56, 0x78 });
+        assertEquals(baos.toByteArray(), new byte[] { 0x12, 0x34, 0x56, 0x78 });
     }
 
     @Test
     public void unsignedIntegerRejectsOverflow() {
         UnsignedInteger u1 = new UnsignedInteger(1);
-        ValueEncoder enc = new ValueEncoder(u1);
+        ValueEncoder enc = new ValueEncoder(u1, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc.writeInteger(256));
     }
 
     @Test
     public void unsignedIntegerRejectsNegative() {
         UnsignedInteger u1 = new UnsignedInteger(1);
-        ValueEncoder enc = new ValueEncoder(u1);
+        ValueEncoder enc = new ValueEncoder(u1, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc.writeInteger(-1));
     }
 
@@ -104,9 +110,10 @@ public final class PrimitiveCodecTests {
     @Test
     public void signedIntegerSignExtension() {
         SignedInteger s1 = new SignedInteger(1);
-        ValueEncoder enc = new ValueEncoder(s1);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(s1, baos);
         enc.writeInteger(-1);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         assertEquals(bytes, new byte[] { (byte) 0xFF });
 
         EventCapture cap = new EventCapture();
@@ -118,9 +125,9 @@ public final class PrimitiveCodecTests {
     @Test
     public void signedIntegerRejectsOutOfRange() {
         SignedInteger s1 = new SignedInteger(1);
-        ValueEncoder tooHigh = new ValueEncoder(s1);
+        ValueEncoder tooHigh = new ValueEncoder(s1, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> tooHigh.writeInteger(128));
-        ValueEncoder tooLow = new ValueEncoder(s1);
+        ValueEncoder tooLow = new ValueEncoder(s1, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> tooLow.writeInteger(-129));
     }
 
@@ -158,9 +165,10 @@ public final class PrimitiveCodecTests {
     @Test
     public void varintZeroEncodesAsSingleZeroByte() {
         for (int maxN = 1; maxN <= 8; maxN++) {
-            ValueEncoder enc = new ValueEncoder(new VariableLengthInteger(maxN));
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ValueEncoder enc = new ValueEncoder(new VariableLengthInteger(maxN), baos);
             enc.writeInteger(0);
-            assertEquals(enc.toByteArray(), new byte[] { 0x00 },
+            assertEquals(baos.toByteArray(), new byte[] { 0x00 },
                     "maxN=" + maxN + " should encode 0 as one zero byte");
         }
     }
@@ -168,28 +176,31 @@ public final class PrimitiveCodecTests {
     @Test
     public void varintMaxN1UsesAllEightBitsInSingleByte() {
         VariableLengthInteger v1 = new VariableLengthInteger(1);
-        ValueEncoder enc = new ValueEncoder(v1);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(v1, baos);
         enc.writeInteger(255);
-        assertEquals(enc.toByteArray(), new byte[] { (byte) 0xFF });
+        assertEquals(baos.toByteArray(), new byte[] { (byte) 0xFF });
         assertEquals(roundTripInteger(v1, 255), 255L);
     }
 
     @Test
     public void varintMaxN1RejectsValueAbove255() {
         VariableLengthInteger v1 = new VariableLengthInteger(1);
-        ValueEncoder enc = new ValueEncoder(v1);
+        ValueEncoder enc = new ValueEncoder(v1, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc.writeInteger(256));
     }
 
     @Test
     public void varintSevenBitBoundary() {
         VariableLengthInteger v3 = new VariableLengthInteger(3);
-        ValueEncoder e127 = new ValueEncoder(v3);
+        ByteArrayOutputStream baos127 = new ByteArrayOutputStream();
+        ValueEncoder e127 = new ValueEncoder(v3, baos127);
         e127.writeInteger(127);
-        assertEquals(e127.toByteArray(), new byte[] { 0x7F });
-        ValueEncoder e128 = new ValueEncoder(v3);
+        assertEquals(baos127.toByteArray(), new byte[] { 0x7F });
+        ByteArrayOutputStream baos128 = new ByteArrayOutputStream();
+        ValueEncoder e128 = new ValueEncoder(v3, baos128);
         e128.writeInteger(128);
-        assertEquals(e128.toByteArray(), new byte[] { (byte) 0x81, 0x00 });
+        assertEquals(baos128.toByteArray(), new byte[] { (byte) 0x81, 0x00 });
         assertEquals(roundTripInteger(v3, 127), 127L);
         assertEquals(roundTripInteger(v3, 128), 128L);
     }
@@ -198,12 +209,13 @@ public final class PrimitiveCodecTests {
     public void varintMaxN2Holds15BitsViaTrailingFullByte() {
         VariableLengthInteger v2 = new VariableLengthInteger(2);
         long max15 = (1L << 15) - 1;
-        ValueEncoder enc = new ValueEncoder(v2);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(v2, baos);
         enc.writeInteger(max15);
-        assertEquals(enc.toByteArray(), new byte[] { (byte) 0xFF, (byte) 0xFF });
+        assertEquals(baos.toByteArray(), new byte[] { (byte) 0xFF, (byte) 0xFF });
         assertEquals(roundTripInteger(v2, max15), max15);
 
-        ValueEncoder over = new ValueEncoder(v2);
+        ValueEncoder over = new ValueEncoder(v2, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> over.writeInteger(1L << 15));
     }
 
@@ -225,30 +237,39 @@ public final class PrimitiveCodecTests {
     @Test
     public void varintRejectsNegative() {
         VariableLengthInteger v4 = new VariableLengthInteger(4);
-        ValueEncoder enc = new ValueEncoder(v4);
+        ValueEncoder enc = new ValueEncoder(v4, new ByteArrayOutputStream());
         assertThrows(IllegalArgumentException.class, () -> enc.writeInteger(-1));
     }
 
     @Test
     public void encoderRejectsTypeMismatch() {
-        ValueEncoder intEnc = new ValueEncoder(new UnsignedInteger(2));
+        ValueEncoder intEnc = new ValueEncoder(new UnsignedInteger(2), new ByteArrayOutputStream());
         assertThrows(IllegalStateException.class, () -> intEnc.writeFloat(1.0));
-        ValueEncoder floatEnc = new ValueEncoder(new FloatingPoint(4));
+        ValueEncoder floatEnc = new ValueEncoder(new FloatingPoint(4), new ByteArrayOutputStream());
         assertThrows(IllegalStateException.class, () -> floatEnc.writeInteger(1));
     }
 
     @Test
     public void encoderRejectsWriteAfterComplete() {
-        ValueEncoder enc = new ValueEncoder(new UnsignedInteger(1));
+        ValueEncoder enc = new ValueEncoder(new UnsignedInteger(1), new ByteArrayOutputStream());
         enc.writeInteger(7);
         assertThrows(IllegalStateException.class, () -> enc.writeInteger(1));
     }
 
     @Test
-    public void encoderRejectsToByteArrayWhenIncomplete() {
-        ValueEncoder enc = new ValueEncoder(new UnsignedInteger(2));
-        assertFalse(enc.isComplete());
-        assertThrows(IllegalStateException.class, enc::toByteArray);
+    public void encoderHoldsBytesUntilCompleteForBitPackedRoot() {
+        // A union with a 1-bit discriminator opens a bit byte that does not close
+        // until the encoder completes. Until then, no byte should reach the sink.
+        Type.Union u = new Type.Union(java.util.List.of(
+                new Type.Constructor("A", java.util.List.of()),
+                new Type.Constructor("B", java.util.List.of())));
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(u, baos);
+        assertEquals(baos.toByteArray().length, 0, "no bytes settled before write");
+        enc.writeConstructor(0);
+        // After complete, the dangling bit byte is flushed.
+        assertTrue(enc.isComplete());
+        assertEquals(baos.toByteArray(), new byte[] { 0x00 });
     }
 
     @Test
@@ -262,9 +283,10 @@ public final class PrimitiveCodecTests {
     @Test
     public void decoderHandlesByteByByteFeedForFixedPrimitive() {
         UnsignedInteger u4 = new UnsignedInteger(4);
-        ValueEncoder enc = new ValueEncoder(u4);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(u4, baos);
         enc.writeInteger(0xCAFEBABEL);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
 
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(u4, cap);
@@ -281,10 +303,11 @@ public final class PrimitiveCodecTests {
     @Test
     public void decoderHandlesByteByByteFeedForVarInt() {
         VariableLengthInteger v4 = new VariableLengthInteger(4);
-        ValueEncoder enc = new ValueEncoder(v4);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ValueEncoder enc = new ValueEncoder(v4, baos);
         long value = 1_000_000L;
         enc.writeInteger(value);
-        byte[] bytes = enc.toByteArray();
+        byte[] bytes = baos.toByteArray();
         assertTrue(bytes.length > 1, "value should require multiple bytes");
 
         EventCapture cap = new EventCapture();

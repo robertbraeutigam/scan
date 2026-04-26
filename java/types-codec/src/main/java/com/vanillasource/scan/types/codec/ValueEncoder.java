@@ -1,24 +1,26 @@
 package com.vanillasource.scan.types.codec;
 
+import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Writes a single value of a given root {@link Type} to a byte array, in lockstep
- * with the type's structure (TYPES.md §"Values Binary Representation"). Iteration 4
- * supports primitives, {@link Type.Struct}, and {@link Type.Union}; aggregates and
- * streams arrive in subsequent iterations.
+ * Writes a single value of a given root {@link Type} to an {@link OutputStream}, in
+ * lockstep with the type's structure (TYPES.md §"Values Binary Representation").
+ * Bytes drain to the delegate stream as soon as they are settled — once a bit byte
+ * closes, both it and any byte-aligned data written after it are emitted. The
+ * encoder never materializes the full value in memory.
  *
  * <p>The user supplies leaf values in declaration order — {@code writeInteger},
  * {@code writeFloat} for primitives, and {@code writeConstructor} for unions. The
  * encoder advances through the type tree automatically; struct boundaries are
  * implicit. {@link Type.Unit} positions are filled without any user call.
  *
- * <p>If the root type is itself complete-with-zero-bytes (e.g. {@code Unit} or an
- * empty {@code Struct}), the encoder is {@link #isComplete() complete} at
- * construction and {@link #toByteArray()} returns an empty array.
+ * <p>When the root completes, any dangling bit byte is flushed to the delegate
+ * (its unused slots remain {@code 0}, per TYPES.md §"Encoder and Decoder State").
+ * The delegate is not closed.
  */
 public final class ValueEncoder {
     private final Type rootType;
@@ -26,11 +28,15 @@ public final class ValueEncoder {
     private final Deque<Frame> stack;
     private boolean complete;
 
-    public ValueEncoder(Type rootType) {
+    public ValueEncoder(Type rootType, OutputStream out) {
         this.rootType = Objects.requireNonNull(rootType, "rootType");
-        this.bits = new BitWriter();
+        Objects.requireNonNull(out, "out");
+        this.bits = new BitWriter(out);
         this.stack = new ArrayDeque<>();
         descendInto(rootType);
+        if (complete) {
+            bits.closeBitByte();
+        }
     }
 
     public void writeInteger(long value) {
@@ -130,13 +136,6 @@ public final class ValueEncoder {
         return complete;
     }
 
-    public byte[] toByteArray() {
-        if (!complete) {
-            throw new IllegalStateException("encoder is incomplete");
-        }
-        return bits.toByteArray();
-    }
-
     private void ensureWritable() {
         if (complete) {
             throw new IllegalStateException("encoder is complete");
@@ -197,6 +196,7 @@ public final class ValueEncoder {
             }
             throw new IllegalStateException("unexpected frame at child-complete: " + top);
         }
+        bits.closeBitByte();
         complete = true;
     }
 
@@ -249,7 +249,7 @@ public final class ValueEncoder {
         for (int i = 0; i < byteSize; i++) {
             out[i] = (byte) ((value >>> ((byteSize - 1 - i) * 8)) & 0xFF);
         }
-        bits.writeBytes(out);
+        bits.write(out);
     }
 
     private void writeVarInt(long value, int maxN) {
@@ -278,7 +278,7 @@ public final class ValueEncoder {
             int byteValue = (i < k - 1) ? (0x80 | groupValue) : groupValue;
             out[i] = (byte) byteValue;
         }
-        bits.writeBytes(out);
+        bits.write(out);
     }
 
     private static void validateArraySize(int count, SizeConstraint sc) {
