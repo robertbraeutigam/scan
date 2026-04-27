@@ -5,9 +5,10 @@ import com.vanillasource.scan.types.codec.EncoderFrame;
 
 import java.util.List;
 
-/** Awaits a {@code writeConstructor} call; on receipt writes the discriminator and replaces itself with the constructor's fields. */
+/** Awaits a {@code writeConstructor} call; on receipt writes the discriminator and runs the chosen constructor's fields inline. */
 final class UnionEncoderFrame implements EncoderFrame {
     private final Union union;
+    private EncoderFrame currentChild;
 
     UnionEncoderFrame(Union union) {
         this.union = union;
@@ -15,11 +16,17 @@ final class UnionEncoderFrame implements EncoderFrame {
 
     @Override
     public String describe() {
+        if (currentChild != null) {
+            return currentChild.describe();
+        }
         return "union with " + union.constructors().size() + " constructors";
     }
 
     @Override
     public Result writeConstructor(BitWriter bits, int index) {
+        if (currentChild != null) {
+            return afterChild(currentChild.writeConstructor(bits, index));
+        }
         List<Constructor> ctors = union.constructors();
         if (index < 0 || index >= ctors.size()) {
             throw new IllegalArgumentException(
@@ -33,11 +40,38 @@ final class UnionEncoderFrame implements EncoderFrame {
         if (ctor.fields().isEmpty()) {
             return new Result.Done();
         }
-        return new Result.Replace(new FieldsEncoderFrame(ctor.fields()));
+        currentChild = new FieldsEncoderFrame(ctor.fields());
+        return afterChild(currentChild.onEntered(bits));
     }
 
     @Override
-    public Result onChildCompleted(BitWriter bits) {
-        throw new IllegalStateException("union frame is replaced before any child runs");
+    public Result writeInteger(BitWriter bits, long value) {
+        if (currentChild == null) {
+            return EncoderFrame.super.writeInteger(bits, value);
+        }
+        return afterChild(currentChild.writeInteger(bits, value));
+    }
+
+    @Override
+    public Result writeFloat(BitWriter bits, double value) {
+        if (currentChild == null) {
+            return EncoderFrame.super.writeFloat(bits, value);
+        }
+        return afterChild(currentChild.writeFloat(bits, value));
+    }
+
+    @Override
+    public Result startArray(BitWriter bits, int count) {
+        if (currentChild == null) {
+            return EncoderFrame.super.startArray(bits, count);
+        }
+        return afterChild(currentChild.startArray(bits, count));
+    }
+
+    private Result afterChild(Result r) {
+        if (r instanceof Result.Done) {
+            currentChild = null;
+        }
+        return r;
     }
 }

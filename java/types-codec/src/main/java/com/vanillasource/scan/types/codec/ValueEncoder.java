@@ -1,8 +1,6 @@
 package com.vanillasource.scan.types.codec;
 
 import java.io.OutputStream;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Objects;
 
 /**
@@ -17,10 +15,10 @@ import java.util.Objects;
  * encoder advances through the type tree automatically; struct boundaries are
  * implicit. {@link Type.Unit} positions are filled without any user call.
  *
- * <p>The encoder is a thin loop over a stack of polymorphic {@link EncoderFrame}s.
- * Each user write call delegates to the top frame's matching method; the frame
- * returns a {@link EncoderFrame.Result} that tells the encoder how to mutate the
- * stack. Per-type write logic lives on {@link Type} itself.
+ * <p>The encoder holds a single root {@link EncoderFrame}; aggregate frames own
+ * and delegate to their own children. Each user write call delegates to the root
+ * frame and propagates down to the active leaf via per-frame {@code currentChild}
+ * references.
  *
  * <p>When the root completes, any dangling bit byte is flushed to the delegate
  * (its unused slots remain {@code 0}, per TYPES.md §"Encoder and Decoder State").
@@ -28,37 +26,35 @@ import java.util.Objects;
  */
 public final class ValueEncoder {
     private final BitWriter bits;
-    private final Deque<EncoderFrame> stack;
+    private EncoderFrame root;
     private boolean complete;
 
     public ValueEncoder(Type rootType, OutputStream out) {
         Objects.requireNonNull(rootType, "rootType");
         Objects.requireNonNull(out, "out");
         this.bits = new BitWriter(out);
-        this.stack = new ArrayDeque<>();
-        EncoderFrame frame = rootType.createEncodeFrame();
-        if (frame == null) {
+        this.root = rootType.createEncodeFrame();
+        if (root == null) {
             bits.closeBitByte();
             complete = true;
         } else {
-            stack.push(frame);
-            apply(frame.onPushed(bits));
+            apply(root.onEntered(bits));
         }
     }
 
     public void writeInteger(long value) {
         ensureWritable();
-        apply(stack.peek().writeInteger(bits, value));
+        apply(root.writeInteger(bits, value));
     }
 
     public void writeFloat(double value) {
         ensureWritable();
-        apply(stack.peek().writeFloat(bits, value));
+        apply(root.writeFloat(bits, value));
     }
 
     public void writeConstructor(int index) {
         ensureWritable();
-        apply(stack.peek().writeConstructor(bits, index));
+        apply(root.writeConstructor(bits, index));
     }
 
     /**
@@ -70,7 +66,7 @@ public final class ValueEncoder {
      */
     public void startArray(int count) {
         ensureWritable();
-        apply(stack.peek().startArray(bits, count));
+        apply(root.startArray(bits, count));
     }
 
     public boolean isComplete() {
@@ -81,33 +77,13 @@ public final class ValueEncoder {
         if (complete) {
             throw new IllegalStateException("encoder is complete");
         }
-        if (stack.isEmpty()) {
-            throw new IllegalStateException("encoder has no further input");
-        }
     }
 
     private void apply(EncoderFrame.Result r) {
-        while (true) {
-            if (r instanceof EncoderFrame.Result.Wait) {
-                return;
-            } else if (r instanceof EncoderFrame.Result.Done) {
-                stack.pop();
-                if (stack.isEmpty()) {
-                    bits.closeBitByte();
-                    complete = true;
-                    return;
-                }
-                r = stack.peek().onChildCompleted(bits);
-            } else if (r instanceof EncoderFrame.Result.Push p) {
-                stack.push(p.child());
-                r = p.child().onPushed(bits);
-            } else if (r instanceof EncoderFrame.Result.Replace rp) {
-                stack.pop();
-                stack.push(rp.next());
-                r = rp.next().onPushed(bits);
-            } else {
-                throw new IllegalStateException("unknown result: " + r);
-            }
+        if (r instanceof EncoderFrame.Result.Done) {
+            bits.closeBitByte();
+            complete = true;
+            root = null;
         }
     }
 }

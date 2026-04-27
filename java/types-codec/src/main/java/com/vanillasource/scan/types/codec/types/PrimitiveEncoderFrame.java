@@ -28,9 +28,4 @@ final class PrimitiveEncoderFrame implements EncoderFrame {
         type.writeFloatValue(bits, value);
         return new Result.Done();
     }
-
-    @Override
-    public Result onChildCompleted(BitWriter bits) {
-        throw new IllegalStateException("primitive frame has no children");
-    }
 }
