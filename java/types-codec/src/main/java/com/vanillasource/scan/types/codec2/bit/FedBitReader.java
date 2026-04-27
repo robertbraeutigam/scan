@@ -71,6 +71,24 @@ public final class FedBitReader extends OutputStream implements BitReader {
       }
    }
 
+   /**
+    * @return A byte if available, 0 otherwise.
+    */
+   @Override
+   public int readUnsignedByte() {
+      if (availableBytes < 0) {
+         return 0;
+      }
+      if (singleByteInsteadByteArray) {
+         availableBytes = 0;
+         return singleByte;
+      } else {
+         availableBytes--;
+         offset++;
+         return byteBuffer[offset-1] & 0xFF;
+      }
+   }
+
    @Override
    public int readBits(int n) {
       if (n <= 0) {

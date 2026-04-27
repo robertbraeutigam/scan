@@ -16,6 +16,11 @@ public interface BitReader {
    int readBytes(byte[] dst, int off, int n);
 
    /**
+    * Reads one byte.
+    */
+   int readUnsignedByte();
+
+   /**
     * Reads the given amount of bits. As soon as this method is invoked,
     * either there is already a byte reserved for
     * bits, in which case the remaining bits from there will be read,

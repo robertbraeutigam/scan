@@ -19,7 +19,7 @@ public sealed interface DecodingEvent {
         STREAM
     }
 
-    record IntegerScalar(long value) implements DecodingEvent {}
+    record IntegerScalar(long value, int sign) implements DecodingEvent {}
 
     record FloatingPointScalar(double value) implements DecodingEvent {}
 
