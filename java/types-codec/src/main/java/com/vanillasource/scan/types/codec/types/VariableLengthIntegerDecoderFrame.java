@@ -4,7 +4,6 @@ import com.vanillasource.scan.types.codec.BitReader;
 import com.vanillasource.scan.types.codec.DecoderFrame;
 import com.vanillasource.scan.types.codec.DecodingEvent;
 import com.vanillasource.scan.types.codec.DecodingEventHandler;
-import com.vanillasource.scan.types.codec.VarIntDecoder;
 
 /** Reads a variable-length integer via a stateful {@link VarIntDecoder}. */
 final class VariableLengthIntegerDecoderFrame implements DecoderFrame {

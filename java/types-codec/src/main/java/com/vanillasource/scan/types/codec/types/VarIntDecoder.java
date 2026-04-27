@@ -1,4 +1,6 @@
-package com.vanillasource.scan.types.codec;
+package com.vanillasource.scan.types.codec.types;
+
+import com.vanillasource.scan.types.codec.Type;
 
 /**
  * Push-style accumulator for a single {@link Type.VariableLengthInteger} value.

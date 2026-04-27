@@ -5,7 +5,6 @@ import com.vanillasource.scan.types.codec.DecoderFrame;
 import com.vanillasource.scan.types.codec.DecodingEvent;
 import com.vanillasource.scan.types.codec.DecodingEventHandler;
 import com.vanillasource.scan.types.codec.SizeConstraint;
-import com.vanillasource.scan.types.codec.VarIntDecoder;
 
 import java.util.OptionalInt;
 
