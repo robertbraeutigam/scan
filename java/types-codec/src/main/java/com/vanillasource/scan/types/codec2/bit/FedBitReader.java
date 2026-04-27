@@ -1,0 +1,101 @@
+package com.vanillasource.scan.types.codec2.bit;
+
+import com.vanillasource.scan.types.codec2.BitReader;
+
+import java.io.OutputStream;
+
+/**
+ * A <code>BitReader</code> that is fed bytes. It only accepts bytes if the previously
+ * fed bytes are completely read.
+ * Note, that this does not copy the bytes it is fed, but uses them directly to read. Class is
+ * not thread-safe.
+ */
+public final class FedBitReader extends OutputStream implements BitReader {
+   private boolean singleByteInsteadByteArray = true;
+   // Single byte buffer (mode single)
+   private int singleByte = 0;
+   // Byte buffer (mode array)
+   private byte[] byteBuffer;
+   private int offset = 0;
+   private int length = 0;
+   // Free bytes (this is for both modes)
+   private int availableBytes = 0; // No bytes available initially
+
+   // Remember the bit byte
+   private int bitByte = 0;
+   private int availableBits = 0; // No bits available initially
+
+   @Override
+   public void write(int i)  {
+      if (availableBytes > 0) {
+         throw new IllegalStateException("Not yet read fully.");
+      }
+      this.singleByteInsteadByteArray = true;
+      this.singleByte = i;
+      this.availableBytes = 1;
+   }
+
+   @Override
+   public void write(byte[] b, int off, int len)  {
+      if (availableBytes > 0) {
+         throw new IllegalStateException("Not yet read fully.");
+      }
+      this.singleByteInsteadByteArray = false;
+      this.byteBuffer = b;
+      this.offset = off;
+      this.length = len;
+      this.availableBytes = len;
+   }
+
+   @Override
+   public int available() {
+      return availableBytes;
+   }
+
+   @Override
+   public int readBytes(byte[] dst, int off, int n) {
+      if (availableBytes > 0 && n > 0) {
+         if (singleByteInsteadByteArray) {
+            dst[0] = (byte) (singleByte & 0xFF);
+            availableBytes = 0;
+            return 1;
+         } else {
+            int copyCount = Math.min(n, availableBytes);
+            System.arraycopy(byteBuffer, offset, dst, off, copyCount);
+            availableBytes -= copyCount;
+            return copyCount;
+         }
+      } else {
+         return 0;
+      }
+   }
+
+   @Override
+   public int readBits(int n) {
+      if (n > 0) {
+         if (availableBits > 0) {
+            // TODO: return some bits
+         } else if (availableBytes > 0) {
+            // TODO: reserve byte and return some bits
+         } else {
+            return 0;
+         }
+      } else {
+         return 0;
+      }
+   }
+
+   /**
+    * @return The number of bits available to be read, maximum 8.
+    */
+   @Override
+   public int availableBits() {
+      if (availableBits > 0) {
+         return availableBits;
+      } else if (availableBytes > 0) {
+         return 8;
+      } else {
+         return 0;
+      }
+   }
+}
