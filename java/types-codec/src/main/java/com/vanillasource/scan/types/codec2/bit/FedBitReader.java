@@ -48,7 +48,7 @@ public final class FedBitReader extends OutputStream implements BitReader {
    }
 
    @Override
-   public int available() {
+   public int availableBytes() {
       return availableBytes;
    }
 

@@ -7,7 +7,7 @@ public interface BitReader {
    /**
     * @return The number of available bytes.
     */
-   int available();
+   int availableBytes();
 
    /**
     * Reads at most "n" bytes.
