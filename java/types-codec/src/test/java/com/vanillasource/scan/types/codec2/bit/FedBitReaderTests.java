@@ -242,6 +242,14 @@ public final class FedBitReaderTests {
    }
 
    @Test
+   public void readBitsReturnsZeroAfterFullyDrained() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xAB);
+      r.readBits(8);
+      assertEquals(r.readBits(3), 0);
+   }
+
+   @Test
    public void readBitsReturnsZeroForZeroN() {
       FedBitReader r = new FedBitReader();
       r.write(0xFF);
