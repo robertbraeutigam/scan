@@ -21,8 +21,7 @@ public interface BitReader {
     * bits, in which case the remaining bits from there will be read,
     * or, if a byte is available, that byte will be reserved for bits.
     * @param n The number of bits to read, at most 8.
-    * @return The number of bits actually read. This will be 0 if there is no
-    * byte available.
+    * @return The value read, or 0 if no bits are available.
     */
    int readBits(int n);
 

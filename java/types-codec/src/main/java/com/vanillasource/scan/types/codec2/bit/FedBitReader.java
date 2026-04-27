@@ -56,12 +56,13 @@ public final class FedBitReader extends OutputStream implements BitReader {
    public int readBytes(byte[] dst, int off, int n) {
       if (availableBytes > 0 && n > 0) {
          if (singleByteInsteadByteArray) {
-            dst[0] = (byte) (singleByte & 0xFF);
+            dst[off] = (byte) (singleByte & 0xFF);
             availableBytes = 0;
             return 1;
          } else {
             int copyCount = Math.min(n, availableBytes);
             System.arraycopy(byteBuffer, offset, dst, off, copyCount);
+            offset += copyCount;
             availableBytes -= copyCount;
             return copyCount;
          }
@@ -72,17 +73,26 @@ public final class FedBitReader extends OutputStream implements BitReader {
 
    @Override
    public int readBits(int n) {
-      if (n > 0) {
-         if (availableBits > 0) {
-            // TODO: return some bits
-         } else if (availableBytes > 0) {
-            // TODO: reserve byte and return some bits
-         } else {
-            return 0;
-         }
-      } else {
+      if (n <= 0) {
          return 0;
       }
+      if (availableBits == 0) {
+         if (availableBytes == 0) {
+            return 0;
+         }
+         if (singleByteInsteadByteArray) {
+            bitByte = singleByte & 0xFF;
+         } else {
+            bitByte = byteBuffer[offset++] & 0xFF;
+         }
+         availableBytes--;
+         availableBits = 8;
+      }
+      int take = Math.min(n, availableBits);
+      int shift = availableBits - take;
+      int value = (bitByte >>> shift) & ((1 << take) - 1);
+      availableBits -= take;
+      return value;
    }
 
    /**
