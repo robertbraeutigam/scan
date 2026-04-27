@@ -1,9 +1,9 @@
 package com.vanillasource.scan.types.codec;
 
 /**
- * Element-count constraint for {@link Type.Array} and {@link Type.Set}. Determines
- * whether a count is written on the wire and how many bytes it occupies — see
- * TYPES.md §"Per-Type Encoding" / Array.
+ * Element-count constraint for arrays and sets. Determines whether a count is
+ * written on the wire and how many bytes it occupies — see TYPES.md
+ * §"Per-Type Encoding" / Array.
  */
 public sealed interface SizeConstraint {
 
@@ -15,15 +15,15 @@ public sealed interface SizeConstraint {
 
     /**
      * Smallest count this constraint admits. The wire encodes {@code count - lowerBound()}
-     * as a {@link Type.VariableLengthInteger} of {@link #countVarintSize()} bytes.
+     * as a variable-length integer of {@link #countVarintSize()} bytes.
      */
     int lowerBound();
 
     /**
-     * {@code maxBytes} of the {@link Type.VariableLengthInteger} used for the
-     * on-wire count. Sized to fit every admitted length per TYPES.md
-     * §"Per-Type Encoding" / Array. Not meaningful for {@link #isFixed()} constraints
-     * (no count is written), but defined for both variants for uniformity.
+     * {@code maxBytes} of the variable-length integer used for the on-wire count.
+     * Sized to fit every admitted length per TYPES.md §"Per-Type Encoding" / Array.
+     * Not meaningful for {@link #isFixed()} constraints (no count is written), but
+     * defined for both variants for uniformity.
      */
     int countVarintSize();
 

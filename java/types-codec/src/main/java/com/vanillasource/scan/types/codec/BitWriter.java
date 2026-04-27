@@ -23,7 +23,7 @@ import java.util.Arrays;
  * pushes to a delegate. Neither participates in the {@link java.io} type hierarchy
  * — both are codec-owned mechanics with their own typed read/write API.
  */
-final class BitWriter {
+public final class BitWriter {
     private final OutputStream delegate;
     private int activeBitByte;
     private int bitsUsed;
@@ -36,7 +36,7 @@ final class BitWriter {
         this.suffix = new byte[16];
     }
 
-    void writeBits(int k, long value) {
+    public void writeBits(int k, long value) {
         if (k < 0 || k > 64) {
             throw new IllegalArgumentException("bit count out of range: " + k);
         }
@@ -71,7 +71,7 @@ final class BitWriter {
         }
     }
 
-    void writeBytes(byte[] src, int off, int len) {
+    public void writeBytes(byte[] src, int off, int len) {
         try {
             if (active) {
                 ensureSuffixCapacity(suffixLen + len);
@@ -85,11 +85,57 @@ final class BitWriter {
         }
     }
 
-    void writeBytes(byte[] src) {
+    public void writeBytes(byte[] src) {
         writeBytes(src, 0, src.length);
     }
 
-    void closeBitByte() {
+    /**
+     * Writes a non-negative {@code value} as {@code byteSize} big-endian bytes. Caller
+     * must validate the value fits the chosen width; this method does not range-check.
+     */
+    public void writeBigEndianBytes(long value, int byteSize) {
+        byte[] out = new byte[byteSize];
+        for (int i = 0; i < byteSize; i++) {
+            out[i] = (byte) ((value >>> ((byteSize - 1 - i) * 8)) & 0xFF);
+        }
+        writeBytes(out);
+    }
+
+    /**
+     * Writes a non-negative {@code value} as a SCAN-style variable-length integer with
+     * up to {@code maxN} bytes. Throws if {@code value} does not fit (TYPES.md
+     * §"Per-Type Encoding" / VariableLengthInteger).
+     */
+    public void writeVarInt(long value, int maxN) {
+        if (value < 0) {
+            throw new IllegalArgumentException("VariableLengthInteger value must be non-negative: " + value);
+        }
+        int bitsNeeded = (value == 0) ? 1 : (64 - Long.numberOfLeadingZeros(value));
+        int k = -1;
+        for (int trial = 1; trial <= maxN; trial++) {
+            int capacity = (trial < maxN) ? (7 * trial) : (7 * (trial - 1) + 8);
+            if (capacity >= bitsNeeded) {
+                k = trial;
+                break;
+            }
+        }
+        if (k < 0) {
+            throw new IllegalArgumentException(
+                    "value " + value + " does not fit in VariableLengthInteger(" + maxN + ")");
+        }
+        int totalBits = (k < maxN) ? (7 * k) : (7 * (k - 1) + 8);
+        byte[] out = new byte[k];
+        for (int i = 0; i < k; i++) {
+            int groupBits = (i < k - 1) ? 7 : ((k < maxN) ? 7 : 8);
+            int bitsAfter = totalBits - 7 * i - groupBits;
+            int groupValue = (int) ((value >>> bitsAfter) & ((1L << groupBits) - 1));
+            int byteValue = (i < k - 1) ? (0x80 | groupValue) : groupValue;
+            out[i] = (byte) byteValue;
+        }
+        writeBytes(out);
+    }
+
+    public void closeBitByte() {
         if (active) {
             emitActive();
         }

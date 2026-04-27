@@ -6,14 +6,14 @@ import com.vanillasource.scan.types.codec.DecodingEvent.FloatingPointScalar;
 import com.vanillasource.scan.types.codec.DecodingEvent.IntegerScalar;
 import com.vanillasource.scan.types.codec.DecodingEvent.StartField;
 import com.vanillasource.scan.types.codec.DecodingEvent.UnitScalar;
-import com.vanillasource.scan.types.codec.Type.Field;
-import com.vanillasource.scan.types.codec.Type.FloatingPoint;
-import com.vanillasource.scan.types.codec.Type.SignedInteger;
-import com.vanillasource.scan.types.codec.Type.Struct;
-import com.vanillasource.scan.types.codec.Type.Union;
-import com.vanillasource.scan.types.codec.Type.Unit;
-import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
-import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
+import com.vanillasource.scan.types.codec.types.Field;
+import com.vanillasource.scan.types.codec.types.FloatingPoint;
+import com.vanillasource.scan.types.codec.types.SignedInteger;
+import com.vanillasource.scan.types.codec.types.Struct;
+import com.vanillasource.scan.types.codec.types.Union;
+import com.vanillasource.scan.types.codec.types.Unit;
+import com.vanillasource.scan.types.codec.types.UnsignedInteger;
+import com.vanillasource.scan.types.codec.types.VariableLengthInteger;
 import org.testng.annotations.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -39,8 +39,8 @@ public final class StructUnionCodecTests {
         return new Field(name, type);
     }
 
-    private static Type.Constructor ctor(String name, Field... fields) {
-        return new Type.Constructor(name, List.of(fields));
+    private static com.vanillasource.scan.types.codec.types.Constructor ctor(String name, Field... fields) {
+        return new com.vanillasource.scan.types.codec.types.Constructor(name, List.of(fields));
     }
 
     @Test
@@ -157,7 +157,7 @@ public final class StructUnionCodecTests {
     @Test
     public void unionDiscriminatorStraddlesByteBoundary() {
         // 9-bit discriminator: 300 constructors -> ceilLog2(300) = 9 bits.
-        List<Type.Constructor> ctors = new ArrayList<>();
+        List<com.vanillasource.scan.types.codec.types.Constructor> ctors = new ArrayList<>();
         for (int i = 0; i < 300; i++) {
             ctors.add(ctor("C" + i));
         }

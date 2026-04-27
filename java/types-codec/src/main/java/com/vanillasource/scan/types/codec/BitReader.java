@@ -17,7 +17,7 @@ import java.util.Arrays;
  * <p>The byte queue self-compacts on every feed when the read cursor has advanced,
  * so a long-running stream does not accumulate consumed bytes.
  */
-final class BitReader {
+public final class BitReader {
     private byte[] buffer;
     private int writePos;
     private int readPos;
@@ -47,11 +47,11 @@ final class BitReader {
         writePos += len;
     }
 
-    int available() {
+    public int available() {
         return writePos - readPos;
     }
 
-    boolean hasBits(int k) {
+    public boolean hasBits(int k) {
         if (k < 0 || k > 64) {
             throw new IllegalArgumentException("bit count out of range: " + k);
         }
@@ -66,7 +66,7 @@ final class BitReader {
         return available() >= needed;
     }
 
-    long readBits(int k) {
+    public long readBits(int k) {
         if (k < 0 || k > 64) {
             throw new IllegalArgumentException("bit count out of range: " + k);
         }
@@ -105,11 +105,11 @@ final class BitReader {
         return result;
     }
 
-    boolean hasBytes(int n) {
+    public boolean hasBytes(int n) {
         return available() >= n;
     }
 
-    void readBytes(byte[] dst, int off, int n) {
+    public void readBytes(byte[] dst, int off, int n) {
         if (available() < n) {
             throw new UncheckedIOException(new EOFException(
                     "requested " + n + " bytes, only " + available() + " buffered"));
@@ -118,14 +118,14 @@ final class BitReader {
         readPos += n;
     }
 
-    int readOneByte() {
+    public int readOneByte() {
         if (readPos >= writePos) {
             throw new UncheckedIOException(new EOFException("no buffered bytes"));
         }
         return buffer[readPos++] & 0xFF;
     }
 
-    void closeBitByte() {
+    public void closeBitByte() {
         active = false;
         activeBitByte = 0;
         bitsUsed = 0;

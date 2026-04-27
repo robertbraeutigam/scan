@@ -1,16 +1,16 @@
 package com.vanillasource.scan.types.codec;
 
-import com.vanillasource.scan.types.codec.Type.Array;
-import com.vanillasource.scan.types.codec.Type.Constructor;
-import com.vanillasource.scan.types.codec.Type.Field;
-import com.vanillasource.scan.types.codec.Type.FloatingPoint;
-import com.vanillasource.scan.types.codec.Type.SignedInteger;
-import com.vanillasource.scan.types.codec.Type.Stream;
-import com.vanillasource.scan.types.codec.Type.Struct;
-import com.vanillasource.scan.types.codec.Type.Union;
-import com.vanillasource.scan.types.codec.Type.Unit;
-import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
-import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
+import com.vanillasource.scan.types.codec.types.Array;
+import com.vanillasource.scan.types.codec.types.Constructor;
+import com.vanillasource.scan.types.codec.types.Field;
+import com.vanillasource.scan.types.codec.types.FloatingPoint;
+import com.vanillasource.scan.types.codec.types.SignedInteger;
+import com.vanillasource.scan.types.codec.types.Stream;
+import com.vanillasource.scan.types.codec.types.Struct;
+import com.vanillasource.scan.types.codec.types.Union;
+import com.vanillasource.scan.types.codec.types.Unit;
+import com.vanillasource.scan.types.codec.types.UnsignedInteger;
+import com.vanillasource.scan.types.codec.types.VariableLengthInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -85,7 +85,7 @@ public final class TypeTests {
     public void setElementCannotContainStream() {
         Stream inner = new Stream(new UnsignedInteger(1));
         assertThrows(IllegalArgumentException.class,
-                () -> new Type.Set(inner, new SizeConstraint.All()));
+                () -> new com.vanillasource.scan.types.codec.types.Set(inner, new SizeConstraint.All()));
     }
 
     @Test

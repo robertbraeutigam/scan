@@ -58,7 +58,9 @@
       "Bash(mvn -pl types-codec test)",
       "Bash(mvn -pl types-codec clean test)",
       "Bash(mvn -pl types-codec test -q)",
-      "Bash(mvn -pl types-codec compile)"
+      "Bash(mvn -pl types-codec compile)",
+      "WebFetch(domain:javadevguy.wordpress.com)",
+      "Bash(mvn -pl types-codec -q test)"
     ]
   }
 }

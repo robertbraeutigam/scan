@@ -18,8 +18,9 @@ import java.util.Objects;
  * time produces the same event sequence as one bulk write.
  *
  * <p>The decoder is a thin loop over a stack of polymorphic {@link DecoderFrame}s.
- * Each frame's {@code step} drains as much input as it can; per-type dispatch
- * lives on {@link Type#startDecode(DecoderContext)} and on the frame variants.
+ * Each frame's {@code step} drains as much input as it can and returns a
+ * {@link DecoderFrame.Result}; the decoder mutates the stack accordingly. Per-type
+ * dispatch lives on {@link Type#createDecodeFrame()} and on the frame variants.
  *
  * <p>{@link #close()} signals end-of-stream and throws if the value is truncated
  * (decoding has not reached the end of the root type).
@@ -28,7 +29,6 @@ public final class ValueDecoder extends OutputStream {
     private final DecodingEventHandler handler;
     private final BitReader bits;
     private final Deque<DecoderFrame> stack;
-    private final Context ctx;
     private boolean complete;
     private boolean waitingForInput;
 
@@ -37,9 +37,13 @@ public final class ValueDecoder extends OutputStream {
         this.handler = Objects.requireNonNull(handler, "handler");
         this.bits = new BitReader();
         this.stack = new ArrayDeque<>();
-        this.ctx = new Context();
-        rootType.startDecode(ctx);
-        tryProgress();
+        DecoderFrame frame = rootType.createDecodeFrame();
+        if (frame == null) {
+            complete = true;
+        } else {
+            stack.push(frame);
+            tryProgress();
+        }
     }
 
     @Override
@@ -88,41 +92,32 @@ public final class ValueDecoder extends OutputStream {
     private void tryProgress() {
         waitingForInput = false;
         while (!complete && !stack.isEmpty() && !waitingForInput) {
-            stack.peek().step(ctx);
+            apply(stack.peek().step(bits, handler));
         }
     }
 
-    private final class Context implements DecoderContext {
-        @Override public BitReader bits() { return bits; }
-
-        @Override
-        public void emit(DecodingEvent event) {
-            handler.onEvent(event);
-        }
-
-        @Override
-        public void push(DecoderFrame frame) {
-            stack.push(frame);
-        }
-
-        @Override
-        public void pop() {
-            stack.pop();
-        }
-
-        @Override
-        public void childCompleted() {
-            while (!stack.isEmpty() && stack.peek().onChildCompleted(this)) {
+    private void apply(DecoderFrame.Result r) {
+        while (!complete) {
+            if (r instanceof DecoderFrame.Result.WaitForInput) {
+                waitingForInput = true;
+                return;
+            } else if (r instanceof DecoderFrame.Result.Done) {
                 stack.pop();
+                if (stack.isEmpty()) {
+                    complete = true;
+                    return;
+                }
+                r = stack.peek().onChildCompleted(bits, handler);
+            } else if (r instanceof DecoderFrame.Result.Push p) {
+                stack.push(p.child());
+                return;
+            } else if (r instanceof DecoderFrame.Result.Replace rp) {
+                stack.pop();
+                stack.push(rp.next());
+                return;
+            } else {
+                throw new IllegalStateException("unknown result: " + r);
             }
-            if (stack.isEmpty()) {
-                complete = true;
-            }
-        }
-
-        @Override
-        public void waitForInput() {
-            waitingForInput = true;
         }
     }
 }

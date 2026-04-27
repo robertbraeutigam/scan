@@ -17,9 +17,10 @@ import java.util.Objects;
  * encoder advances through the type tree automatically; struct boundaries are
  * implicit. {@link Type.Unit} positions are filled without any user call.
  *
- * <p>The encoder is a thin dispatcher over a stack of polymorphic
- * {@link EncoderFrame}s. Each user write call delegates to the top frame's
- * matching method; per-type write logic lives on {@link Type} itself.
+ * <p>The encoder is a thin loop over a stack of polymorphic {@link EncoderFrame}s.
+ * Each user write call delegates to the top frame's matching method; the frame
+ * returns a {@link EncoderFrame.Result} that tells the encoder how to mutate the
+ * stack. Per-type write logic lives on {@link Type} itself.
  *
  * <p>When the root completes, any dangling bit byte is flushed to the delegate
  * (its unused slots remain {@code 0}, per TYPES.md §"Encoder and Decoder State").
@@ -28,7 +29,6 @@ import java.util.Objects;
 public final class ValueEncoder {
     private final BitWriter bits;
     private final Deque<EncoderFrame> stack;
-    private final Context ctx;
     private boolean complete;
 
     public ValueEncoder(Type rootType, OutputStream out) {
@@ -36,23 +36,29 @@ public final class ValueEncoder {
         Objects.requireNonNull(out, "out");
         this.bits = new BitWriter(out);
         this.stack = new ArrayDeque<>();
-        this.ctx = new Context();
-        rootType.startEncode(ctx);
+        EncoderFrame frame = rootType.createEncodeFrame();
+        if (frame == null) {
+            bits.closeBitByte();
+            complete = true;
+        } else {
+            stack.push(frame);
+            apply(frame.onPushed(bits));
+        }
     }
 
     public void writeInteger(long value) {
         ensureWritable();
-        stack.peek().writeInteger(ctx, value);
+        apply(stack.peek().writeInteger(bits, value));
     }
 
     public void writeFloat(double value) {
         ensureWritable();
-        stack.peek().writeFloat(ctx, value);
+        apply(stack.peek().writeFloat(bits, value));
     }
 
     public void writeConstructor(int index) {
         ensureWritable();
-        stack.peek().writeConstructor(ctx, index);
+        apply(stack.peek().writeConstructor(bits, index));
     }
 
     /**
@@ -64,7 +70,7 @@ public final class ValueEncoder {
      */
     public void startArray(int count) {
         ensureWritable();
-        stack.peek().startArray(ctx, count);
+        apply(stack.peek().startArray(bits, count));
     }
 
     public boolean isComplete() {
@@ -80,27 +86,27 @@ public final class ValueEncoder {
         }
     }
 
-    private final class Context implements EncoderContext {
-        @Override public BitWriter bits() { return bits; }
-
-        @Override
-        public void push(EncoderFrame frame) {
-            stack.push(frame);
-        }
-
-        @Override
-        public void pop() {
-            stack.pop();
-        }
-
-        @Override
-        public void childCompleted() {
-            while (!stack.isEmpty() && stack.peek().onChildCompleted(this)) {
+    private void apply(EncoderFrame.Result r) {
+        while (true) {
+            if (r instanceof EncoderFrame.Result.Wait) {
+                return;
+            } else if (r instanceof EncoderFrame.Result.Done) {
                 stack.pop();
-            }
-            if (stack.isEmpty()) {
-                bits.closeBitByte();
-                complete = true;
+                if (stack.isEmpty()) {
+                    bits.closeBitByte();
+                    complete = true;
+                    return;
+                }
+                r = stack.peek().onChildCompleted(bits);
+            } else if (r instanceof EncoderFrame.Result.Push p) {
+                stack.push(p.child());
+                r = p.child().onPushed(bits);
+            } else if (r instanceof EncoderFrame.Result.Replace rp) {
+                stack.pop();
+                stack.push(rp.next());
+                r = rp.next().onPushed(bits);
+            } else {
+                throw new IllegalStateException("unknown result: " + r);
             }
         }
     }

@@ -3,11 +3,11 @@ package com.vanillasource.scan.types.codec;
 import com.vanillasource.scan.types.codec.DecodingEvent.FloatingPointScalar;
 import com.vanillasource.scan.types.codec.DecodingEvent.IntegerScalar;
 import com.vanillasource.scan.types.codec.DecodingEvent.UnitScalar;
-import com.vanillasource.scan.types.codec.Type.FloatingPoint;
-import com.vanillasource.scan.types.codec.Type.SignedInteger;
-import com.vanillasource.scan.types.codec.Type.Unit;
-import com.vanillasource.scan.types.codec.Type.UnsignedInteger;
-import com.vanillasource.scan.types.codec.Type.VariableLengthInteger;
+import com.vanillasource.scan.types.codec.types.FloatingPoint;
+import com.vanillasource.scan.types.codec.types.SignedInteger;
+import com.vanillasource.scan.types.codec.types.Unit;
+import com.vanillasource.scan.types.codec.types.UnsignedInteger;
+import com.vanillasource.scan.types.codec.types.VariableLengthInteger;
 import org.testng.annotations.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -260,9 +260,9 @@ public final class PrimitiveCodecTests {
     public void encoderHoldsBytesUntilCompleteForBitPackedRoot() {
         // A union with a 1-bit discriminator opens a bit byte that does not close
         // until the encoder completes. Until then, no byte should reach the sink.
-        Type.Union u = new Type.Union(java.util.List.of(
-                new Type.Constructor("A", java.util.List.of()),
-                new Type.Constructor("B", java.util.List.of())));
+        com.vanillasource.scan.types.codec.types.Union u = new com.vanillasource.scan.types.codec.types.Union(java.util.List.of(
+                new com.vanillasource.scan.types.codec.types.Constructor("A", java.util.List.of()),
+                new com.vanillasource.scan.types.codec.types.Constructor("B", java.util.List.of())));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ValueEncoder enc = new ValueEncoder(u, baos);
         assertEquals(baos.toByteArray().length, 0, "no bytes settled before write");

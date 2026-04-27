@@ -6,16 +6,16 @@ package com.vanillasource.scan.types.codec;
  * complete (continuation bit clear, or {@code maxBytes} bytes consumed); the value
  * is then read via {@link #value()}.
  */
-final class VarIntDecoder {
+public final class VarIntDecoder {
     private final int maxBytes;
     private long accumulator;
     private int bytesRead;
 
-    VarIntDecoder(int maxBytes) {
+    public VarIntDecoder(int maxBytes) {
         this.maxBytes = maxBytes;
     }
 
-    boolean feed(int b) {
+    public boolean feed(int b) {
         bytesRead++;
         if (bytesRead == maxBytes) {
             accumulator = (accumulator << 8) | (b & 0xFF);
@@ -29,7 +29,7 @@ final class VarIntDecoder {
         return false;
     }
 
-    long value() {
+    public long value() {
         return accumulator;
     }
 }
