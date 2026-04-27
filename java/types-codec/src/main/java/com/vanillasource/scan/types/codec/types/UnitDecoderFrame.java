@@ -12,9 +12,4 @@ final class UnitDecoderFrame implements DecoderFrame {
         events.onEvent(new DecodingEvent.UnitScalar());
         return new Result.Done();
     }
-
-    @Override
-    public Result onChildCompleted(BitReader bits, DecodingEventHandler events) {
-        throw new IllegalStateException("primitive frame has no children");
-    }
 }

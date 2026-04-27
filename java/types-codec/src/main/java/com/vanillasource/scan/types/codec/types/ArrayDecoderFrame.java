@@ -12,7 +12,7 @@ import java.util.OptionalInt;
 /**
  * Drives an {@link Array}: closes the bit byte, emits StartContainer, reads the
  * count (fixed or varint), then either chunk-emits raw bytes for fixed-byte
- * primitive items or descends per-item with Start/EndItem markers.
+ * primitive items or runs each item's child decoder inline with Start/EndItem markers.
  */
 final class ArrayDecoderFrame implements DecoderFrame {
     private final Array array;
@@ -24,6 +24,7 @@ final class ArrayDecoderFrame implements DecoderFrame {
     private int itemsCompleted;
     private long bytesRemaining;
     private VarIntDecoder countDecoder;
+    private DecoderFrame currentChild;
 
     ArrayDecoderFrame(Array array) {
         this.array = array;
@@ -49,30 +50,35 @@ final class ArrayDecoderFrame implements DecoderFrame {
         if (primitiveItems) {
             return stepPrimitiveItems(bits, events);
         }
-        return advanceToNextItem(bits, events);
+        return stepItems(bits, events);
     }
 
-    @Override
-    public Result onChildCompleted(BitReader bits, DecodingEventHandler events) {
-        events.onEvent(new DecodingEvent.EndItem());
-        itemsCompleted++;
-        bits.closeBitByte();
-        return advanceToNextItem(bits, events);
-    }
-
-    private Result advanceToNextItem(BitReader bits, DecodingEventHandler events) {
-        while (itemsCompleted < declaredCount) {
-            events.onEvent(new DecodingEvent.StartItem());
-            DecoderFrame childFrame = array.element().createDecodeFrame();
-            if (childFrame != null) {
-                return new Result.Push(childFrame);
+    private Result stepItems(BitReader bits, DecodingEventHandler events) {
+        while (true) {
+            if (currentChild != null) {
+                Result r = currentChild.step(bits, events);
+                if (r instanceof Result.WaitForInput) {
+                    return r;
+                }
+                currentChild = null;
+                events.onEvent(new DecodingEvent.EndItem());
+                itemsCompleted++;
+                bits.closeBitByte();
             }
-            events.onEvent(new DecodingEvent.EndItem());
-            itemsCompleted++;
+            if (itemsCompleted >= declaredCount) {
+                bits.closeBitByte();
+                events.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
+                return new Result.Done();
+            }
+            events.onEvent(new DecodingEvent.StartItem());
+            DecoderFrame child = array.element().createDecodeFrame();
+            if (child == null) {
+                events.onEvent(new DecodingEvent.EndItem());
+                itemsCompleted++;
+            } else {
+                currentChild = child;
+            }
         }
-        bits.closeBitByte();
-        events.onEvent(new DecodingEvent.EndContainer(DecodingEvent.ContainerKind.ARRAY));
-        return new Result.Done();
     }
 
     private boolean readCount(BitReader bits) {

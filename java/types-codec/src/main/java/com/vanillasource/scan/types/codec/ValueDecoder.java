@@ -1,8 +1,6 @@
 package com.vanillasource.scan.types.codec;
 
 import java.io.OutputStream;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Objects;
 
 /**
@@ -17,10 +15,10 @@ import java.util.Objects;
  * consumed only as full events become available, so writing a single byte at a
  * time produces the same event sequence as one bulk write.
  *
- * <p>The decoder is a thin loop over a stack of polymorphic {@link DecoderFrame}s.
- * Each frame's {@code step} drains as much input as it can and returns a
- * {@link DecoderFrame.Result}; the decoder mutates the stack accordingly. Per-type
- * dispatch lives on {@link Type#createDecodeFrame()} and on the frame variants.
+ * <p>The decoder holds a single root {@link DecoderFrame}; aggregate frames own
+ * and step their own children. Each call to {@link #write} drives the root
+ * forward until it returns {@link DecoderFrame.Result.Done} or
+ * {@link DecoderFrame.Result.WaitForInput}.
  *
  * <p>{@link #close()} signals end-of-stream and throws if the value is truncated
  * (decoding has not reached the end of the root type).
@@ -28,20 +26,17 @@ import java.util.Objects;
 public final class ValueDecoder extends OutputStream {
     private final DecodingEventHandler handler;
     private final BitReader bits;
-    private final Deque<DecoderFrame> stack;
+    private DecoderFrame root;
     private boolean complete;
-    private boolean waitingForInput;
 
     public ValueDecoder(Type rootType, DecodingEventHandler handler) {
         Objects.requireNonNull(rootType, "rootType");
         this.handler = Objects.requireNonNull(handler, "handler");
         this.bits = new BitReader();
-        this.stack = new ArrayDeque<>();
-        DecoderFrame frame = rootType.createDecodeFrame();
-        if (frame == null) {
+        this.root = rootType.createDecodeFrame();
+        if (root == null) {
             complete = true;
         } else {
-            stack.push(frame);
             tryProgress();
         }
     }
@@ -90,34 +85,13 @@ public final class ValueDecoder extends OutputStream {
     }
 
     private void tryProgress() {
-        waitingForInput = false;
-        while (!complete && !stack.isEmpty() && !waitingForInput) {
-            apply(stack.peek().step(bits, handler));
+        if (complete) {
+            return;
         }
-    }
-
-    private void apply(DecoderFrame.Result r) {
-        while (!complete) {
-            if (r instanceof DecoderFrame.Result.WaitForInput) {
-                waitingForInput = true;
-                return;
-            } else if (r instanceof DecoderFrame.Result.Done) {
-                stack.pop();
-                if (stack.isEmpty()) {
-                    complete = true;
-                    return;
-                }
-                r = stack.peek().onChildCompleted(bits, handler);
-            } else if (r instanceof DecoderFrame.Result.Push p) {
-                stack.push(p.child());
-                return;
-            } else if (r instanceof DecoderFrame.Result.Replace rp) {
-                stack.pop();
-                stack.push(rp.next());
-                return;
-            } else {
-                throw new IllegalStateException("unknown result: " + r);
-            }
+        DecoderFrame.Result r = root.step(bits, handler);
+        if (r instanceof DecoderFrame.Result.Done) {
+            complete = true;
+            root = null;
         }
     }
 }

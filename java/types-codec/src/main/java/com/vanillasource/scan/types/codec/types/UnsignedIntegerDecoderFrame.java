@@ -21,9 +21,4 @@ final class UnsignedIntegerDecoderFrame implements DecoderFrame {
         events.onEvent(new DecodingEvent.IntegerScalar(bits.readBigEndianBytes(byteSize)));
         return new Result.Done();
     }
-
-    @Override
-    public Result onChildCompleted(BitReader bits, DecodingEventHandler events) {
-        throw new IllegalStateException("primitive frame has no children");
-    }
 }

@@ -24,9 +24,4 @@ final class VariableLengthIntegerDecoderFrame implements DecoderFrame {
         }
         return new Result.WaitForInput();
     }
-
-    @Override
-    public Result onChildCompleted(BitReader bits, DecodingEventHandler events) {
-        throw new IllegalStateException("primitive frame has no children");
-    }
 }

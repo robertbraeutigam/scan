@@ -25,9 +25,4 @@ final class FloatingPointDecoderFrame implements DecoderFrame {
         events.onEvent(new DecodingEvent.FloatingPointScalar(v));
         return new Result.Done();
     }
-
-    @Override
-    public Result onChildCompleted(BitReader bits, DecodingEventHandler events) {
-        throw new IllegalStateException("primitive frame has no children");
-    }
 }
