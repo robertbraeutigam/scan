@@ -125,6 +125,18 @@ public final class BitReader {
         return buffer[readPos++] & 0xFF;
     }
 
+    /**
+     * Reads {@code byteSize} bytes and assembles them as a big-endian unsigned value.
+     * Caller must ensure {@code hasBytes(byteSize)} first; this method does not check.
+     */
+    public long readBigEndianBytes(int byteSize) {
+        long result = 0L;
+        for (int i = 0; i < byteSize; i++) {
+            result = (result << 8) | readOneByte();
+        }
+        return result;
+    }
+
     public void closeBitByte() {
         active = false;
         activeBitByte = 0;

@@ -19,12 +19,12 @@ public record VariableLengthInteger(int maxBytes) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.VariableLengthIntegerFrame(maxBytes);
+        return new VariableLengthIntegerDecoderFrame(maxBytes);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return new EncoderFrames.PrimitiveFrame(this);
+        return new PrimitiveEncoderFrame(this);
     }
 
     @Override

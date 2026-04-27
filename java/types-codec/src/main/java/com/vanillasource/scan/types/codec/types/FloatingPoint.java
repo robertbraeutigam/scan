@@ -20,12 +20,12 @@ public record FloatingPoint(int byteSize) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.FloatingPointFrame(byteSize);
+        return new FloatingPointDecoderFrame(byteSize);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return new EncoderFrames.PrimitiveFrame(this);
+        return new PrimitiveEncoderFrame(this);
     }
 
     @Override

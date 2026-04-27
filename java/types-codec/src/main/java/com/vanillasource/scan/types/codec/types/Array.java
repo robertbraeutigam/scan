@@ -23,12 +23,12 @@ public record Array(Type element, SizeConstraint size) implements Type {
     @Override
     public DecoderFrame createDecodeFrame() {
         element.requireSupportedAsArrayElement();
-        return new DecoderFrames.ArrayFrame(this);
+        return new ArrayDecoderFrame(this);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
         element.requireSupportedAsArrayElement();
-        return new EncoderFrames.ArrayFrame(this);
+        return new ArrayEncoderFrame(this);
     }
 }

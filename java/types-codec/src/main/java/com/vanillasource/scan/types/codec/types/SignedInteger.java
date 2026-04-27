@@ -20,12 +20,12 @@ public record SignedInteger(int byteSize) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.SignedIntegerFrame(byteSize);
+        return new SignedIntegerDecoderFrame(byteSize);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return new EncoderFrames.PrimitiveFrame(this);
+        return new PrimitiveEncoderFrame(this);
     }
 
     @Override

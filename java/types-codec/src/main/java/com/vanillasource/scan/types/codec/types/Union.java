@@ -52,11 +52,11 @@ public record Union(List<Constructor> constructors) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.UnionFrame(this);
+        return new UnionDecoderFrame(this);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return new EncoderFrames.UnionFrame(this);
+        return new UnionEncoderFrame(this);
     }
 }

@@ -20,12 +20,12 @@ public record UnsignedInteger(int byteSize) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.UnsignedIntegerFrame(byteSize);
+        return new UnsignedIntegerDecoderFrame(byteSize);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return new EncoderFrames.PrimitiveFrame(this);
+        return new PrimitiveEncoderFrame(this);
     }
 
     @Override

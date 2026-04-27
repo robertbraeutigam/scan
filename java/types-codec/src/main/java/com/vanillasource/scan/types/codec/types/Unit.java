@@ -13,7 +13,7 @@ public record Unit() implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return new DecoderFrames.UnitFrame();
+        return new UnitDecoderFrame();
     }
 
     @Override

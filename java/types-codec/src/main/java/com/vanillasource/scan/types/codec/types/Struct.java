@@ -23,11 +23,11 @@ public record Struct(List<Field> fields) implements Type {
 
     @Override
     public DecoderFrame createDecodeFrame() {
-        return fields.isEmpty() ? null : new DecoderFrames.FieldsFrame(fields);
+        return fields.isEmpty() ? null : new FieldsDecoderFrame(fields);
     }
 
     @Override
     public EncoderFrame createEncodeFrame() {
-        return fields.isEmpty() ? null : new EncoderFrames.FieldsFrame(fields);
+        return fields.isEmpty() ? null : new FieldsEncoderFrame(fields);
     }
 }
