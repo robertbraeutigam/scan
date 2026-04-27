@@ -1,23 +1,27 @@
 package com.vanillasource.scan.types.codec;
 
+import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Push-style decoder. Constructed with a root {@link Type} and a
- * {@link DecodingEventHandler}; {@link #feed} accepts bytes as they arrive on the
- * wire and emits events as decoding progresses. Iteration 4 supports primitives,
- * {@link Type.Struct}, and {@link Type.Union}; aggregates and streams arrive in
- * later iterations.
+ * Push-style decoder exposed as an {@link OutputStream}: callers write the wire
+ * bytes in, the decoder emits {@link DecodingEvent}s to its
+ * {@link DecodingEventHandler} as decoding progresses. Iteration 4 supports
+ * primitives, {@link Type.Struct}, and {@link Type.Union}; aggregates and streams
+ * arrive in later iterations.
  *
- * <p>State persists across feeds: a half-read varint, a half-emitted struct, and a
- * partially-consumed bit byte all survive a return from {@code feed}. Bytes are
- * consumed only as full events become available, so calling {@code feed} with a
- * single byte at a time produces the same event sequence as one bulk feed.
+ * <p>State persists across writes: a half-read varint, a half-emitted struct, and
+ * a partially-consumed bit byte all survive a return from {@code write}. Bytes are
+ * consumed only as full events become available, so writing a single byte at a
+ * time produces the same event sequence as one bulk write.
+ *
+ * <p>{@link #close()} signals end-of-stream and throws if the value is truncated
+ * (decoding has not reached the end of the root type).
  */
-public final class ValueDecoder {
+public final class ValueDecoder extends OutputStream {
     private final Type rootType;
     private final DecodingEventHandler handler;
     private final BitReader bits;
@@ -33,11 +37,18 @@ public final class ValueDecoder {
         tryProgress();
     }
 
-    public void feed(byte[] bytes) {
-        feed(bytes, 0, bytes.length);
+    @Override
+    public void write(int b) {
+        write(new byte[] { (byte) b }, 0, 1);
     }
 
-    public void feed(byte[] bytes, int offset, int length) {
+    @Override
+    public void write(byte[] bytes) {
+        write(bytes, 0, bytes.length);
+    }
+
+    @Override
+    public void write(byte[] bytes, int offset, int length) {
         Objects.requireNonNull(bytes, "bytes");
         if (length == 0) {
             return;
@@ -47,6 +58,22 @@ public final class ValueDecoder {
         }
         bits.feed(bytes, offset, length);
         tryProgress();
+    }
+
+    @Override
+    public void flush() {
+        // Decoder has no internal output buffer; nothing to flush.
+    }
+
+    /**
+     * Signals end-of-stream. Throws {@link IllegalStateException} if decoding has
+     * not yet reached the end of the root value (the wire bytes were truncated).
+     */
+    @Override
+    public void close() {
+        if (!complete) {
+            throw new IllegalStateException("decoder closed before value completed");
+        }
     }
 
     public boolean isComplete() {

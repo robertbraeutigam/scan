@@ -26,7 +26,7 @@ public final class PrimitiveCodecTests {
         byte[] bytes = baos.toByteArray();
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
-        dec.feed(bytes);
+        dec.write(bytes);
         assertTrue(dec.isComplete(), "decoder should complete");
         assertEquals(cap.events.size(), 1, "exactly one event expected");
         IntegerScalar event = (IntegerScalar) cap.events.get(0);
@@ -40,7 +40,7 @@ public final class PrimitiveCodecTests {
         byte[] bytes = baos.toByteArray();
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(type, cap);
-        dec.feed(bytes);
+        dec.write(bytes);
         FloatingPointScalar event = (FloatingPointScalar) cap.events.get(0);
         return event.value();
     }
@@ -118,7 +118,7 @@ public final class PrimitiveCodecTests {
 
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(s1, cap);
-        dec.feed(bytes);
+        dec.write(bytes);
         assertEquals(((IntegerScalar) cap.events.get(0)).value(), -1L);
     }
 
@@ -275,9 +275,24 @@ public final class PrimitiveCodecTests {
     @Test
     public void decoderRejectsFeedAfterComplete() {
         ValueDecoder dec = new ValueDecoder(new UnsignedInteger(1), e -> { });
-        dec.feed(new byte[] { 0x42 });
+        dec.write(new byte[] { 0x42 });
         assertTrue(dec.isComplete());
-        assertThrows(IllegalStateException.class, () -> dec.feed(new byte[] { 0 }));
+        assertThrows(IllegalStateException.class, () -> dec.write(new byte[] { 0 }));
+    }
+
+    @Test
+    public void decoderCloseSucceedsWhenComplete() {
+        ValueDecoder dec = new ValueDecoder(new UnsignedInteger(1), e -> { });
+        dec.write(new byte[] { 0x42 });
+        dec.close();
+    }
+
+    @Test
+    public void decoderCloseRejectsTruncatedInput() {
+        ValueDecoder dec = new ValueDecoder(new UnsignedInteger(4), e -> { });
+        dec.write(new byte[] { 0x01, 0x02 });
+        assertFalse(dec.isComplete());
+        assertThrows(IllegalStateException.class, dec::close);
     }
 
     @Test
@@ -291,11 +306,11 @@ public final class PrimitiveCodecTests {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(u4, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
-            dec.feed(new byte[] { bytes[i] });
+            dec.write(new byte[] { bytes[i] });
             assertFalse(dec.isComplete(), "should still be waiting at byte " + i);
             assertTrue(cap.events.isEmpty());
         }
-        dec.feed(new byte[] { bytes[bytes.length - 1] });
+        dec.write(new byte[] { bytes[bytes.length - 1] });
         assertTrue(dec.isComplete());
         assertEquals(((IntegerScalar) cap.events.get(0)).value(), 0xCAFEBABEL);
     }
@@ -313,10 +328,10 @@ public final class PrimitiveCodecTests {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(v4, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
-            dec.feed(new byte[] { bytes[i] });
+            dec.write(new byte[] { bytes[i] });
             assertFalse(dec.isComplete(), "varint not done at byte " + i);
         }
-        dec.feed(new byte[] { bytes[bytes.length - 1] });
+        dec.write(new byte[] { bytes[bytes.length - 1] });
         assertTrue(dec.isComplete());
         assertEquals(((IntegerScalar) cap.events.get(0)).value(), value);
     }
@@ -327,7 +342,7 @@ public final class PrimitiveCodecTests {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(u2, cap);
         byte[] padded = new byte[] { 0x00, (byte) 0xAB, (byte) 0xCD, 0x00 };
-        dec.feed(padded, 1, 2);
+        dec.write(padded, 1, 2);
         assertEquals(((IntegerScalar) cap.events.get(0)).value(), 0xABCDL);
     }
 }

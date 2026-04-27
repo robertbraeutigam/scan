@@ -34,7 +34,7 @@ public final class ArrayCodecTests {
     private static List<DecodingEvent> decode(Type root, byte[] bytes) {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(root, cap);
-        dec.feed(bytes);
+        dec.write(bytes);
         assertTrue(dec.isComplete(), "decoder should complete after full feed");
         return cap.events;
     }
@@ -325,7 +325,7 @@ public final class ArrayCodecTests {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         for (byte b : bytes) {
-            dec.feed(new byte[] { b });
+            dec.write(new byte[] { b });
         }
         assertTrue(dec.isComplete());
         // Should see exactly one StartContainer and EndContainer; lots of Chunks.
@@ -348,8 +348,8 @@ public final class ArrayCodecTests {
         // First feed: StartContainer comes out at construction.
         assertEquals(cap.events, List.of(new StartContainer(ContainerKind.ARRAY)));
 
-        dec.feed(new byte[] { 0x11, 0x22 });
-        dec.feed(new byte[] { 0x33, 0x44 });
+        dec.write(new byte[] { 0x11, 0x22 });
+        dec.write(new byte[] { 0x33, 0x44 });
         assertTrue(dec.isComplete());
         assertEquals(cap.events, List.of(
                 new StartContainer(ContainerKind.ARRAY),
@@ -403,15 +403,15 @@ public final class ArrayCodecTests {
         EventCapture incremental = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, incremental);
         for (int i = 0; i < bytes.length - 1; i++) {
-            dec.feed(new byte[] { bytes[i] });
+            dec.write(new byte[] { bytes[i] });
             assertFalse(dec.isComplete());
         }
-        dec.feed(new byte[] { bytes[bytes.length - 1] });
+        dec.write(new byte[] { bytes[bytes.length - 1] });
         assertTrue(dec.isComplete());
 
         EventCapture oneShot = new EventCapture();
         ValueDecoder oneShotDec = new ValueDecoder(t, oneShot);
-        oneShotDec.feed(bytes);
+        oneShotDec.write(bytes);
         assertEquals(incremental.events, oneShot.events);
     }
 }

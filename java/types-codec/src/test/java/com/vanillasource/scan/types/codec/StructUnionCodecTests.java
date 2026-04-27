@@ -30,7 +30,7 @@ public final class StructUnionCodecTests {
     private static List<DecodingEvent> decode(Type root, byte[] bytes) {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(root, cap);
-        dec.feed(bytes);
+        dec.write(bytes);
         assertTrue(dec.isComplete(), "decoder should complete after full feed");
         return cap.events;
     }
@@ -335,10 +335,10 @@ public final class StructUnionCodecTests {
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
         for (int i = 0; i < bytes.length - 1; i++) {
-            dec.feed(new byte[] { bytes[i] });
+            dec.write(new byte[] { bytes[i] });
             assertFalse(dec.isComplete(), "should still be waiting at byte " + i);
         }
-        dec.feed(new byte[] { bytes[bytes.length - 1] });
+        dec.write(new byte[] { bytes[bytes.length - 1] });
         assertTrue(dec.isComplete());
 
         // Same event sequence as a single-shot feed.
@@ -352,7 +352,7 @@ public final class StructUnionCodecTests {
         Union t = new Union(List.of(ctor("A"), ctor("B"), ctor("C")));
         EventCapture cap = new EventCapture();
         ValueDecoder dec = new ValueDecoder(t, cap);
-        assertThrows(IllegalStateException.class, () -> dec.feed(new byte[] { (byte) 0xC0 }));
+        assertThrows(IllegalStateException.class, () -> dec.write(new byte[] { (byte) 0xC0 }));
     }
 
     @Test
