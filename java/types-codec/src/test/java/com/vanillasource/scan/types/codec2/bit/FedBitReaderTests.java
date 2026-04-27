@@ -233,6 +233,126 @@ public final class FedBitReaderTests {
       assertEquals(dst, new byte[] { 0x44, 0x55 });
    }
 
+   // ---- readUnsignedByte ----
+
+   @Test
+   public void readUnsignedByteSingleByteMode() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xAB);
+      assertEquals(r.readUnsignedByte(), 0xAB);
+   }
+
+   @Test
+   public void readUnsignedByteSingleByteModeReturnsUnsigned() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xFF);
+      assertEquals(r.readUnsignedByte(), 0xFF);
+   }
+
+   @Test
+   public void readUnsignedByteSingleByteModeDecreasesAvailable() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xAB);
+      r.readUnsignedByte();
+      assertEquals(r.available(), 0);
+   }
+
+   @Test
+   public void readUnsignedByteSingleByteModeAllowsNewWriteAfterRead() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xAB);
+      r.readUnsignedByte();
+      r.write(0xCD);
+      assertEquals(r.readUnsignedByte(), 0xCD);
+   }
+
+   @Test
+   public void readUnsignedByteArrayModeReadsSequentially() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { 1, 2, 3 }, 0, 3);
+      assertEquals(r.readUnsignedByte(), 1);
+      assertEquals(r.readUnsignedByte(), 2);
+      assertEquals(r.readUnsignedByte(), 3);
+   }
+
+   @Test
+   public void readUnsignedByteArrayModeReturnsUnsigned() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { (byte) 0xFF, (byte) 0x80 }, 0, 2);
+      assertEquals(r.readUnsignedByte(), 0xFF);
+      assertEquals(r.readUnsignedByte(), 0x80);
+   }
+
+   @Test
+   public void readUnsignedByteArrayModeHonorsSourceOffset() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { 0x11, 0x22, 0x33, 0x44 }, 2, 2);
+      assertEquals(r.readUnsignedByte(), 0x33);
+      assertEquals(r.readUnsignedByte(), 0x44);
+   }
+
+   @Test
+   public void readUnsignedByteArrayModeDecreasesAvailable() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { 1, 2, 3 }, 0, 3);
+      r.readUnsignedByte();
+      assertEquals(r.available(), 2);
+      r.readUnsignedByte();
+      assertEquals(r.available(), 1);
+      r.readUnsignedByte();
+      assertEquals(r.available(), 0);
+   }
+
+   @Test
+   public void readUnsignedByteArrayModeAllowsNewWriteAfterDrained() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { 1, 2 }, 0, 2);
+      r.readUnsignedByte();
+      r.readUnsignedByte();
+      r.write(new byte[] { 3, 4 }, 0, 2);
+      assertEquals(r.readUnsignedByte(), 3);
+   }
+
+   @Test
+   public void readUnsignedByteReturnsZeroWhenEmpty() {
+      FedBitReader r = new FedBitReader();
+      assertEquals(r.readUnsignedByte(), 0);
+   }
+
+   @Test
+   public void readUnsignedByteReturnsZeroAfterSingleByteDrained() {
+      FedBitReader r = new FedBitReader();
+      r.write(0xAB);
+      r.readUnsignedByte();
+      assertEquals(r.readUnsignedByte(), 0);
+   }
+
+   @Test
+   public void readUnsignedByteReturnsZeroAfterArrayDrained() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { 1, 2 }, 0, 2);
+      r.readUnsignedByte();
+      r.readUnsignedByte();
+      assertEquals(r.readUnsignedByte(), 0);
+   }
+
+   @Test
+   public void readUnsignedByteSingleByteModeMasksToLowByte() {
+      FedBitReader r = new FedBitReader();
+      r.write(0x1FF);
+      assertEquals(r.readUnsignedByte(), 0xFF);
+   }
+
+   @Test
+   public void readUnsignedByteReadsFromByteQueueWhileBitsRemain() {
+      FedBitReader r = new FedBitReader();
+      r.write(new byte[] { (byte) 0xAB, (byte) 0xCD }, 0, 2);
+      r.readBits(3); // reserves 0xAB for bit reading; only 0xCD left in byte queue
+      assertEquals(r.readUnsignedByte(), 0xCD);
+      // Bits from the reserved 0xAB are unaffected.
+      assertEquals(r.availableBits(), 5);
+   }
+
    // ---- readBits ----
 
    @Test

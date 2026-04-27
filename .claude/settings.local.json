@@ -60,7 +60,9 @@
       "Bash(mvn -pl types-codec test -q)",
       "Bash(mvn -pl types-codec compile)",
       "WebFetch(domain:javadevguy.wordpress.com)",
-      "Bash(mvn -pl types-codec -q test)"
+      "Bash(mvn -pl types-codec -q test)",
+      "Bash(mvn -pl types-codec test -Dtest=FedBitReaderTests -q)",
+      "Bash(mvn -pl types-codec test -Dtest=FedBitReaderTests)"
     ]
   }
 }
