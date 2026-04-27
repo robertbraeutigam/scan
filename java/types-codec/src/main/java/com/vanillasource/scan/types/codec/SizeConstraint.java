@@ -27,6 +27,16 @@ public sealed interface SizeConstraint {
      */
     int countVarintSize();
 
+    /**
+     * Throws {@link IllegalArgumentException} if {@code count} is not admitted.
+     * Default checks non-negativity; {@link Range} additionally checks min/max.
+     */
+    default void validate(int count) {
+        if (count < 0) {
+            throw new IllegalArgumentException("count must be non-negative: " + count);
+        }
+    }
+
     record Range(int min, int max) implements SizeConstraint {
         public Range {
             if (min < 0) {
@@ -58,6 +68,15 @@ public sealed interface SizeConstraint {
                 }
             }
             throw new IllegalStateException("size range too large for VarInt(8): " + range);
+        }
+
+        @Override
+        public void validate(int count) {
+            SizeConstraint.super.validate(count);
+            if (count < min || count > max) {
+                throw new IllegalArgumentException(
+                        "count " + count + " not in [" + min + ", " + max + "]");
+            }
         }
     }
 
