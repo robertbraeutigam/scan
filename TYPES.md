@@ -282,10 +282,10 @@ Double = FloatingPoint(8)
 ### Boolean
 
 ```
-Boolean = True | False
+Boolean = False | True
 ```
 
-`True` and `False` are bare-identifier constructors; the type carries one bit of information.
+`False` and `True` are bare-identifier constructors; the type carries one bit of information.
 
 ### Option
 
