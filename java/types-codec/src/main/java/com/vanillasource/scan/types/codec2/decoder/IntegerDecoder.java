@@ -6,7 +6,7 @@ import com.vanillasource.scan.types.codec2.DecodingEventHandler;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /** Reads a fixed-width signed or unsigned big-endian integer, sign-extending when signed. */
-final class IntegerDecoder implements ValueDecoder {
+public final class IntegerDecoder implements ValueDecoder {
     private final int byteSize;
     private final boolean signed;
     private int remainingBytes;
@@ -35,7 +35,6 @@ final class IntegerDecoder implements ValueDecoder {
         }
         int sign;
         if (signed) {
-            // TODO: this is wrong, 8 bytes can not be represented
             sign = Long.signum(currentValue);
         } else {
             sign = currentValue == 0 ? 0 : 1;
