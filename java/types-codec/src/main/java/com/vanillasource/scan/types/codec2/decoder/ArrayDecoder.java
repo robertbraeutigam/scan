@@ -8,62 +8,74 @@ import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /**
- * Emits {@code StartContainer(ARRAY)}, reads the count via a delegated
- * {@link VariableLengthIntegerDecoder}, then for each item emits {@code StartItem},
- * runs a fresh decoder from the given item {@link Type}, and emits {@code EndItem};
- * finally emits {@code EndContainer(ARRAY)}. The count value itself is not emitted.
+ * Composes the array's phases via {@link ValueDecoder#andThen}: emit
+ * {@code StartContainer(ARRAY)}, read the count via a delegated
+ * {@link VariableLengthIntegerDecoder} (count value not propagated as an event),
+ * iterate {@code count} items (each wrapped in {@code StartItem}/{@code EndItem}
+ * around a fresh decoder from the given {@link Type}), then emit
+ * {@code EndContainer(ARRAY)}.
  */
 public final class ArrayDecoder implements ValueDecoder {
-    private final Type itemType;
-    private final ValueDecoder countDecoder;
-    private final CountCapture countCapture = new CountCapture();
-    private boolean started;
-    private boolean countDone;
-    private long remaining;
-    private ValueDecoder currentItem;
+    private final ValueDecoder pipeline;
 
     public ArrayDecoder(int countMaxBytes, Type itemType) {
-        this.itemType = itemType;
-        this.countDecoder = new VariableLengthIntegerDecoder(countMaxBytes);
+        long[] countHolder = new long[1];
+        pipeline = emit(new DecodingEvent.StartContainer(ContainerKind.ARRAY))
+                .andThen(captureCount(countMaxBytes, countHolder))
+                .andThen(items(countHolder, itemType))
+                .andThen(emit(new DecodingEvent.EndContainer(ContainerKind.ARRAY)));
     }
 
     @Override
     public boolean parse(BitReader bits, DecodingEventHandler handler) {
-        if (!started) {
-            handler.onEvent(new DecodingEvent.StartContainer(ContainerKind.ARRAY));
-            started = true;
-        }
-        if (!countDone) {
-            if (!countDecoder.parse(bits, countCapture)) {
-                return false;
-            }
-            remaining = countCapture.value;
-            countDone = true;
-        }
-        while (remaining > 0) {
-            if (currentItem == null) {
-                handler.onEvent(new DecodingEvent.StartItem());
-                currentItem = itemType.createDecoder();
-            }
-            if (!currentItem.parse(bits, handler)) {
-                return false;
-            }
-            handler.onEvent(new DecodingEvent.EndItem());
-            currentItem = null;
-            remaining--;
-        }
-        handler.onEvent(new DecodingEvent.EndContainer(ContainerKind.ARRAY));
-        return true;
+        return pipeline.parse(bits, handler);
     }
 
-    private static final class CountCapture implements DecodingEventHandler {
-        long value;
+    private static ValueDecoder emit(DecodingEvent event) {
+        return (bits, handler) -> {
+            handler.onEvent(event);
+            return true;
+        };
+    }
 
-        @Override
-        public void onEvent(DecodingEvent event) {
-            if (event instanceof DecodingEvent.IntegerScalar is) {
-                value = is.value();
+    private static ValueDecoder captureCount(int maxBytes, long[] target) {
+        ValueDecoder vli = new VariableLengthIntegerDecoder(maxBytes);
+        DecodingEventHandler capture = e -> {
+            if (e instanceof DecodingEvent.IntegerScalar is) {
+                target[0] = is.value();
             }
-        }
+        };
+        return (bits, handler) -> vli.parse(bits, capture);
+    }
+
+    private static ValueDecoder oneItem(Type itemType) {
+        return emit(new DecodingEvent.StartItem())
+                .andThen(itemType.createDecoder())
+                .andThen(emit(new DecodingEvent.EndItem()));
+    }
+
+    private static ValueDecoder items(long[] countHolder, Type itemType) {
+        return new ValueDecoder() {
+            private long remaining = -1;
+            private ValueDecoder current;
+
+            @Override
+            public boolean parse(BitReader bits, DecodingEventHandler handler) {
+                if (remaining < 0) {
+                    remaining = countHolder[0];
+                }
+                while (remaining > 0) {
+                    if (current == null) {
+                        current = oneItem(itemType);
+                    }
+                    if (!current.parse(bits, handler)) {
+                        return false;
+                    }
+                    current = null;
+                    remaining--;
+                }
+                return true;
+            }
+        };
     }
 }

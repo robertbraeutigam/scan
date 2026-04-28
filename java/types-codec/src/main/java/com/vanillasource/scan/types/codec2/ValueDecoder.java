@@ -8,20 +8,25 @@ public interface ValueDecoder {
     */
     boolean parse(BitReader bits, DecodingEventHandler handler);
 
-   default ValueDecoder followedBy(ValueDecoder other) {
+   /**
+    * Sequence: run {@code this} until it completes, then run {@code other}. The composite
+    * completes when {@code other} completes; if {@code this} completes within a single
+    * {@code parse} call, control falls through to {@code other} immediately.
+    */
+   default ValueDecoder andThen(ValueDecoder other) {
       ValueDecoder self = this;
       return new ValueDecoder() {
-         private boolean doneWithFirst = false;
-         private boolean doneWithSecond = false;
+         private boolean firstDone = false;
 
          @Override
          public boolean parse(BitReader bits, DecodingEventHandler handler) {
-            if (!doneWithFirst) {
-               doneWithFirst = self.parse(bits, handler);
-            } else if (!doneWithSecond) {
-               doneWithSecond = other.parse(bits, handler);
+            if (!firstDone) {
+               if (!self.parse(bits, handler)) {
+                  return false;
+               }
+               firstDone = true;
             }
-            return true;
+            return other.parse(bits, handler);
          }
       };
    }
