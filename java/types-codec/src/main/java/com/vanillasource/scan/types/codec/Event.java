@@ -12,12 +12,17 @@ import java.util.Arrays;
 public sealed interface Event {
     /**
      * Tags a {@link StartContainer} / {@link EndContainer} pair with the kind of
-     * definite-length aggregate it delimits. Streams are open-ended and use
-     * {@link StartStream} instead, with no matching end event.
+     * aggregate it delimits. {@code ARRAY}, {@code SET}, and {@code BYTE_ARRAY}
+     * are finite — both Start and End fire. {@code BYTE_STREAM} is open-ended:
+     * {@link StartContainer} fires at entry, no {@link EndContainer} ever fires.
+     * Item-bearing {@code Stream(T)} uses {@link StartStream} instead, retained
+     * from the earlier event ADT.
      */
     enum ContainerKind {
         ARRAY,
-        SET
+        SET,
+        BYTE_ARRAY,
+        BYTE_STREAM
     }
 
     record IntegerScalar(long value, int sign) implements Event {}
