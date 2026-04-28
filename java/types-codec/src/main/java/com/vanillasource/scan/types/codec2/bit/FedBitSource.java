@@ -5,7 +5,7 @@ import com.vanillasource.scan.types.codec2.BitSource;
 import java.io.OutputStream;
 
 /**
- * A <code>BitReader</code> that is fed bytes. It only accepts bytes if the previously
+ * A <code>BitSource</code> that is fed bytes. It only accepts bytes if the previously
  * fed bytes are completely read.
  * Note, that this does not copy the bytes it is fed, but uses them directly to read. Class is
  * not thread-safe.
