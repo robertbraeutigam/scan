@@ -11,7 +11,7 @@ public final class FloatingPointDecoder implements ValueDecoder {
     private int remainingBytes;
     private long bits = 0;
 
-    FloatingPointDecoder(int byteSize) {
+    public FloatingPointDecoder(int byteSize) {
         if (byteSize != 4 && byteSize != 8) {
             throw new IllegalArgumentException("FloatingPoint byteSize must be 4 or 8: " + byteSize);
         }

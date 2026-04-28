@@ -15,7 +15,7 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
     private int bytesRead = 0;
     private long accumulator = 0;
 
-    VariableLengthIntegerDecoder(int maxBytes) {
+    public VariableLengthIntegerDecoder(int maxBytes) {
         if (maxBytes < 1 || maxBytes > 8) {
             throw new IllegalArgumentException("maxBytes must be 1..8: " + maxBytes);
         }

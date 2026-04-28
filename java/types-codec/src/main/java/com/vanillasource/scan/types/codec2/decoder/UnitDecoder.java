@@ -7,7 +7,7 @@ import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /** Zero-byte decoder: emits a single {@link DecodingEvent.UnitScalar} and completes. */
 public final class UnitDecoder implements ValueDecoder {
-    UnitDecoder() {
+    public UnitDecoder() {
     }
 
     @Override

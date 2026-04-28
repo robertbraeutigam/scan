@@ -12,7 +12,7 @@ public final class IntegerDecoder implements ValueDecoder {
     private int remainingBytes;
     private long currentValue = 0;
 
-    IntegerDecoder(int byteSize, boolean signed) {
+    public IntegerDecoder(int byteSize, boolean signed) {
         this.byteSize = byteSize;
         this.remainingBytes = byteSize;
         this.signed = signed;
