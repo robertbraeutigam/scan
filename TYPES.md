@@ -70,6 +70,8 @@ The type system defines following built-in aggregate types:
 * Array
 * Set
 * Stream
+* ByteArray
+* ByteStream
 
 An `Array` is an ordered aggregation of multiple values of the given type. The number of items is bounded by a `Constraint` passed as the `size` parameter; an integer literal is sugar for a fixed count. When the constraint admits only a single length the count is fixed by the type and is not written on the wire; otherwise the count is written alongside the value.
 
@@ -87,13 +89,27 @@ Flags = IPv4 | IPv6
 EnabledProtocols = Set(Flags)
 ```
 
-A `Stream` is a potentially infinite sequence of values of the given type — for example, a live video stream:
+A `Stream` is a potentially infinite sequence of values of the given type:
 
 ```
-VideoContent = Stream(Byte)
+Samples = Stream(FloatingPoint(4))
 ```
 
-Because a `Stream` has no length terminator on the wire, nothing can follow it. Consequently **a type may contain at most one `Stream`, transitively** — whether on the top level or any sub-structure.
+Because a `Stream` has no length terminator on the wire, nothing can follow it. Consequently **a type may contain at most one `Stream` or `ByteStream`, transitively** — whether on the top level or any sub-structure.
+
+A `ByteArray` is a finite, ordered run of raw bytes. The number of bytes is bounded by a `Constraint` passed as `size`, exactly as for `Array`; the wire form is identical to `Array(UnsignedInteger(1), size)`. The type exists as a distinct form because the decoder delivers its content as bounded `Chunk(bytes)` events instead of one event per byte — see *Per-Type Event Sequences* — which is the only practical way to relay bulk bytes (file content, firmware images, UTF-8 strings) without per-byte event overhead. Compilers are free to lower `Array(UnsignedInteger(1), size)` (or other byte-equivalent element types) to `ByteArray` since their wire forms coincide.
+
+```
+Firmware = ByteArray(size = MaxInclusive(1048576))
+```
+
+A `ByteStream` is the open-ended counterpart of `ByteArray` — a potentially infinite run of raw bytes — for example, a live video stream:
+
+```
+VideoContent = ByteStream
+```
+
+`ByteStream` is subject to the same "at most one stream, transitively" rule as `Stream`.
 
 ### Type Parameters
 
@@ -196,8 +212,9 @@ Each built-in below declares the `Constraint`-typed parameters it accepts and fi
 * `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
 * `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
 * `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
+* `ByteArray(size: Constraint = All)` — `size` narrows the byte count. Same forms and conventions as `Array`'s `size`.
 * `Set(elementType)` — declares no `Constraint` parameters. The element type is itself the constraint: it must be a sum of bare-identifier constructors, and every value of that type either is or is not in the set.
-* `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
+* `Stream(elementType)`, `ByteStream`, `Unit` — declare no `Constraint` parameters. (`Stream` and `ByteStream` are unbounded by definition; `Unit` has exactly one value.)
 
 #### Worked examples
 
@@ -279,10 +296,10 @@ The standard "value or absence" sum type. Used everywhere a field may be missing
 ### String
 
 ```
-String(size: Constraint = All) = Array(Byte, size)
+String(size: Constraint = All) = ByteArray(size)
 ```
 
-A length-bounded byte string. The `size` parameter forwards to the underlying `Array`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
+A length-bounded byte string. The `size` parameter forwards to the underlying `ByteArray`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
 
 Note, that strings are not bound by characters but by the overall bytes needed. This is specifically for protocol clarity.
 
@@ -397,6 +414,10 @@ The cap costs at most 7 wasted bits per 32 bytes (≈ 2.7 %) and only applies in
 
 **Stream(T)** — a concatenation of *T*-encodings, running until the enclosing transport frames end. No count, no terminator. Bit state carries across items as it does in an `Array`.
 
+**ByteArray(size = C)** — wire form identical to `Array(UnsignedInteger(1), size = C)`: count VLI as defined for `Array` (omitted when *C* admits exactly one length), followed by that many raw bytes. The bytes are byte-aligned writes per the rule above, so bit state carries across them unchanged.
+
+**ByteStream** — wire form identical to `Stream(UnsignedInteger(1))`: a concatenation of raw bytes running until the enclosing transport frames end. No count, no terminator.
+
 ## Value Decoding Events
 
 The wire form defined in *Values Binary Representation* is consumed incrementally. As bytes arrive, a decoder walks the type in lockstep with the encoder and produces a sequence of **decoding events** for its consumer. This lets a consumer process values larger than its available memory — values containing a `Stream`, long `Array`s, long `String`s — by handling each event as it arrives and discarding its content before the next event.
@@ -410,13 +431,13 @@ Event = Scalar        { value: <primitive value> }     // bounded primitive
       | StartField    { index: UnsignedInteger }        // entering a struct field
       | EndField      { index: UnsignedInteger }        // leaving a struct field
       | Constructor   { index: UnsignedInteger }        // union variant selected; its fields follow
-      | StartContainer { kind: ContainerKind }          // kind ∈ { Array, Set, Stream }
-      | EndContainer  { kind: ContainerKind }           // Array / Set end; Stream has no end event
-      | StartItem                                       // complex-item container: item begins
-      | EndItem                                         // complex-item container: item ends
-      | Chunk         { bytes: Array(Byte) }            // primitive-item container: bounded byte run
+      | StartContainer { kind: ContainerKind }          // begins a container
+      | EndContainer  { kind: ContainerKind }           // ends a finite container; Stream / ByteStream have no end event
+      | StartItem                                       // item-bearing container: item begins
+      | EndItem                                         // item-bearing container: item ends
+      | Chunk         { bytes: Array(Byte) }            // byte-bearing container: bounded byte run
 
-ContainerKind = Array | Set | Stream
+ContainerKind = Array | Set | Stream | ByteArray | ByteStream
 ```
 
 `index` is the declared position of the field or constructor within its enclosing type. `kind` records which container kind a Start/End pair delimits.
@@ -425,16 +446,17 @@ ContainerKind = Array | Set | Stream
 
 **Primitive** (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`) — one `Scalar(v)` event.
 
-**Single-constructor type** `T { f₀: T₀, ..., fₖ₋₁: Tₖ₋₁ }` — for each field *i* in declaration order: `StartField(i)`, the events for the field's value (recursive), `EndField(i)`. If `Tᵢ = Stream(U)`, no `EndField(i)` is emitted — the stream runs until the enclosing transport ends.
+**Single-constructor type** `T { f₀: T₀, ..., fₖ₋₁: Tₖ₋₁ }` — for each field *i* in declaration order: `StartField(i)`, the events for the field's value (recursive), `EndField(i)`. If `Tᵢ = Stream(U)` or `Tᵢ = ByteStream`, no `EndField(i)` is emitted — the stream runs until the enclosing transport ends.
 
 **Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — `Constructor(j)` where *j* is the index of the selected constructor, followed by the event sequence for that constructor's fields (using the single-constructor rule).
 
-**`Array(T, size)` and `Set(T)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Item events take one of two forms, selected by *T*:
+**`Array(T, size)` and `Set(T)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Items are delivered as a sequence of `StartItem`, the event sequence for one item (recursive), `EndItem`. This holds for every element type *T*, primitive or complex.
 
-* **Primitive-item layout** — when *T* is a single primitive type (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`): the container's content is delivered as a sequence of `Chunk(bytes)` events. Each chunk is bounded by the transport's frame budget. The consumer parses individual items out of chunk bytes using the type.
-* **Complex-item layout** — otherwise (struct, union, or nested container element type): items are delivered as a sequence of `StartItem`, the event sequence for one item (recursive), `EndItem`.
+**`Stream(T)`** — identical to `Array`, except no `EndContainer(Stream)` event is emitted; the sequence runs until the enclosing transport ends.
 
-**`Stream(T)`** — identical to `Array` / `Set`, except no `EndContainer(Stream)` event is emitted; the sequence runs until the enclosing transport ends.
+**`ByteArray(size)`** — `StartContainer(ByteArray)`, followed by zero or more `Chunk(bytes)` events whose concatenated bytes total the array's declared length, followed by `EndContainer(ByteArray)`. Chunk boundaries are not significant — a decoder may split the byte run into chunks at any byte boundary, bounded above by the transport's frame budget. Two event sequences that differ only in how their `Chunk` events partition the same byte run are equivalent.
+
+**`ByteStream`** — identical to `ByteArray`, except no `EndContainer(ByteStream)` event is emitted; chunks continue until the enclosing transport ends.
 
 ### Memory Bound
 
@@ -469,6 +491,10 @@ Membership is a purely value-level decision: given a value *v* and a type *T*, a
 **Set(T)** — *v* is a member iff every element is a member of *T* (with *T* required to be a sum of bare-identifier constructors) and elements are pairwise distinct.
 
 **Stream(T)** — each element produced or consumed through the stream is a member iff it is a member of *T*. A stream has no terminal state, so there is no membership decision over the stream as a whole.
+
+**ByteArray(size)** — *v* is a member iff its length satisfies `size` (evaluated as a constraint over a non-negative integer). Every byte (a value in `0..255`) is automatically a member.
+
+**ByteStream** — every byte produced or consumed through the stream is a member. As with `Stream`, there is no membership decision over the stream as a whole.
 
 ### Constraint Evaluation
 
@@ -849,7 +875,7 @@ ScalarType = U8 | U16 | U32 | U64
           |  F32 | F64
           |  Vli { maxBytes: VariableLengthInteger(1) }
 
-ContainerKind = ArrayKind | SetKind | StreamKind
+ContainerKind = ArrayKind | SetKind | StreamKind | ByteArrayKind | ByteStreamKind
 ```
 
 The instruction set has 54 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with the
