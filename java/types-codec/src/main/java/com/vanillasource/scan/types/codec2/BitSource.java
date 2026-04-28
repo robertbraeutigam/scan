@@ -31,4 +31,12 @@ public interface BitSource {
    int readBits(int n);
 
    int availableBits();
+
+   /**
+    * Discard any currently-active bit byte's remaining bits. Called by aggregate
+    * codecs on entry to and exit from an Array / Set / Stream so the spec rule
+    * "bit state resets at aggregate boundaries" is enforced. After this call,
+    * {@link #availableBits()} reflects only what subsequent bytes provide.
+    */
+   default void closeBits() {}
 }

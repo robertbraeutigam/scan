@@ -28,4 +28,14 @@ public interface BitSink {
     * @return The number of bits written.
     */
    int writeBits(int bits, int count);
+
+   /**
+    * Close any currently-active bit byte by emitting it (with its unused slots
+    * left as 0) and flushing any byte writes that have been buffered behind it
+    * (per TYPES.md "Writing Byte-Aligned Data": byte-aligned writes do not close
+    * the bit byte, so a buffering BitSink must hold them until the bit byte
+    * either fills up or is explicitly closed). Aggregate codecs invoke this on
+    * entry to and exit from Array / Set / Stream.
+    */
+   default void closeBits() {}
 }

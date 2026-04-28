@@ -8,23 +8,26 @@ import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /**
- * Composes the array's phases via {@link ValueDecoder#andThen}: read the count via a
- * delegated {@link VariableLengthIntegerDecoder} (count value not propagated as an
- * event, captured into a holder), emit {@code StartContainer(ARRAY, count)}, iterate
- * {@code count} items (each wrapped in {@code StartItem}/{@code EndItem} around a
- * fresh decoder from the given {@link Type}), then emit {@code EndContainer(ARRAY)}.
+ * Sequence-form Set decoder: structurally identical to
+ * {@link ArrayDecoder} but emits {@code StartContainer(SET, count)} /
+ * {@code EndContainer(SET)} markers instead of {@code ARRAY}.
  */
-public final class ArrayDecoder implements ValueDecoder {
+public final class SetDecoder implements ValueDecoder {
     private final ValueDecoder pipeline;
 
-    public ArrayDecoder(int countMaxBytes, Type itemType) {
+    public SetDecoder(int countMaxBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = closeBits()
                 .andThen(captureCount(countMaxBytes, countHolder))
                 .andThen(emitStartContainer(countHolder))
                 .andThen(items(countHolder, itemType))
                 .andThen(closeBits())
-                .andThen(emit(new Event.EndContainer(ContainerKind.ARRAY)));
+                .andThen(emit(new Event.EndContainer(ContainerKind.SET)));
+    }
+
+    @Override
+    public boolean parse(BitSource bits, EventSink sink) {
+        return pipeline.parse(bits, sink);
     }
 
     private static ValueDecoder closeBits() {
@@ -32,11 +35,6 @@ public final class ArrayDecoder implements ValueDecoder {
             bits.closeBits();
             return true;
         };
-    }
-
-    @Override
-    public boolean parse(BitSource bits, EventSink sink) {
-        return pipeline.parse(bits, sink);
     }
 
     private static ValueDecoder emit(Event event) {
@@ -54,7 +52,7 @@ public final class ArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartContainer(ContainerKind.ARRAY, countHolder[0]));
+            sink.put(new Event.StartContainer(ContainerKind.SET, countHolder[0]));
             return true;
         };
     }

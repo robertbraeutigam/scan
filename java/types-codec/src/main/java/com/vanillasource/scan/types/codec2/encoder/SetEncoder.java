@@ -7,17 +7,15 @@ import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueEncoder;
 
 /**
- * Composes the array's phases via {@link ValueEncoder#andThen}: consume
- * {@code StartContainer(ARRAY, count)} and capture {@code count} into a holder, write the
- * count via a delegated {@link VariableLengthIntegerEncoder} fed from a synthetic
- * single-event source, then iterate {@code count} items (each consuming
- * {@code StartItem}/{@code EndItem} around a fresh encoder from the given {@link Type}),
- * finally consume {@code EndContainer(ARRAY)}.
+ * Sequence-form Set encoder: structurally identical to {@link ArrayEncoder}
+ * but consumes {@code StartContainer(SET, count)} / {@code EndContainer(SET)}
+ * markers instead of {@code ARRAY}. Element uniqueness is the upstream
+ * producer's responsibility.
  */
-public final class ArrayEncoder implements ValueEncoder {
+public final class SetEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
-    public ArrayEncoder(int countMaxBytes, Type itemType) {
+    public SetEncoder(int countMaxBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = captureStartContainer(countHolder)
                 .andThen(closeBits())
@@ -27,16 +25,16 @@ public final class ArrayEncoder implements ValueEncoder {
                 .andThen(consumeOne());
     }
 
+    @Override
+    public boolean generate(EventSource events, BitSink sink) {
+        return pipeline.generate(events, sink);
+    }
+
     private static ValueEncoder closeBits() {
         return (events, sink) -> {
             sink.closeBits();
             return true;
         };
-    }
-
-    @Override
-    public boolean generate(EventSource events, BitSink sink) {
-        return pipeline.generate(events, sink);
     }
 
     private static ValueEncoder consumeOne() {
