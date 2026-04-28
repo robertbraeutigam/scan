@@ -13,7 +13,7 @@ import com.vanillasource.scan.types.codec2.ValueDecoder;
  * (in declaration order, MSB-first within each byte) and finally
  * {@code EndContainer(SET)}.
  */
-public final class BitmaskSetDecoder implements ValueDecoder {
+public final class SetDecoder implements ValueDecoder {
     private final int memberCount;
     private final int byteSize;
     private final byte[] bitmask;
@@ -31,7 +31,7 @@ public final class BitmaskSetDecoder implements ValueDecoder {
 
     private int itemSubPhase = 0; // 0=StartItem, 1=Constructor, 2=EndItem
 
-    public BitmaskSetDecoder(int memberCount) {
+    public SetDecoder(int memberCount) {
         this.memberCount = memberCount;
         this.byteSize = (memberCount + 7) / 8;
         this.bitmask = new byte[byteSize];

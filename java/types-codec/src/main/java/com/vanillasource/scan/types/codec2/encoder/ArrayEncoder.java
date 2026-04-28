@@ -8,20 +8,22 @@ import com.vanillasource.scan.types.codec2.ValueEncoder;
 
 /**
  * Composes the array's phases via {@link ValueEncoder#andThen}: consume
- * {@code StartContainer(ARRAY, count)} and capture {@code count} into a holder, write the
- * count via a delegated {@link VariableLengthIntegerEncoder} fed from a synthetic
- * single-event source, then iterate {@code count} items (each consuming
- * {@code StartItem}/{@code EndItem} around a fresh encoder from the given {@link Type}),
- * finally consume {@code EndContainer(ARRAY)}.
+ * {@code StartContainer(ARRAY, count)} (validating the count against
+ * {@code min} and the fixed-length contract), write the count (omitted when
+ * {@code countVarintBytes == 0}, otherwise {@code count - min} as a
+ * {@code VariableLengthInteger(countVarintBytes)}), iterate {@code count}
+ * items (each consuming {@code StartItem}/{@code EndItem} around a fresh
+ * encoder from the given {@link Type}), finally consume
+ * {@code EndContainer(ARRAY)}.
  */
 public final class ArrayEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
-    public ArrayEncoder(int countMaxBytes, Type itemType) {
+    public ArrayEncoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
-        pipeline = captureStartContainer(countHolder)
+        pipeline = captureStartContainer(countHolder, min, countVarintBytes)
                 .andThen(closeBits())
-                .andThen(writeCount(countMaxBytes, countHolder))
+                .andThen(writeCount(min, countVarintBytes, countHolder))
                 .andThen(items(countHolder, itemType))
                 .andThen(closeBits())
                 .andThen(consumeOne());
@@ -49,17 +51,29 @@ public final class ArrayEncoder implements ValueEncoder {
         };
     }
 
-    private static ValueEncoder captureStartContainer(long[] target) {
+    private static ValueEncoder captureStartContainer(long[] target, int min, int countVarintBytes) {
         return (events, sink) -> {
             if (events.availableEvents() <= 0) {
                 return false;
             }
-            target[0] = ((Event.StartContainer) events.read()).count();
+            long count = ((Event.StartContainer) events.read()).count();
+            if (count < min) {
+                throw new IllegalArgumentException(
+                        "count " + count + " is below min " + min);
+            }
+            if (countVarintBytes == 0 && count != min) {
+                throw new IllegalArgumentException(
+                        "fixed-length array requires count == " + min + ", got " + count);
+            }
+            target[0] = count;
             return true;
         };
     }
 
-    private static ValueEncoder writeCount(int maxBytes, long[] countHolder) {
+    private static ValueEncoder writeCount(int min, int countVarintBytes, long[] countHolder) {
+        if (countVarintBytes == 0) {
+            return (events, sink) -> true;
+        }
         return new ValueEncoder() {
             private ValueEncoder vli;
             private EventSource fixedSource;
@@ -67,10 +81,10 @@ public final class ArrayEncoder implements ValueEncoder {
             @Override
             public boolean generate(EventSource events, BitSink sink) {
                 if (vli == null) {
-                    vli = new VariableLengthIntegerEncoder(maxBytes);
-                    long count = countHolder[0];
+                    vli = new VariableLengthIntegerEncoder(countVarintBytes);
+                    long delta = countHolder[0] - min;
                     fixedSource = singletonSource(
-                            new Event.IntegerScalar(count, count == 0 ? 0 : 1));
+                            new Event.IntegerScalar(delta, delta == 0 ? 0 : 1));
                 }
                 return vli.generate(fixedSource, sink);
             }

@@ -22,6 +22,7 @@ import java.util.List;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 public final class ArrayEncoderTests {
@@ -31,7 +32,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void emptyArrayWritesOnlyCount() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -44,7 +45,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void singleItemArray() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -60,7 +61,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void multipleItemsArray() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -82,7 +83,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void writesNothingUntilStartContainerArrives() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -92,7 +93,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void completesAcrossPartialEventFeeds() {
-      ValueEncoder enc = new Array(1, U16).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -118,7 +119,9 @@ public final class ArrayEncoderTests {
    public void multiByteVliCount() {
       // count=200 with maxBytes=4: 0x81 0x48 (terminating via clear high bit).
       Type unit = new Unit();
-      ValueEncoder enc = new Array(4, unit).createEncoder();
+      // Range chosen so the count VLI uses 3+ bytes — count 200 then encodes
+      // via the "clear high bit" termination path ([0x81, 0x48]).
+      ValueEncoder enc = new Array(0, 100_000, unit).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -136,7 +139,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void nestedArrays() {
-      ValueEncoder enc = new Array(1, new Array(1, U8)).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, new Array(0, 0xFF, U8)).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -166,7 +169,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void doesNotConsumeEventsPastEndContainer() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -185,7 +188,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void waitsWhenSinkFillsMidArray() {
-      ValueEncoder enc = new Array(1, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -205,6 +208,71 @@ public final class ArrayEncoderTests {
       sink.capacity = Integer.MAX_VALUE;
       assertTrue(enc.generate(events, sink));
       assertEquals(sink.bytes, List.of(0x02, 0x10, 0x20));
+   }
+
+   @Test
+   public void fixedLengthArrayWritesNoCount() {
+      // min == max → no count is written; only the items appear on the wire.
+      ValueEncoder enc = new Array(3, 3, U8).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 3L));
+      events.put(new StartItem());
+      events.put(new IntegerScalar(0x10L, 1));
+      events.put(new EndItem());
+      events.put(new StartItem());
+      events.put(new IntegerScalar(0x20L, 1));
+      events.put(new EndItem());
+      events.put(new StartItem());
+      events.put(new IntegerScalar(0x30L, 1));
+      events.put(new EndItem());
+      events.put(new EndContainer(ContainerKind.ARRAY));
+
+      assertTrue(enc.generate(events, sink));
+      assertEquals(sink.bytes, List.of(0x10, 0x20, 0x30));
+   }
+
+   @Test
+   public void nonZeroLowerBoundIsSubtractedFromCount() {
+      // min = 5, max = 10. count = 7 → wire byte = 7 - 5 = 2.
+      ValueEncoder enc = new Array(5, 10, U8).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 7L));
+      for (int i = 0; i < 7; i++) {
+         events.put(new StartItem());
+         events.put(new IntegerScalar(i, 1));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.ARRAY));
+
+      assertTrue(enc.generate(events, sink));
+      assertEquals(sink.bytes.get(0).intValue(), 0x02);
+      assertEquals(sink.bytes.size(), 1 + 7);
+   }
+
+   @Test
+   public void countBelowMinThrows() {
+      ValueEncoder enc = new Array(2, 5, U8).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 1L));
+
+      assertThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
+   }
+
+   @Test
+   public void fixedLengthRejectsMismatchedCount() {
+      ValueEncoder enc = new Array(3, 3, U8).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 4L));
+
+      assertThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
    }
 
    private static final class EventQueue implements EventSource {

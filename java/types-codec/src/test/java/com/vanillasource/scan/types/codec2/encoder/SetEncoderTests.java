@@ -2,17 +2,15 @@ package com.vanillasource.scan.types.codec2.encoder;
 
 import com.vanillasource.scan.types.codec2.BitSink;
 import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.Constructor;
 import com.vanillasource.scan.types.codec2.Event.ContainerKind;
 import com.vanillasource.scan.types.codec2.Event.EndContainer;
 import com.vanillasource.scan.types.codec2.Event.EndItem;
-import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
 import com.vanillasource.scan.types.codec2.Event.StartContainer;
 import com.vanillasource.scan.types.codec2.Event.StartItem;
 import com.vanillasource.scan.types.codec2.EventSource;
-import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueEncoder;
 import com.vanillasource.scan.types.codec2.type.Set;
-import com.vanillasource.scan.types.codec2.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -20,15 +18,14 @@ import java.util.List;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 public final class SetEncoderTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
-
    @Test
-   public void emptySetWritesOnlyCount() {
-      ValueEncoder enc = new Set(1, U8).createEncoder();
+   public void emptyBitmaskFourMembers() {
+      ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -40,46 +37,82 @@ public final class SetEncoderTests {
    }
 
    @Test
-   public void singleItemSet() {
-      ValueEncoder enc = new Set(1, U8).createEncoder();
+   public void firstTwoOfFourMembersSet() {
+      ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartContainer(ContainerKind.SET, 1L));
+      events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
-      events.put(new IntegerScalar(0x42L, 1));
+      events.put(new Constructor(0));
+      events.put(new EndItem());
+      events.put(new StartItem());
+      events.put(new Constructor(1));
       events.put(new EndItem());
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x01, 0x42));
+      assertEquals(sink.bytes, List.of(0xC0));
    }
 
    @Test
-   public void multipleItemsSet() {
-      ValueEncoder enc = new Set(1, U8).createEncoder();
+   public void lastTwoOfFourMembersSet() {
+      ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartContainer(ContainerKind.SET, 3L));
+      events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
-      events.put(new IntegerScalar(0x10L, 1));
+      events.put(new Constructor(2));
       events.put(new EndItem());
       events.put(new StartItem());
-      events.put(new IntegerScalar(0x20L, 1));
-      events.put(new EndItem());
-      events.put(new StartItem());
-      events.put(new IntegerScalar(0x30L, 1));
+      events.put(new Constructor(3));
       events.put(new EndItem());
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x03, 0x10, 0x20, 0x30));
+      assertEquals(sink.bytes, List.of(0x30));
+   }
+
+   @Test
+   public void allFourMembersSet() {
+      ValueEncoder enc = new Set(4).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.SET, 4L));
+      for (int i = 0; i < 4; i++) {
+         events.put(new StartItem());
+         events.put(new Constructor(i));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.SET));
+
+      assertTrue(enc.generate(events, sink));
+      assertEquals(sink.bytes, List.of(0xF0));
+   }
+
+   @Test
+   public void multiByteBitmaskTenMembers() {
+      ValueEncoder enc = new Set(10).createEncoder();
+      EventQueue events = new EventQueue();
+      ByteCollector sink = new ByteCollector();
+
+      events.put(new StartContainer(ContainerKind.SET, 4L));
+      for (int i : new int[] { 0, 7, 8, 9 }) {
+         events.put(new StartItem());
+         events.put(new Constructor(i));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.SET));
+
+      assertTrue(enc.generate(events, sink));
+      assertEquals(sink.bytes, List.of(0x81, 0xC0));
    }
 
    @Test
    public void writesNothingUntilStartContainerArrives() {
-      ValueEncoder enc = new Set(1, U8).createEncoder();
+      ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -88,21 +121,18 @@ public final class SetEncoderTests {
    }
 
    @Test
-   public void doesNotConsumeEventsPastEndContainer() {
-      ValueEncoder enc = new Set(1, U8).createEncoder();
+   public void invalidConstructorIndexThrows() {
+      ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
       events.put(new StartContainer(ContainerKind.SET, 1L));
       events.put(new StartItem());
-      events.put(new IntegerScalar(0x42L, 1));
+      events.put(new Constructor(4));
       events.put(new EndItem());
       events.put(new EndContainer(ContainerKind.SET));
-      events.put(new IntegerScalar(0x99L, 1)); // sentinel
 
-      assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x01, 0x42));
-      assertEquals(events.availableEvents(), 1);
+      assertThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
    }
 
    private static final class EventQueue implements EventSource {

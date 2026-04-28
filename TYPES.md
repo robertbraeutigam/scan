@@ -79,7 +79,7 @@ Events             = Array(Event)                        // unbounded (size = Al
 Handshake          = Array(Byte, size = MaxInclusive(128)) // 0..128, count on the wire
 ```
 
-A `Set` is an **unordered** collection of **distinct** values of the given type. Any element type is allowed. When the element type contains no data (thus whether it's present in the set can be described by a single bit), a `Set` wire-encodes naturally as a bitmask; otherwise it is encoded as a deduplicated variable-length sequence. The concrete encoding is defined in *Values Binary Representation* below.
+A `Set` is an **unordered** collection of **distinct** flag values. Its element type must be a sum of **bare-identifier constructors only** — i.e. a fixed value space whose every member can be represented by a single bit. A `Set` is encoded as a bitmask of `⌈K / 8⌉` bytes, where `K` is the number of constructors of the element type. Collections whose elements carry data are expressed as `Array(T)` (with deduplication enforced at the application layer if needed); the type system intentionally provides only the bitmask form here.
 
 ```
 Flags = IPv4 | IPv6
@@ -174,7 +174,7 @@ Constraint = All
            | MaxInclusive  { bound: Number }
            | MaxExclusive  { bound: Number }
            | Range         { min: Number,   max: Number   }
-           | Values        { allowed: Set(Number)         }
+           | Values        { allowed: Array(Number)       }
            | MultipleOf    { divisor: Number              }
            | Union         { a: Constraint, b: Constraint }
            | Intersection  { a: Constraint, b: Constraint }
@@ -196,7 +196,7 @@ Each built-in below declares the `Constraint`-typed parameters it accepts and fi
 * `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
 * `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
 * `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
-* `Set(elementType, size: Constraint = All)` — `size` narrows set cardinality (same rules as `Array`).
+* `Set(elementType)` — declares no `Constraint` parameters. The element type is itself the constraint: it must be a sum of bare-identifier constructors, and every value of that type either is or is not in the set.
 * `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
 
 #### Worked examples
@@ -390,10 +390,7 @@ A byte-aligned value of *n* bytes is written at the current cursor; the cursor a
 
 On exit the aggregate ends on a byte boundary and the enclosing scope continues with bit state `None`.
 
-**Set(T, size = C)** — takes one of two forms, selected by *T*:
-
-* **Bitmask form**, when every constructor of *T* is a bare identifier (so *T* has a fixed value space of *K* members). The set is encoded as `⌈K / 8⌉` bytes of bitmask; within each byte the highest-significance bit is considered first, and bit *i* of the stream (so bit *i* mod 8 of byte *i* div 8, counting MSB-first) is 1 iff constructor *i*, in declaration order, is a member. No count is written. Entered/exited at byte boundaries like any aggregate.
-* **Sequence form**, otherwise. Identical to `Array(T, size = C)` — including the conditional leading count and the packed / byte-aligned item layouts. Each value appears at most once; order is unspecified on the wire (encoders may sort for determinism).
+**Set(T)** — *T*'s constructors are all bare identifiers, so *T* has a fixed value space of *K* members. The set is encoded as `⌈K / 8⌉` bytes of bitmask; within each byte the highest-significance bit is considered first, and bit *i* of the stream (bit *i* mod 8 of byte *i* div 8, counting MSB-first) is 1 iff constructor *i*, in declaration order, is a member. No count is written. Entered/exited at byte boundaries like any aggregate.
 
 **Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
 
@@ -429,7 +426,7 @@ ContainerKind = Array | Set | Stream
 
 **Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — `Constructor(j)` where *j* is the index of the selected constructor, followed by the event sequence for that constructor's fields (using the single-constructor rule).
 
-**`Array(T, size)` and `Set(T, size)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Item events take one of two forms, selected by *T*:
+**`Array(T, size)` and `Set(T)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Item events take one of two forms, selected by *T*:
 
 * **Primitive-item layout** — when *T* is a single primitive type (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`): the container's content is delivered as a sequence of `Chunk(bytes)` events. Each chunk is bounded by the transport's frame budget. The consumer parses individual items out of chunk bytes using the type.
 * **Complex-item layout** — otherwise (struct, union, or nested container element type): items are delivered as a sequence of `StartItem`, the event sequence for one item (recursive), `EndItem`.
@@ -466,7 +463,7 @@ Membership is a purely value-level decision: given a value *v* and a type *T*, a
 
 **Array(T, size)** — *v* is a member iff its length satisfies `size` (evaluated as a constraint over a non-negative integer) and every element is a member of *T*.
 
-**Set(T, size)** — as `Array`, with the additional requirement that elements are pairwise distinct.
+**Set(T)** — *v* is a member iff every element is a member of *T* (with *T* required to be a sum of bare-identifier constructors) and elements are pairwise distinct.
 
 **Stream(T)** — each element produced or consumed through the stream is a member iff it is a member of *T*. A stream has no terminal state, so there is no membership decision over the stream as a whole.
 

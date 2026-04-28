@@ -30,7 +30,7 @@ public final class ArrayTests {
 
    @Test
    public void emptyArrayEmitsOnlyContainerMarkers() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -44,7 +44,7 @@ public final class ArrayTests {
 
    @Test
    public void singleItemArray() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -61,7 +61,7 @@ public final class ArrayTests {
 
    @Test
    public void multipleItemsArray() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -84,7 +84,7 @@ public final class ArrayTests {
 
    @Test
    public void emitsNothingUntilCountByteArrives() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -96,7 +96,7 @@ public final class ArrayTests {
 
    @Test
    public void completesAcrossPartialFeeds() {
-      ValueDecoder dec = new Array(1, U16).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -125,7 +125,10 @@ public final class ArrayTests {
       //   accumulator = (1 << 7) | 0x48 = 200
       // Use a Unit item type so we don't have to hand-write 200 bytes of payload.
       Type unit = new Unit();
-      ValueDecoder dec = new Array(4, unit).createDecoder();
+      // Range chosen so the count VLI uses 3+ bytes (cap >= 22 bits) — that
+      // makes value 200 encode via the "clear high bit" termination path
+      // ([0x81, 0x48]) rather than terminating-by-maxBytes at 1 byte.
+      ValueDecoder dec = new Array(0, 100_000, unit).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -140,7 +143,7 @@ public final class ArrayTests {
 
    @Test
    public void doesNotEmitCountAsIntegerScalar() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -156,7 +159,7 @@ public final class ArrayTests {
 
    @Test
    public void nestedArrays() {
-      ValueDecoder dec = new Array(1, new Array(1, U8)).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, new Array(0, 0xFF, U8)).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -188,7 +191,7 @@ public final class ArrayTests {
 
    @Test
    public void doesNotConsumeBytesPastEnd() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -201,7 +204,7 @@ public final class ArrayTests {
 
    @Test
    public void waitsWhenSinkFillsMidArray() {
-      ValueDecoder dec = new Array(1, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -223,6 +226,48 @@ public final class ArrayTests {
             new IntegerScalar(0x20L, 1),
             new EndItem(),
             new EndContainer(ContainerKind.ARRAY)));
+   }
+
+   @Test
+   public void fixedLengthArrayReadsNoCount() {
+      // min == max → no count on the wire; decoder reads exactly 3 items.
+      ValueDecoder dec = new Array(3, 3, U8).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      bits.write(new byte[] { 0x10, 0x20, 0x30 }, 0, 3);
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events, List.of(
+            new StartContainer(ContainerKind.ARRAY, 3L),
+            new StartItem(),
+            new IntegerScalar(0x10L, 1),
+            new EndItem(),
+            new StartItem(),
+            new IntegerScalar(0x20L, 1),
+            new EndItem(),
+            new StartItem(),
+            new IntegerScalar(0x30L, 1),
+            new EndItem(),
+            new EndContainer(ContainerKind.ARRAY)));
+   }
+
+   @Test
+   public void nonZeroLowerBoundIsAddedBackToCount() {
+      // min = 5, max = 10. Wire count = actual - min, so 0x02 → 5 + 2 = 7 items.
+      ValueDecoder dec = new Array(5, 10, U8).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      bits.write(new byte[] {
+            0x02,
+            0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70
+      }, 0, 8);
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY, 7L));
+      long itemCount = capture.events.stream().filter(e -> e instanceof IntegerScalar).count();
+      assertEquals(itemCount, 7L);
    }
 
    private static final class EventCapture implements EventSink {

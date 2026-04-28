@@ -8,19 +8,23 @@ import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /**
- * Composes the array's phases via {@link ValueDecoder#andThen}: read the count via a
- * delegated {@link VariableLengthIntegerDecoder} (count value not propagated as an
- * event, captured into a holder), emit {@code StartContainer(ARRAY, count)}, iterate
- * {@code count} items (each wrapped in {@code StartItem}/{@code EndItem} around a
- * fresh decoder from the given {@link Type}), then emit {@code EndContainer(ARRAY)}.
+ * Composes the array's phases via {@link ValueDecoder#andThen}: read (or skip)
+ * the count, emit {@code StartContainer(ARRAY, count)}, iterate {@code count}
+ * items (each wrapped in {@code StartItem}/{@code EndItem} around a fresh
+ * decoder from the given {@link Type}), then emit {@code EndContainer(ARRAY)}.
+ *
+ * <p>{@code countVarintBytes == 0} means no count is on the wire — the count
+ * is fixed at {@code min}. Otherwise the wire carries
+ * {@code VariableLengthInteger(countVarintBytes)} and {@code min} is added
+ * back to its value to recover the actual count.
  */
 public final class ArrayDecoder implements ValueDecoder {
     private final ValueDecoder pipeline;
 
-    public ArrayDecoder(int countMaxBytes, Type itemType) {
+    public ArrayDecoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = closeBits()
-                .andThen(captureCount(countMaxBytes, countHolder))
+                .andThen(captureCount(min, countVarintBytes, countHolder))
                 .andThen(emitStartContainer(countHolder))
                 .andThen(items(countHolder, itemType))
                 .andThen(closeBits())
@@ -59,8 +63,14 @@ public final class ArrayDecoder implements ValueDecoder {
         };
     }
 
-    private static ValueDecoder captureCount(int maxBytes, long[] target) {
-        ValueDecoder vli = new VariableLengthIntegerDecoder(maxBytes);
+    private static ValueDecoder captureCount(int min, int countVarintBytes, long[] target) {
+        if (countVarintBytes == 0) {
+            return (bits, sink) -> {
+                target[0] = min;
+                return true;
+            };
+        }
+        ValueDecoder vli = new VariableLengthIntegerDecoder(countVarintBytes);
         EventSink capture = new EventSink() {
             @Override
             public int writableEvents() {
@@ -70,7 +80,7 @@ public final class ArrayDecoder implements ValueDecoder {
             @Override
             public void put(Event event) {
                 if (event instanceof Event.IntegerScalar is) {
-                    target[0] = is.value();
+                    target[0] = is.value() + min;
                 }
             }
         };

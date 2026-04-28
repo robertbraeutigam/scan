@@ -12,7 +12,7 @@ import com.vanillasource.scan.types.codec2.ValueEncoder;
  * indices into a bitmask of {@code ceil(memberCount/8)} bytes (MSB-first
  * within each byte), and writes the bitmask out at the end.
  */
-public final class BitmaskSetEncoder implements ValueEncoder {
+public final class SetEncoder implements ValueEncoder {
     private final int memberCount;
     private final int byteSize;
     private final byte[] bitmask;
@@ -27,7 +27,7 @@ public final class BitmaskSetEncoder implements ValueEncoder {
     private static final int PHASE_WRITE_BYTES = 3;
     private static final int PHASE_DONE = 4;
 
-    public BitmaskSetEncoder(int memberCount) {
+    public SetEncoder(int memberCount) {
         this.memberCount = memberCount;
         this.byteSize = (memberCount + 7) / 8;
         this.bitmask = new byte[byteSize];

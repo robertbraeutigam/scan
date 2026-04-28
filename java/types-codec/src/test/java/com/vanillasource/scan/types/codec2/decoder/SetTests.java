@@ -1,18 +1,16 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
 import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.Constructor;
 import com.vanillasource.scan.types.codec2.Event.ContainerKind;
 import com.vanillasource.scan.types.codec2.Event.EndContainer;
 import com.vanillasource.scan.types.codec2.Event.EndItem;
-import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
 import com.vanillasource.scan.types.codec2.Event.StartContainer;
 import com.vanillasource.scan.types.codec2.Event.StartItem;
 import com.vanillasource.scan.types.codec2.EventSink;
-import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import com.vanillasource.scan.types.codec2.type.Set;
-import com.vanillasource.scan.types.codec2.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -24,15 +22,13 @@ import static org.testng.Assert.assertTrue;
 
 public final class SetTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
-
    @Test
-   public void emptySetEmitsOnlyContainerMarkers() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
+   public void emptyBitmaskFourMembers() {
+      ValueDecoder dec = new Set(4).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(0x00); // count = 0
+      bits.write(0x00);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -41,86 +37,124 @@ public final class SetTests {
    }
 
    @Test
-   public void singleItemSet() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
+   public void firstTwoOfFourMembersSet() {
+      // Members 0,1 set: bits 7,6 of byte 0 = 1.
+      ValueDecoder dec = new Set(4).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x01, 0x42 }, 0, 2);
+      bits.write(0xC0); // 0b1100_0000
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.SET, 1L),
+            new StartContainer(ContainerKind.SET, 2L),
             new StartItem(),
-            new IntegerScalar(0x42L, 1),
+            new Constructor(0),
+            new EndItem(),
+            new StartItem(),
+            new Constructor(1),
             new EndItem(),
             new EndContainer(ContainerKind.SET)));
    }
 
    @Test
-   public void multipleItemsSet() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
+   public void lastTwoOfFourMembersSet() {
+      // Members 2,3 set: bits 5,4 of byte 0 = 1.
+      ValueDecoder dec = new Set(4).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x03, 0x10, 0x20, 0x30 }, 0, 4);
+      bits.write(0x30); // 0b0011_0000
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.SET, 3L),
+            new StartContainer(ContainerKind.SET, 2L),
             new StartItem(),
-            new IntegerScalar(0x10L, 1),
+            new Constructor(2),
             new EndItem(),
             new StartItem(),
-            new IntegerScalar(0x20L, 1),
-            new EndItem(),
-            new StartItem(),
-            new IntegerScalar(0x30L, 1),
+            new Constructor(3),
             new EndItem(),
             new EndContainer(ContainerKind.SET)));
    }
 
    @Test
-   public void emitsNothingUntilCountByteArrives() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
+   public void allFourMembersSet() {
+      ValueDecoder dec = new Set(4).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      bits.write(0xF0); // 0b1111_0000
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events, List.of(
+            new StartContainer(ContainerKind.SET, 4L),
+            new StartItem(), new Constructor(0), new EndItem(),
+            new StartItem(), new Constructor(1), new EndItem(),
+            new StartItem(), new Constructor(2), new EndItem(),
+            new StartItem(), new Constructor(3), new EndItem(),
+            new EndContainer(ContainerKind.SET)));
+   }
+
+   @Test
+   public void multiByteBitmaskTenMembers() {
+      // 10 members → ceil(10/8) = 2 bytes. Set members 0, 7, 8, 9.
+      // Byte 0: bit 7 (member 0) = 1, bit 0 (member 7) = 1 → 0b1000_0001 = 0x81
+      // Byte 1: bit 7 (member 8) = 1, bit 6 (member 9) = 1 → 0b1100_0000 = 0xC0
+      ValueDecoder dec = new Set(10).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      bits.write(new byte[] { (byte) 0x81, (byte) 0xC0 }, 0, 2);
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events, List.of(
+            new StartContainer(ContainerKind.SET, 4L),
+            new StartItem(), new Constructor(0), new EndItem(),
+            new StartItem(), new Constructor(7), new EndItem(),
+            new StartItem(), new Constructor(8), new EndItem(),
+            new StartItem(), new Constructor(9), new EndItem(),
+            new EndContainer(ContainerKind.SET)));
+   }
+
+   @Test
+   public void emitsNothingUntilFullBitmaskAvailable() {
+      ValueDecoder dec = new Set(10).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(dec.parse(bits, capture));
-      assertEquals(capture.events, List.of());
+      bits.write((byte) 0x81);
+      assertFalse(dec.parse(bits, capture));
+      bits.write((byte) 0xC0);
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events.size(), 1 + 4 * 3 + 1);
    }
 
    @Test
-   public void completesAcrossPartialFeeds() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
+   public void waitsWhenSinkFillsMidEmission() {
+      ValueDecoder dec = new Set(4).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(0x01);
+      bits.write(0xC0);
+      capture.capacity = 2; // StartContainer + StartItem, then full
       assertFalse(dec.parse(bits, capture));
+      assertEquals(capture.events.size(), 2);
 
-      bits.write(0x42);
+      capture.capacity = Integer.MAX_VALUE;
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.SET, 1L),
+            new StartContainer(ContainerKind.SET, 2L),
             new StartItem(),
-            new IntegerScalar(0x42L, 1),
+            new Constructor(0),
+            new EndItem(),
+            new StartItem(),
+            new Constructor(1),
             new EndItem(),
             new EndContainer(ContainerKind.SET)));
-   }
-
-   @Test
-   public void doesNotConsumeBytesPastEnd() {
-      ValueDecoder dec = new Set(1, U8).createDecoder();
-      FedBitSource bits = new FedBitSource();
-      EventCapture capture = new EventCapture();
-
-      bits.write(new byte[] { 0x01, 0x42, (byte) 0xAB }, 0, 3);
-      assertTrue(dec.parse(bits, capture));
-
-      assertEquals(bits.availableBytes(), 1);
-      assertEquals(bits.readUnsignedByte(), 0xAB);
    }
 
    private static final class EventCapture implements EventSink {
