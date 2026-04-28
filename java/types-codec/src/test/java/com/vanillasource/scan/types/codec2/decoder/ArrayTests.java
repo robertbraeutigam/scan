@@ -12,6 +12,8 @@ import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import com.vanillasource.scan.types.codec2.type.Array;
+import com.vanillasource.scan.types.codec2.type.Unit;
+import com.vanillasource.scan.types.codec2.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -23,8 +25,8 @@ import static org.testng.Assert.assertTrue;
 
 public final class ArrayTests {
 
-   private static final Type U8 = () -> new IntegerDecoder(1, false);
-   private static final Type U16 = () -> new IntegerDecoder(2, false);
+   private static final Type U8 = new UnsignedInteger(1);
+   private static final Type U16 = new UnsignedInteger(2);
 
    @Test
    public void emptyArrayEmitsOnlyContainerMarkers() {
@@ -122,7 +124,7 @@ public final class ArrayTests {
       //   byte2: 0x48 (clear high bit, low 7 bits = 0x48)
       //   accumulator = (1 << 7) | 0x48 = 200
       // Use a Unit item type so we don't have to hand-write 200 bytes of payload.
-      Type unit = UnitDecoder::new;
+      Type unit = new Unit();
       ValueDecoder dec = new Array(4, unit).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();

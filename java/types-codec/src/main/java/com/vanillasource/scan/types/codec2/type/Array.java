@@ -2,7 +2,9 @@ package com.vanillasource.scan.types.codec2.type;
 
 import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
+import com.vanillasource.scan.types.codec2.ValueEncoder;
 import com.vanillasource.scan.types.codec2.decoder.ArrayDecoder;
+import com.vanillasource.scan.types.codec2.encoder.ArrayEncoder;
 
 /**
  * An array of items of a given {@link Type}, prefixed by a variable-length integer
@@ -20,5 +22,10 @@ public final class Array implements Type {
     @Override
     public ValueDecoder createDecoder() {
         return new ArrayDecoder(countMaxBytes, itemType);
+    }
+
+    @Override
+    public ValueEncoder createEncoder() {
+        return new ArrayEncoder(countMaxBytes, itemType);
     }
 }
