@@ -63,7 +63,9 @@
       "Bash(mvn -pl types-codec -q test)",
       "Bash(mvn -pl types-codec test -Dtest=FedBitReaderTests -q)",
       "Bash(mvn -pl types-codec test -Dtest=FedBitReaderTests)",
-      "Bash(mvn -pl types-codec test -Dtest=UnitDecoderTests,FloatingPointDecoderTests,VariableLengthIntegerDecoderTests)"
+      "Bash(mvn -pl types-codec test -Dtest=UnitDecoderTests,FloatingPointDecoderTests,VariableLengthIntegerDecoderTests)",
+      "Bash(mvn -pl types-codec test -Dtest=PartialFeedRobustnessTests -q)",
+      "Bash(mvn -pl types-codec test -Dtest=PartialFeedRobustnessTests)"
     ]
   }
 }
