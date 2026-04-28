@@ -1,6 +1,5 @@
 package com.vanillasource.scan.types.codec2.encoder;
 
-import com.vanillasource.scan.types.codec2.BitSink;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.Constructor;
 import com.vanillasource.scan.types.codec2.Event.ContainerKind;
@@ -10,11 +9,9 @@ import com.vanillasource.scan.types.codec2.Event.StartContainer;
 import com.vanillasource.scan.types.codec2.Event.StartItem;
 import com.vanillasource.scan.types.codec2.EventSource;
 import com.vanillasource.scan.types.codec2.ValueEncoder;
+import com.vanillasource.scan.types.codec2.bit.BufferedBitSink;
 import com.vanillasource.scan.types.codec2.type.Set;
 import org.testng.annotations.Test;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -27,20 +24,21 @@ public final class SetEncoderTests {
    public void emptyBitmaskFourMembers() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 0L));
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x00));
+      sink.closeBits();
+      assertEquals(sink.toBytes(), new byte[] { 0x00 });
    }
 
    @Test
    public void firstTwoOfFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
@@ -52,14 +50,15 @@ public final class SetEncoderTests {
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0xC0));
+      sink.closeBits();
+      assertEquals(sink.toBytes(), new byte[] { (byte) 0xC0 });
    }
 
    @Test
    public void lastTwoOfFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
@@ -71,14 +70,15 @@ public final class SetEncoderTests {
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x30));
+      sink.closeBits();
+      assertEquals(sink.toBytes(), new byte[] { 0x30 });
    }
 
    @Test
    public void allFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 4L));
       for (int i = 0; i < 4; i++) {
@@ -89,14 +89,15 @@ public final class SetEncoderTests {
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0xF0));
+      sink.closeBits();
+      assertEquals(sink.toBytes(), new byte[] { (byte) 0xF0 });
    }
 
    @Test
    public void multiByteBitmaskTenMembers() {
       ValueEncoder enc = new Set(10).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 4L));
       for (int i : new int[] { 0, 7, 8, 9 }) {
@@ -107,24 +108,29 @@ public final class SetEncoderTests {
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x81, 0xC0));
+      sink.closeBits();
+      // bit 0 of stream = ctor 0 = 1, bits 1..6 = ctors 1..6 = 0, bit 7 = ctor 7 = 1
+      // → byte 0 = 1000_0001 = 0x81
+      // bit 8 = ctor 8 = 1, bit 9 = ctor 9 = 1, rest = 0
+      // → byte 1 = 1100_0000 = 0xC0
+      assertEquals(sink.toBytes(), new byte[] { (byte) 0x81, (byte) 0xC0 });
    }
 
    @Test
    public void writesNothingUntilStartContainerArrives() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.bytes.size(), 0);
+      assertEquals(sink.size(), 0);
    }
 
    @Test
    public void invalidConstructorIndexThrows() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      ByteCollector sink = new ByteCollector();
+      BufferedBitSink sink = new BufferedBitSink();
 
       events.put(new StartContainer(ContainerKind.SET, 1L));
       events.put(new StartItem());
@@ -150,50 +156,6 @@ public final class SetEncoderTests {
       @Override
       public Event read() {
          return queue.pollFirst();
-      }
-   }
-
-   private static final class ByteCollector implements BitSink {
-      final List<Integer> bytes = new ArrayList<>();
-      int capacity = Integer.MAX_VALUE;
-
-      @Override
-      public int writableBytes() {
-         return capacity;
-      }
-
-      @Override
-      public int write(byte[] buf, int off, int len) {
-         int n = Math.min(len, capacity);
-         for (int i = 0; i < n; i++) {
-            bytes.add(buf[off + i] & 0xFF);
-         }
-         if (capacity != Integer.MAX_VALUE) {
-            capacity -= n;
-         }
-         return n;
-      }
-
-      @Override
-      public int writeUnsignedByte(int unsignedByte) {
-         if (capacity <= 0) {
-            return 0;
-         }
-         bytes.add(unsignedByte & 0xFF);
-         if (capacity != Integer.MAX_VALUE) {
-            capacity--;
-         }
-         return 1;
-      }
-
-      @Override
-      public int writableBits() {
-         return writableBytes() * 8;
-      }
-
-      @Override
-      public int writeBits(int bits, int count) {
-         throw new UnsupportedOperationException();
       }
    }
 }

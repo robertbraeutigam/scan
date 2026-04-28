@@ -23,19 +23,10 @@ public final class ArrayDecoder implements ValueDecoder {
 
     public ArrayDecoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
-        pipeline = closeBits()
-                .andThen(captureCount(min, countVarintBytes, countHolder))
+        pipeline = captureCount(min, countVarintBytes, countHolder)
                 .andThen(emitStartContainer(countHolder))
                 .andThen(items(countHolder, itemType))
-                .andThen(closeBits())
                 .andThen(emit(new Event.EndContainer(ContainerKind.ARRAY)));
-    }
-
-    private static ValueDecoder closeBits() {
-        return (bits, sink) -> {
-            bits.closeBits();
-            return true;
-        };
     }
 
     @Override

@@ -348,7 +348,7 @@ The wire form carries only the value — nothing describes the type. Both sides 
 
 ### Principles
 
-The encoding is byte-oriented for bulk data and bit-packed for sub-byte fields. Within a struct or union, sub-byte fields (union discriminators, `Boolean`s, bare-only bitmask `Set`s) share bytes with each other — consecutive sub-byte pieces fill up the same byte even when byte-aligned fields appear between them. Aggregates (`Array`, `Set`, `Stream`) always begin and end on a byte boundary and do not share bit state with their surroundings; items of 1..4 bits pack as a continuous bit stream across the aggregate's byte span, while larger items are byte-aligned one at a time.
+The encoding is byte-oriented for bulk data and bit-packed for sub-byte fields. Bit state is global to a value — sub-byte writes (union discriminators, `Boolean`s, members of a `Set`) share bytes across struct fields, across union discriminator-and-body, across array/stream/set items, and across aggregate boundaries. There is no byte-alignment forced by any structural boundary; the only forced flushes are the bit byte filling up and a buffer cap (see *Bit-byte buffer cap*) that bounds the encoder/decoder's working state.
 
 ### Encoder and Decoder State
 
@@ -357,17 +357,25 @@ Both sides keep:
 * a **cursor** — current byte offset into the output or input, and
 * an **active bit byte** — either `None`, or a pair (byte position, bits already used, `0..7`).
 
-The state carries across fields of a struct, across the discriminator and body of a union, and into embedded structs and unions. It **resets to `None`** on entry to any aggregate and again on exit from it; the aggregate's own content is encoded/decoded with a fresh bit state that does not leak in either direction. When bit state is reset with an active bit byte that is only partially filled, the byte is simply closed in place — its unused slots remain `0`.
+The state is global to a value — it carries across all fields, items, and aggregate boundaries. Encode and decode terminate when the type walk completes (or for `Stream`, when the transport ends); any bit byte still partially filled at termination is closed in place — its unused slots remain `0`.
 
 ### Writing a k-bit Value
 
-Used for union discriminators (`1..8` bits), `Boolean`s, and other sub-byte fields within a struct or union scope.
+Used for union discriminators (`1..8` bits), `Boolean`s, `Set` members, and other sub-byte writes.
 
-If the active bit byte has at least *k* free bits, the *k* bits are written into the next free slots, the most-significant bit of the value into the highest-significance free slot. The used-bit counter is incremented by *k*; when it reaches 8 the state returns to `None`. Otherwise, a fresh byte is allocated at the current cursor, the cursor advances by one, and that byte becomes the active bit byte with 0 bits used; the *k* bits are then written into it. For *k* > 8, the value is split into groups from the MSB end and each group is written by this rule.
+If the active bit byte has at least *k* free bits, the *k* bits are written into the next free slots, the most-significant bit of the value into the highest-significance free slot. The used-bit counter is incremented by *k*; when it reaches 8 the byte is finalised and the state returns to `None`. Otherwise, a fresh byte is allocated at the current cursor, the cursor advances by one, and that byte becomes the active bit byte with 0 bits used; the *k* bits are then written into it. For *k* > 8, the value is split into groups from the MSB end and each group is written by this rule.
 
 ### Writing Byte-Aligned Data
 
 A byte-aligned value of *n* bytes is written at the current cursor; the cursor advances by *n*. **Byte-aligned writes do not close the active bit byte.** A bit written before and a bit written after such a field may share the same byte — the byte physically sits before the intervening bytes in the stream, but its remaining slots are still open. This is the lever that keeps a `Boolean` sitting between two integers from costing a whole extra byte.
+
+### Bit-byte buffer cap
+
+Because byte-aligned writes do not close the active bit byte, the encoder must hold those bytes behind the open bit byte until it closes (so the bit byte can be emitted at its allocated position before the bytes that follow it in time but after it on the wire). To keep the encoder's working buffer bounded, the bit byte is **force-closed after 32 byte-aligned bytes** have been written while it is open: the active byte is emitted in place with its remaining slots `0`, the 32 buffered bytes flush out behind it, and writing resumes with no active bit byte.
+
+The decoder follows the same rule symmetrically: it counts byte-aligned bytes consumed since the current bit byte was opened and, on the 32nd, treats the bit byte as closed (any unread slots are discarded). The cap is wire-visible, not just an implementation choice — both sides must agree.
+
+The cap costs at most 7 wasted bits per 32 bytes (≈ 2.7 %) and only applies in pathological layouts where a sub-byte write is followed by a long run of byte-aligned writes with no further sub-byte writes. There is no marker; encoder and decoder agree by counting alone, and a desynchronisation between them corrupts the rest of the value unrecoverably — but the wire format already has no recovery story for any other corruption either.
 
 ### Per-Type Encoding
 
@@ -383,16 +391,11 @@ A byte-aligned value of *n* bytes is written at the current cursor; the cursor a
 
 **Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — a `⌈log₂ n⌉`-bit discriminator is written (via the bit-packing rule) carrying the zero-based index of the selected constructor in declaration order, followed by that constructor's fields. Bit state carries across both. If *n* = 1 the discriminator occupies 0 bits and nothing is written for it.
 
-**Array(T, size = C)** — on entry the aggregate is aligned to a byte boundary (any in-progress bit byte is closed in place) and bit state becomes `None`. If *C* admits more than one length, the item count is written first as `VariableLengthInteger(v)`, where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`); when *C*'s lower bound is a positive number *m*, the value written is `actualCount − m` and the decoder adds *m* back. If *C* admits exactly one length, no count is written — the decoder reads that fixed number of items straight from the type. The count (if any) is followed by that many encodings of *T* under one of two layouts:
+**Array(T, size = C)** — if *C* admits more than one length, the item count is written first as `VariableLengthInteger(v)`, where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`); when *C*'s lower bound is a positive number *m*, the value written is `actualCount − m` and the decoder adds *m* back. If *C* admits exactly one length, no count is written — the decoder reads that fixed number of items straight from the type. The count (if any) is followed by that many encodings of *T*, with bit state carrying through the count and across items just as it carries across struct fields.
 
-* **Packed item layout** — used when *T* has a statically fixed encoded size of 1, 2, 3, or 4 bits. The items form a continuous MSB-first bit stream within the aggregate's byte span; individual items may cross byte boundaries. The first item's most-significant bit occupies the top of the first byte of item data. If the total number of item bits is not a multiple of 8, the trailing slots of the last byte remain `0`.
-* **Byte-aligned item layout** — used otherwise. Each item begins on a byte boundary and occupies `⌈item_bits / 8⌉` bytes; an item may itself use bit-packing internally (if it is a struct or union with sub-byte fields), but that bit state is contained within the item's byte span and does not carry across items.
+**Set(T)** — *T*'s constructors are all bare identifiers, so *T* has a fixed value space of *K* members. The set is encoded as a *K*-bit run in the bit stream: bit *i* (counted MSB-first from the position at which the set begins) is 1 iff constructor *i*, in declaration order, is a member. No count is written and no padding to a byte boundary is added — the run of *K* bits participates in the surrounding bit state like any other sub-byte write.
 
-On exit the aggregate ends on a byte boundary and the enclosing scope continues with bit state `None`.
-
-**Set(T)** — *T*'s constructors are all bare identifiers, so *T* has a fixed value space of *K* members. The set is encoded as `⌈K / 8⌉` bytes of bitmask; within each byte the highest-significance bit is considered first, and bit *i* of the stream (bit *i* mod 8 of byte *i* div 8, counting MSB-first) is 1 iff constructor *i*, in declaration order, is a member. No count is written. Entered/exited at byte boundaries like any aggregate.
-
-**Stream(T)** — entered at a byte boundary. A concatenation of *T*-encodings under the same per-item rule as `Array`, running until the enclosing transport frames end. No count, no terminator.
+**Stream(T)** — a concatenation of *T*-encodings, running until the enclosing transport frames end. No count, no terminator. Bit state carries across items as it does in an `Array`.
 
 ## Value Decoding Events
 

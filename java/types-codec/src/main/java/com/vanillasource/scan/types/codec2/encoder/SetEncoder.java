@@ -9,33 +9,30 @@ import com.vanillasource.scan.types.codec2.ValueEncoder;
  * Consumes the {@code StartContainer(SET, count)} /
  * {@code StartItem}/{@code Constructor(i)}/{@code EndItem} ... /
  * {@code EndContainer(SET)} event sequence, accumulates the constructor
- * indices into a bitmask of {@code ceil(memberCount/8)} bytes (MSB-first
- * within each byte), and writes the bitmask out at the end.
+ * indices into a {@code memberCount}-bit bitmask, then writes those bits into
+ * the bit stream MSB-first per TYPES.md §"Set(T)".
  */
 public final class SetEncoder implements ValueEncoder {
     private final int memberCount;
-    private final int byteSize;
     private final byte[] bitmask;
     private int phase = PHASE_CONSUME_START;
     private int itemsRemaining = -1;
     private int itemSubPhase = 0; // 0=StartItem, 1=Constructor, 2=EndItem
-    private int bytesWritten = 0;
+    private int bitsWritten = 0;
 
     private static final int PHASE_CONSUME_START = 0;
     private static final int PHASE_CONSUME_ITEMS = 1;
     private static final int PHASE_CONSUME_END = 2;
-    private static final int PHASE_WRITE_BYTES = 3;
+    private static final int PHASE_WRITE_BITS = 3;
     private static final int PHASE_DONE = 4;
 
     public SetEncoder(int memberCount) {
         this.memberCount = memberCount;
-        this.byteSize = (memberCount + 7) / 8;
-        this.bitmask = new byte[byteSize];
+        this.bitmask = new byte[(memberCount + 7) / 8];
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
-        sink.closeBits();
         if (phase == PHASE_CONSUME_START) {
             if (events.availableEvents() <= 0) {
                 return false;
@@ -75,17 +72,19 @@ public final class SetEncoder implements ValueEncoder {
         if (phase == PHASE_CONSUME_END) {
             if (events.availableEvents() <= 0) return false;
             events.read(); // EndContainer
-            phase = PHASE_WRITE_BYTES;
+            phase = PHASE_WRITE_BITS;
         }
-        if (phase == PHASE_WRITE_BYTES) {
-            while (bytesWritten < byteSize && sink.writableBytes() > 0) {
-                sink.writeUnsignedByte(bitmask[bytesWritten] & 0xFF);
-                bytesWritten++;
+        if (phase == PHASE_WRITE_BITS) {
+            while (bitsWritten < memberCount && sink.writableBits() > 0) {
+                int byteIndex = bitsWritten / 8;
+                int bitInByte = 7 - (bitsWritten % 8);
+                int bit = (bitmask[byteIndex] >>> bitInByte) & 1;
+                sink.writeBits(bit, 1);
+                bitsWritten++;
             }
-            if (bytesWritten < byteSize) {
+            if (bitsWritten < memberCount) {
                 return false;
             }
-            sink.closeBits();
             phase = PHASE_DONE;
         }
         return phase == PHASE_DONE;

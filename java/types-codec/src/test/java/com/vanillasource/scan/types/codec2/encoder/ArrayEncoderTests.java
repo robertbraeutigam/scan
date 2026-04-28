@@ -3,6 +3,7 @@ package com.vanillasource.scan.types.codec2.encoder;
 import com.vanillasource.scan.types.codec2.BitSink;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.ContainerKind;
+import com.vanillasource.scan.types.codec2.Event.Constructor;
 import com.vanillasource.scan.types.codec2.Event.EndContainer;
 import com.vanillasource.scan.types.codec2.Event.EndItem;
 import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
@@ -12,8 +13,10 @@ import com.vanillasource.scan.types.codec2.Event.UnitScalar;
 import com.vanillasource.scan.types.codec2.EventSource;
 import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueEncoder;
+import com.vanillasource.scan.types.codec2.bit.BufferedBitSink;
 import com.vanillasource.scan.types.codec2.type.Array;
 import com.vanillasource.scan.types.codec2.type.Unit;
+import com.vanillasource.scan.types.codec2.type.Union;
 import com.vanillasource.scan.types.codec2.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
@@ -273,6 +276,86 @@ public final class ArrayEncoderTests {
       events.put(new StartContainer(ContainerKind.ARRAY, 4L));
 
       assertThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
+   }
+
+   /**
+    * 16 booleans (Union(True | False)) — discriminator is 1 bit per item, so the
+    * 16 items must pack into exactly 2 wire bytes (no padding) per TYPES.md
+    * §"Bit-State Lifetime": bit state carries across array items.
+    */
+   @Test
+   public void arrayOfBooleansPacksOneBitPerItem() {
+      Type bool = new Union(List.of(List.of(), List.of()));
+      ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
+      EventQueue events = new EventQueue();
+      BufferedBitSink sink = new BufferedBitSink();
+
+      // Alternating True (ctor 0 → bit 0) and False (ctor 1 → bit 1).
+      // Bits MSB-first: 0,1,0,1,0,1,0,1 | 0,1,0,1,0,1,0,1 → 0x55 0x55.
+      events.put(new StartContainer(ContainerKind.ARRAY, 16L));
+      for (int i = 0; i < 16; i++) {
+         events.put(new StartItem());
+         events.put(new Constructor(i % 2));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.ARRAY));
+
+      assertTrue(enc.generate(events, sink));
+      sink.closeBits();
+      // count VLI(1) = 0x10, then 16 bits of payload = 2 bytes.
+      assertEquals(sink.toBytes(), new byte[] { 0x10, 0x55, 0x55 });
+   }
+
+   @Test
+   public void arrayOfBooleansLastByteHasZeroPadding() {
+      // 13 booleans all False (ctor 1 → bit 1). 13 bits = 1 full byte + 5 bits;
+      // the trailing 3 slots of the second byte stay 0.
+      Type bool = new Union(List.of(List.of(), List.of()));
+      ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
+      EventQueue events = new EventQueue();
+      BufferedBitSink sink = new BufferedBitSink();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 13L));
+      for (int i = 0; i < 13; i++) {
+         events.put(new StartItem());
+         events.put(new Constructor(1));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.ARRAY));
+
+      assertTrue(enc.generate(events, sink));
+      sink.closeBits();
+      // 0x0D = 13, 0xFF = 8 ones, 0xF8 = 11111000 (5 ones + 3 zero pad).
+      assertEquals(sink.toBytes(), new byte[] { 0x0D, (byte) 0xFF, (byte) 0xF8 });
+   }
+
+   @Test
+   public void hundredBooleansPackInto13Bytes() {
+      // 100 × 1 bit = 100 bits = 12 full bytes + 4 bits → 13 bytes payload.
+      // All False (ctor 1 → bit 1) so we see actual 1-bits in the bytes,
+      // with the last byte being 0xF0 (4 ones MSB + 4 zero pad).
+      Type bool = new Union(List.of(List.of(), List.of()));
+      ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
+      EventQueue events = new EventQueue();
+      BufferedBitSink sink = new BufferedBitSink();
+
+      events.put(new StartContainer(ContainerKind.ARRAY, 100L));
+      for (int i = 0; i < 100; i++) {
+         events.put(new StartItem());
+         events.put(new Constructor(1));
+         events.put(new EndItem());
+      }
+      events.put(new EndContainer(ContainerKind.ARRAY));
+
+      assertTrue(enc.generate(events, sink));
+      sink.closeBits();
+      byte[] expected = new byte[14];
+      expected[0] = 0x64; // count = 100
+      for (int i = 1; i <= 12; i++) {
+         expected[i] = (byte) 0xFF;
+      }
+      expected[13] = (byte) 0xF0;
+      assertEquals(sink.toBytes(), expected);
    }
 
    private static final class EventQueue implements EventSource {

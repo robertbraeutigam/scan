@@ -22,18 +22,9 @@ public final class ArrayEncoder implements ValueEncoder {
     public ArrayEncoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = captureStartContainer(countHolder, min, countVarintBytes)
-                .andThen(closeBits())
                 .andThen(writeCount(min, countVarintBytes, countHolder))
                 .andThen(items(countHolder, itemType))
-                .andThen(closeBits())
                 .andThen(consumeOne());
-    }
-
-    private static ValueEncoder closeBits() {
-        return (events, sink) -> {
-            sink.closeBits();
-            return true;
-        };
     }
 
     @Override

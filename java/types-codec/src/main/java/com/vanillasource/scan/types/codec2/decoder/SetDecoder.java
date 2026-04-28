@@ -7,23 +7,21 @@ import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /**
- * Reads {@code ceil(memberCount/8)} bytes of bitmask, then emits
- * {@code StartContainer(SET, popcount)} followed by
+ * Reads {@code memberCount} bits (MSB-first) from the bit stream per TYPES.md
+ * §"Set(T)", then emits {@code StartContainer(SET, popcount)} followed by
  * {@code StartItem}/{@code Constructor(i)}/{@code EndItem} for each set bit
- * (in declaration order, MSB-first within each byte) and finally
- * {@code EndContainer(SET)}.
+ * (in declaration order) and finally {@code EndContainer(SET)}.
  */
 public final class SetDecoder implements ValueDecoder {
     private final int memberCount;
-    private final int byteSize;
     private final byte[] bitmask;
-    private int bytesRead = 0;
+    private int bitsRead = 0;
     private int popCount = -1;
     private int emittedItems = 0;
     private int currentBit = 0;
-    private int phase = PHASE_READ_BYTES;
+    private int phase = PHASE_READ_BITS;
 
-    private static final int PHASE_READ_BYTES = 0;
+    private static final int PHASE_READ_BITS = 0;
     private static final int PHASE_EMIT_START = 1;
     private static final int PHASE_EMIT_ITEMS = 2;
     private static final int PHASE_EMIT_END = 3;
@@ -33,18 +31,22 @@ public final class SetDecoder implements ValueDecoder {
 
     public SetDecoder(int memberCount) {
         this.memberCount = memberCount;
-        this.byteSize = (memberCount + 7) / 8;
-        this.bitmask = new byte[byteSize];
+        this.bitmask = new byte[(memberCount + 7) / 8];
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
-        bits.closeBits();
-        if (phase == PHASE_READ_BYTES) {
-            while (bytesRead < byteSize && bits.availableBytes() > 0) {
-                bitmask[bytesRead++] = (byte) bits.readUnsignedByte();
+        if (phase == PHASE_READ_BITS) {
+            while (bitsRead < memberCount && bits.availableBits() > 0) {
+                int bit = bits.readBits(1);
+                if (bit == 1) {
+                    int byteIndex = bitsRead / 8;
+                    int bitInByte = 7 - (bitsRead % 8);
+                    bitmask[byteIndex] |= (byte) (1 << bitInByte);
+                }
+                bitsRead++;
             }
-            if (bytesRead < byteSize) {
+            if (bitsRead < memberCount) {
                 return false;
             }
             popCount = countBits(bitmask, memberCount);
@@ -94,7 +96,6 @@ public final class SetDecoder implements ValueDecoder {
                 return false;
             }
             sink.put(new Event.EndContainer(ContainerKind.SET));
-            bits.closeBits();
             phase = PHASE_DONE;
         }
         return phase == PHASE_DONE;

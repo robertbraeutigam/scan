@@ -2,6 +2,7 @@ package com.vanillasource.scan.types.codec2.decoder;
 
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.ContainerKind;
+import com.vanillasource.scan.types.codec2.Event.Constructor;
 import com.vanillasource.scan.types.codec2.Event.EndContainer;
 import com.vanillasource.scan.types.codec2.Event.EndItem;
 import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
@@ -13,6 +14,7 @@ import com.vanillasource.scan.types.codec2.ValueDecoder;
 import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import com.vanillasource.scan.types.codec2.type.Array;
 import com.vanillasource.scan.types.codec2.type.Unit;
+import com.vanillasource.scan.types.codec2.type.Union;
 import com.vanillasource.scan.types.codec2.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
@@ -250,6 +252,58 @@ public final class ArrayTests {
             new IntegerScalar(0x30L, 1),
             new EndItem(),
             new EndContainer(ContainerKind.ARRAY)));
+   }
+
+   /**
+    * Round-trip of {@code Array(Union(True | False))} — verifies the decoder
+    * unpacks a 1-bit-per-item bit stream the same way the encoder packed it.
+    */
+   @Test
+   public void arrayOfBooleansUnpacksFromBitStream() {
+      Type bool = new Union(List.of(List.of(), List.of()));
+      ValueDecoder dec = new Array(0, 0xFF, bool).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      // 16 booleans alternating True/False: 0x10 0x55 0x55
+      bits.write(new byte[] { 0x10, 0x55, 0x55 }, 0, 3);
+      assertTrue(dec.parse(bits, capture));
+
+      List<Event> expected = new ArrayList<>();
+      expected.add(new StartContainer(ContainerKind.ARRAY, 16L));
+      for (int i = 0; i < 16; i++) {
+         expected.add(new StartItem());
+         expected.add(new Constructor(i % 2));
+         expected.add(new EndItem());
+      }
+      expected.add(new EndContainer(ContainerKind.ARRAY));
+      assertEquals(capture.events, expected);
+   }
+
+   @Test
+   public void hundredBooleansUnpackFromThirteenPayloadBytes() {
+      Type bool = new Union(List.of(List.of(), List.of()));
+      ValueDecoder dec = new Array(0, 0xFF, bool).createDecoder();
+      FedBitSource bits = new FedBitSource();
+      EventCapture capture = new EventCapture();
+
+      // count=100, then 12 × 0xFF + 0xF0 (4 ones MSB + 4 zero pad)
+      byte[] wire = new byte[14];
+      wire[0] = 0x64;
+      for (int i = 1; i <= 12; i++) {
+         wire[i] = (byte) 0xFF;
+      }
+      wire[13] = (byte) 0xF0;
+      bits.write(wire, 0, wire.length);
+
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY, 100L));
+      // All items are False (constructor index 1).
+      long falseCount = capture.events.stream()
+            .filter(e -> e instanceof Constructor c && c.index() == 1)
+            .count();
+      assertEquals(falseCount, 100L);
    }
 
    @Test

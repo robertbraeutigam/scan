@@ -34,8 +34,9 @@ public interface BitSink {
     * left as 0) and flushing any byte writes that have been buffered behind it
     * (per TYPES.md "Writing Byte-Aligned Data": byte-aligned writes do not close
     * the bit byte, so a buffering BitSink must hold them until the bit byte
-    * either fills up or is explicitly closed). Aggregate codecs invoke this on
-    * entry to and exit from Array / Set / Stream.
+    * either fills up, the buffer cap is reached, or this method is called).
+    * Callers invoke this only at the end of a value, to flush any partially
+    * filled bit byte; aggregate boundaries no longer reset bit state.
     */
    default void closeBits() {}
 }

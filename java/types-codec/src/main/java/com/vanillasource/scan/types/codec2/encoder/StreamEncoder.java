@@ -34,7 +34,6 @@ public final class StreamEncoder implements ValueEncoder {
                 return false;
             }
             events.read(); // StartStream
-            sink.closeBits();
             startConsumed = true;
         }
         while (true) {

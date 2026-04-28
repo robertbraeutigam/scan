@@ -9,12 +9,13 @@ import com.vanillasource.scan.types.codec2.encoder.SetEncoder;
 /**
  * Bitmask-encoded set over an element type whose constructors are all bare
  * identifiers (a fixed value space of {@code memberCount} elements). Encoded
- * as {@code ceil(memberCount/8)} bytes; bit {@code i} (MSB-first within byte
- * {@code i / 8}) is 1 iff constructor {@code i} is a member. No length prefix.
+ * as a {@code memberCount}-bit run in the bit stream (MSB-first), bit
+ * {@code i} = 1 iff constructor {@code i} is a member. No length prefix and
+ * no padding to a byte boundary — the run participates in the surrounding
+ * bit state per TYPES.md §"Set(T)".
  *
- * <p>Per TYPES.md "Per-Type Encoding" §"Set(T)", this is the only encoding the
- * type system defines for sets — collections of structured (parameterized) values
- * are expressed as {@link Array} instead.
+ * <p>This is the only encoding the type system defines for sets — collections
+ * of structured (parameterized) values are expressed as {@link Array} instead.
  */
 public final class Set implements Type {
     private final int memberCount;
@@ -28,10 +29,6 @@ public final class Set implements Type {
 
     public int memberCount() {
         return memberCount;
-    }
-
-    public int byteSize() {
-        return (memberCount + 7) / 8;
     }
 
     @Override

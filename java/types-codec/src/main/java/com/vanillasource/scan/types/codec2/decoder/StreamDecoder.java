@@ -30,7 +30,6 @@ public final class StreamDecoder implements ValueDecoder {
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         if (!startEmitted) {
-            bits.closeBits();
             if (sink.writableEvents() <= 0) {
                 return false;
             }
