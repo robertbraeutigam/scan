@@ -1,7 +1,7 @@
 package com.vanillasource.scan.types.codec2;
 
 /**
- * Bounded sink of {@link Event}s, the dual of {@link BitReader} on the byte side.
+ * Bounded sink of {@link Event}s, the dual of {@link BitSource} on the byte side.
  * Producers (decoders, transducers) check {@link #writableEvents()} before each
  * {@link #put} and stop when capacity is exhausted. The orchestrator drains the
  * sink and re-invokes the producer when capacity returns; no callback or back-channel

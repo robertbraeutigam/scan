@@ -1,6 +1,6 @@
 package com.vanillasource.scan.types.codec2.bit;
 
-import com.vanillasource.scan.types.codec2.BitReader;
+import com.vanillasource.scan.types.codec2.BitSource;
 
 import java.io.OutputStream;
 
@@ -10,7 +10,7 @@ import java.io.OutputStream;
  * Note, that this does not copy the bytes it is fed, but uses them directly to read. Class is
  * not thread-safe.
  */
-public final class FedBitReader extends OutputStream implements BitReader {
+public final class FedBitSource extends OutputStream implements BitSource {
    private boolean singleByteInsteadByteArray = true;
    // Single byte buffer (mode single)
    private int singleByte = 0;

@@ -7,27 +7,27 @@ import java.io.IOException;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
-public final class FedBitReaderTests {
+public final class FedBitSourceTests {
 
    // ---- write(int) ----
 
    @Test
    public void writeSingleByteMakesItAvailableBytes() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       assertEquals(r.availableBytes(), 1);
    }
 
    @Test
    public void writeSingleByteThrowsIfPreviousNotConsumed() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0x10);
       assertThrows(IllegalStateException.class, () -> r.write(0x20));
    }
 
    @Test
    public void writeSingleByteAcceptedAfterPreviousFullyRead() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0x10);
       byte[] dst = new byte[1];
       r.readBytes(dst, 0, 1);
@@ -37,7 +37,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeSingleByteMasksToLowByte() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0x1FF);
       byte[] dst = new byte[1];
       r.readBytes(dst, 0, 1);
@@ -48,14 +48,14 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeArrayMakesAllBytesAvailableBytes() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
       assertEquals(r.availableBytes(), 4);
    }
 
    @Test
    public void writeArrayRespectsOffsetAndLength() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4, 5, 6 }, 2, 3);
       assertEquals(r.availableBytes(), 3);
       byte[] dst = new byte[3];
@@ -65,7 +65,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeArrayThrowsIfPreviousNotConsumed() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2 }, 0, 2);
       assertThrows(IllegalStateException.class,
             () -> r.write(new byte[] { 3 }, 0, 1));
@@ -73,7 +73,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeArrayAcceptedAfterPreviousFullyRead() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2 }, 0, 2);
       byte[] dst = new byte[2];
       r.readBytes(dst, 0, 2);
@@ -83,7 +83,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeArrayThrowsIfPreviousSingleByteNotConsumed() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       assertThrows(IllegalStateException.class,
             () -> r.write(new byte[] { 1 }, 0, 1));
@@ -91,7 +91,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void writeSingleByteThrowsIfPreviousArrayNotConsumed() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2 }, 0, 2);
       assertThrows(IllegalStateException.class, () -> r.write(0xAB));
    }
@@ -100,7 +100,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void outputStreamWriteByteArrayOverloadFeedsAllBytes() throws IOException {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 0x10, 0x20, 0x30 });
       assertEquals(r.availableBytes(), 3);
       byte[] dst = new byte[3];
@@ -112,13 +112,13 @@ public final class FedBitReaderTests {
 
    @Test
    public void availableBytesIsZeroInitially() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       assertEquals(r.availableBytes(), 0);
    }
 
    @Test
    public void availableBytesDecreasesAsBytesAreRead() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
       byte[] dst = new byte[2];
       r.readBytes(dst, 0, 2);
@@ -129,7 +129,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void availableBytesDecreasesWhenByteReservedForBits() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xAB, (byte) 0xCD }, 0, 2);
       r.readBits(1);
       // The first byte is now reserved for bit reading and no longer in the byte queue.
@@ -140,13 +140,13 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesReturnsZeroWhenEmpty() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       assertEquals(r.readBytes(new byte[4], 0, 4), 0);
    }
 
    @Test
    public void readBytesReturnsZeroForZeroLengthRequest() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3 }, 0, 3);
       assertEquals(r.readBytes(new byte[4], 0, 0), 0);
       assertEquals(r.availableBytes(), 3);
@@ -154,7 +154,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesSingleByteMode() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       byte[] dst = new byte[1];
       int read = r.readBytes(dst, 0, 1);
@@ -165,7 +165,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesSingleByteModeRespectsDestinationOffset() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       byte[] dst = new byte[] { 1, 1, 1, 1 };
       int read = r.readBytes(dst, 2, 1);
@@ -175,7 +175,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesArrayMode() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
       byte[] dst = new byte[4];
       int read = r.readBytes(dst, 0, 4);
@@ -185,7 +185,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesArrayModeRespectsDestinationOffset() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 0x10, 0x20 }, 0, 2);
       byte[] dst = new byte[] { 0, 0, 0, 0 };
       int read = r.readBytes(dst, 1, 2);
@@ -195,7 +195,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesArrayModePartialReadAdvancesPosition() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4 }, 0, 4);
       byte[] dst = new byte[2];
       assertEquals(r.readBytes(dst, 0, 2), 2);
@@ -207,7 +207,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesIsLimitedByAvailableBytes() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3 }, 0, 3);
       byte[] dst = new byte[10];
       assertEquals(r.readBytes(dst, 0, 10), 3);
@@ -216,7 +216,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesIsLimitedByN() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3, 4, 5 }, 0, 5);
       byte[] dst = new byte[5];
       assertEquals(r.readBytes(dst, 0, 2), 2);
@@ -225,7 +225,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBytesArrayHonorsSourceOffset() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       // Source offset 3, length 2 → exposes bytes {0x44, 0x55}.
       r.write(new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 }, 3, 2);
       byte[] dst = new byte[2];
@@ -237,21 +237,21 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteSingleByteMode() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       assertEquals(r.readUnsignedByte(), 0xAB);
    }
 
    @Test
    public void readUnsignedByteSingleByteModeReturnsUnsigned() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xFF);
       assertEquals(r.readUnsignedByte(), 0xFF);
    }
 
    @Test
    public void readUnsignedByteSingleByteModeDecreasesAvailableBytes() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readUnsignedByte();
       assertEquals(r.availableBytes(), 0);
@@ -259,7 +259,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteSingleByteModeAllowsNewWriteAfterRead() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readUnsignedByte();
       r.write(0xCD);
@@ -268,7 +268,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteArrayModeReadsSequentially() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3 }, 0, 3);
       assertEquals(r.readUnsignedByte(), 1);
       assertEquals(r.readUnsignedByte(), 2);
@@ -277,7 +277,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteArrayModeReturnsUnsigned() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xFF, (byte) 0x80 }, 0, 2);
       assertEquals(r.readUnsignedByte(), 0xFF);
       assertEquals(r.readUnsignedByte(), 0x80);
@@ -285,7 +285,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteArrayModeHonorsSourceOffset() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 0x11, 0x22, 0x33, 0x44 }, 2, 2);
       assertEquals(r.readUnsignedByte(), 0x33);
       assertEquals(r.readUnsignedByte(), 0x44);
@@ -293,7 +293,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteArrayModeDecreasesAvailableBytes() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2, 3 }, 0, 3);
       r.readUnsignedByte();
       assertEquals(r.availableBytes(), 2);
@@ -305,7 +305,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteArrayModeAllowsNewWriteAfterDrained() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2 }, 0, 2);
       r.readUnsignedByte();
       r.readUnsignedByte();
@@ -315,13 +315,13 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteReturnsZeroWhenEmpty() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       assertEquals(r.readUnsignedByte(), 0);
    }
 
    @Test
    public void readUnsignedByteReturnsZeroAfterSingleByteDrained() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readUnsignedByte();
       assertEquals(r.readUnsignedByte(), 0);
@@ -329,7 +329,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteReturnsZeroAfterArrayDrained() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { 1, 2 }, 0, 2);
       r.readUnsignedByte();
       r.readUnsignedByte();
@@ -338,14 +338,14 @@ public final class FedBitReaderTests {
 
    @Test
    public void readUnsignedByteSingleByteModeMasksToLowByte() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0x1FF);
       assertEquals(r.readUnsignedByte(), 0xFF);
    }
 
    @Test
    public void readUnsignedByteReadsFromByteQueueWhileBitsRemain() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xAB, (byte) 0xCD }, 0, 2);
       r.readBits(3); // reserves 0xAB for bit reading; only 0xCD left in byte queue
       assertEquals(r.readUnsignedByte(), 0xCD);
@@ -357,13 +357,13 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReturnsZeroWhenEmpty() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       assertEquals(r.readBits(3), 0);
    }
 
    @Test
    public void readBitsReturnsZeroAfterFullyDrained() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readBits(8);
       assertEquals(r.readBits(3), 0);
@@ -371,7 +371,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReturnsZeroForZeroN() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xFF);
       assertEquals(r.readBits(0), 0);
       // No byte got reserved.
@@ -381,7 +381,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReturnsZeroForNegativeN() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xFF);
       assertEquals(r.readBits(-1), 0);
       assertEquals(r.availableBytes(), 1);
@@ -389,7 +389,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReservesByteFromSingleByteMode() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB); // 10101011
       assertEquals(r.readBits(3), 0b101);
       assertEquals(r.availableBits(), 5);
@@ -398,7 +398,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReservesByteFromArrayMode() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xAB, (byte) 0xCD }, 0, 2);
       assertEquals(r.readBits(3), 0b101);
       assertEquals(r.availableBits(), 5);
@@ -408,7 +408,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReadsMSBFirst() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB); // 1010_1011
       assertEquals(r.readBits(1), 0b1);
       assertEquals(r.readBits(1), 0b0);
@@ -422,7 +422,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void consecutiveReadBitsConsumeFromSameReservedByte() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0b10110100);
       assertEquals(r.readBits(2), 0b10);
       assertEquals(r.readBits(3), 0b110);
@@ -432,7 +432,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReadsFullByte() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xC3);
       assertEquals(r.readBits(8), 0xC3);
       assertEquals(r.availableBits(), 0);
@@ -441,7 +441,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsReservesNextByteAfterCurrentExhausted() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xF0, 0x0F }, 0, 2);
       assertEquals(r.readBits(8), 0xF0);
       assertEquals(r.availableBits(), 8);
@@ -452,7 +452,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsExhaustingByteAllowsNewWrite() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xFF);
       r.readBits(8);
       // availableBytes=0 even though the byte was reserved → new write must succeed.
@@ -462,7 +462,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsAcceptsNewWriteWhilePartialBitsRemain() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB); // reservation transfers byte out of the queue
       r.readBits(3); // 5 bits still buffered, but availableBytes=0
       r.write(0xCD); // permitted: bit byte is independent of byte queue
@@ -474,7 +474,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsThenReadBytesInterleave() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xC0, 0x42, 0x43 }, 0, 3);
       // Pull 2 bits from the first byte: top two bits of 0xC0 = 11.
       assertEquals(r.readBits(2), 0b11);
@@ -486,7 +486,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void readBitsLimitedToAvailableBytesBitsWhenAskingMore() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB); // 1010_1011
       r.readBits(5); // consume top 5 → 10101
       // Only 3 bits remain (011); asking for 8 returns those 3.
@@ -499,20 +499,20 @@ public final class FedBitReaderTests {
 
    @Test
    public void availableBytesBitsZeroInitially() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       assertEquals(r.availableBits(), 0);
    }
 
    @Test
    public void availableBytesBitsEightAfterByteWrittenButNoBitRead() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       assertEquals(r.availableBits(), 8);
    }
 
    @Test
    public void availableBytesBitsDecreasesAfterReadBits() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readBits(3);
       assertEquals(r.availableBits(), 5);
@@ -520,7 +520,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void availableBytesBitsZeroAfterReservedByteFullyConsumed() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(0xAB);
       r.readBits(8);
       assertEquals(r.availableBits(), 0);
@@ -528,7 +528,7 @@ public final class FedBitReaderTests {
 
    @Test
    public void availableBytesBitsEightAgainAfterFreshByteFollowsConsumption() {
-      FedBitReader r = new FedBitReader();
+      FedBitSource r = new FedBitSource();
       r.write(new byte[] { (byte) 0xAB, (byte) 0xCD }, 0, 2);
       r.readBits(8);
       // First byte is fully consumed; another byte is still in the queue.

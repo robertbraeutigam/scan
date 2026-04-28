@@ -3,7 +3,7 @@ package com.vanillasource.scan.types.codec2;
 /**
  * Provides byte/bit reading to callers. It is non-blocking.
  */
-public interface BitReader {
+public interface BitSource {
    /**
     * @return The number of available bytes.
     */

@@ -3,7 +3,7 @@ package com.vanillasource.scan.types.codec2.decoder;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
 import com.vanillasource.scan.types.codec2.EventSink;
-import com.vanillasource.scan.types.codec2.bit.FedBitReader;
+import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -171,7 +171,7 @@ public final class IntegerDecoderTests {
    @Test
    public void waitsForInputWhenNoBytesAvailable() {
       IntegerDecoder decoder = new IntegerDecoder(2, false);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(decoder.parse(bits, capture));
@@ -181,7 +181,7 @@ public final class IntegerDecoderTests {
    @Test
    public void completesAcrossMultipleSingleByteFeeds() {
       IntegerDecoder decoder = new IntegerDecoder(4, false);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x12);
@@ -201,7 +201,7 @@ public final class IntegerDecoderTests {
       // Feed sign byte first, then trailing bytes — sign-extension applies once
       // the full width is in.
       IntegerDecoder decoder = new IntegerDecoder(4, true);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0xFF);
@@ -219,7 +219,7 @@ public final class IntegerDecoderTests {
    @Test
    public void parseDoesNotEmitUntilLastByteArrives() {
       IntegerDecoder decoder = new IntegerDecoder(2, true);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x7F);
@@ -234,7 +234,7 @@ public final class IntegerDecoderTests {
    @Test
    public void multiByteFeedConsumedInOneParse() {
       IntegerDecoder decoder = new IntegerDecoder(4, true);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { (byte) 0x80, 0x00, 0x00, 0x00 }, 0, 4);
@@ -248,7 +248,7 @@ public final class IntegerDecoderTests {
    @Test
    public void zeroByteUnsignedEmitsZeroImmediately() {
       IntegerDecoder decoder = new IntegerDecoder(0, false);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertTrue(decoder.parse(bits, capture));
@@ -258,7 +258,7 @@ public final class IntegerDecoderTests {
    @Test
    public void zeroByteSignedEmitsZeroImmediately() {
       IntegerDecoder decoder = new IntegerDecoder(0, true);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertTrue(decoder.parse(bits, capture));
@@ -270,7 +270,7 @@ public final class IntegerDecoderTests {
    @Test
    public void waitsForSinkCapacityAfterReadingAllBytes() {
       IntegerDecoder decoder = new IntegerDecoder(2, false);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
       capture.capacity = 0;
 
@@ -288,7 +288,7 @@ public final class IntegerDecoderTests {
    private static void assertDecodes(int byteSize, boolean signed,
          byte[] input, IntegerScalar expected) {
       IntegerDecoder decoder = new IntegerDecoder(byteSize, signed);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(input, 0, input.length);

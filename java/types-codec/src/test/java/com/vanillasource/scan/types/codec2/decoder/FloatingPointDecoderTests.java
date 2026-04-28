@@ -3,7 +3,7 @@ package com.vanillasource.scan.types.codec2.decoder;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.FloatingPointScalar;
 import com.vanillasource.scan.types.codec2.EventSink;
-import com.vanillasource.scan.types.codec2.bit.FedBitReader;
+import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -80,7 +80,7 @@ public final class FloatingPointDecoderTests {
             (byte) ((nanBits >>> 8) & 0xFF),
             (byte) (nanBits & 0xFF) };
       FloatingPointDecoder decoder = new FloatingPointDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(in, 0, 4);
@@ -144,7 +144,7 @@ public final class FloatingPointDecoderTests {
       long nanBits = 0x7FF8000000000001L;
       byte[] in = longToBigEndian(nanBits);
       FloatingPointDecoder decoder = new FloatingPointDecoder(8);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(in, 0, 8);
@@ -158,7 +158,7 @@ public final class FloatingPointDecoderTests {
    @Test
    public void waitsForInputWhenNoBytesAvailable() {
       FloatingPointDecoder decoder = new FloatingPointDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(decoder.parse(bits, capture));
@@ -169,7 +169,7 @@ public final class FloatingPointDecoderTests {
    public void completes32BitAcrossSingleByteFeeds() {
       // 1.0f = 0x3F800000
       FloatingPointDecoder decoder = new FloatingPointDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x3F);
@@ -188,7 +188,7 @@ public final class FloatingPointDecoderTests {
    public void completes64BitAcrossSingleByteFeeds() {
       // 1.0 = 0x3FF0000000000000
       FloatingPointDecoder decoder = new FloatingPointDecoder(8);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       int[] bytes = { 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -206,7 +206,7 @@ public final class FloatingPointDecoderTests {
    @Test
    public void parseDoesNotEmitUntilLastByteArrives() {
       FloatingPointDecoder decoder = new FloatingPointDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x3F, (byte) 0x80, 0x00 }, 0, 3);
@@ -221,7 +221,7 @@ public final class FloatingPointDecoderTests {
    @Test
    public void multiByteFeedConsumedInOneParse() {
       FloatingPointDecoder decoder = new FloatingPointDecoder(8);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x3F, (byte) 0xF0, 0, 0, 0, 0, 0, 0 }, 0, 8);
@@ -234,7 +234,7 @@ public final class FloatingPointDecoderTests {
 
    private static void assertDecodes32(float expected, byte[] input) {
       FloatingPointDecoder decoder = new FloatingPointDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(input, 0, input.length);
@@ -246,7 +246,7 @@ public final class FloatingPointDecoderTests {
 
    private static void assertDecodes64(double expected, byte[] input) {
       FloatingPointDecoder decoder = new FloatingPointDecoder(8);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(input, 0, input.length);

@@ -10,7 +10,7 @@ import com.vanillasource.scan.types.codec2.Event.StartItem;
 import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
-import com.vanillasource.scan.types.codec2.bit.FedBitReader;
+import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import com.vanillasource.scan.types.codec2.type.Array;
 import org.testng.annotations.Test;
 
@@ -29,7 +29,7 @@ public final class ArrayTests {
    @Test
    public void emptyArrayEmitsOnlyContainerMarkers() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x00); // count = 0
@@ -43,7 +43,7 @@ public final class ArrayTests {
    @Test
    public void singleItemArray() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x01, 0x42 }, 0, 2);
@@ -60,7 +60,7 @@ public final class ArrayTests {
    @Test
    public void multipleItemsArray() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x03, 0x10, 0x20, 0x30 }, 0, 4);
@@ -83,7 +83,7 @@ public final class ArrayTests {
    @Test
    public void emitsNothingUntilCountByteArrives() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(dec.parse(bits, capture));
@@ -95,7 +95,7 @@ public final class ArrayTests {
    @Test
    public void completesAcrossPartialFeeds() {
       ValueDecoder dec = new Array(1, U16).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x01); // count = 1
@@ -124,7 +124,7 @@ public final class ArrayTests {
       // Use a Unit item type so we don't have to hand-write 200 bytes of payload.
       Type unit = UnitDecoder::new;
       ValueDecoder dec = new Array(4, unit).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { (byte) 0x81, 0x48 }, 0, 2);
@@ -139,7 +139,7 @@ public final class ArrayTests {
    @Test
    public void doesNotEmitCountAsIntegerScalar() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x02, 0x10, 0x20 }, 0, 3);
@@ -155,7 +155,7 @@ public final class ArrayTests {
    @Test
    public void nestedArrays() {
       ValueDecoder dec = new Array(1, new Array(1, U8)).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       // outer count = 2, inner1 = [0x10, 0x20], inner2 = [0x30]
@@ -187,7 +187,7 @@ public final class ArrayTests {
    @Test
    public void doesNotConsumeBytesPastEnd() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x01, 0x42, (byte) 0xAB }, 0, 3);
@@ -200,7 +200,7 @@ public final class ArrayTests {
    @Test
    public void waitsWhenSinkFillsMidArray() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x02, 0x10, 0x20 }, 0, 3);

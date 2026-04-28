@@ -1,6 +1,6 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
-import com.vanillasource.scan.types.codec2.BitReader;
+import com.vanillasource.scan.types.codec2.BitSource;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
@@ -20,7 +20,7 @@ public final class IntegerDecoder implements ValueDecoder {
     }
 
     @Override
-    public boolean parse(BitReader bits, EventSink sink) {
+    public boolean parse(BitSource bits, EventSink sink) {
         if (!readyToEmit) {
             while (remainingBytes > 0 && bits.availableBytes() > 0) {
                 currentValue = (currentValue << 8) | bits.readUnsignedByte();

@@ -8,7 +8,7 @@ public interface ValueDecoder {
     * exactly once when this decoder has emitted its full sequence of events.
     * Calling the parser after it completed is undefined.
     */
-    boolean parse(BitReader bits, EventSink sink);
+    boolean parse(BitSource bits, EventSink sink);
 
    /**
     * Sequence: run {@code this} until it completes, then run {@code other}. The composite
@@ -21,7 +21,7 @@ public interface ValueDecoder {
          private boolean firstDone = false;
 
          @Override
-         public boolean parse(BitReader bits, EventSink sink) {
+         public boolean parse(BitSource bits, EventSink sink) {
             if (!firstDone) {
                if (!self.parse(bits, sink)) {
                   return false;

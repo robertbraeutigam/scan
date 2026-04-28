@@ -3,7 +3,7 @@ package com.vanillasource.scan.types.codec2.decoder;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.UnitScalar;
 import com.vanillasource.scan.types.codec2.EventSink;
-import com.vanillasource.scan.types.codec2.bit.FedBitReader;
+import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -18,7 +18,7 @@ public final class UnitDecoderTests {
    @Test
    public void completesImmediatelyOnEmptyInput() {
       UnitDecoder decoder = new UnitDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertTrue(decoder.parse(bits, capture));
@@ -28,7 +28,7 @@ public final class UnitDecoderTests {
    @Test
    public void emitsExactlyOneUnitScalarEvent() {
       UnitDecoder decoder = new UnitDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       decoder.parse(bits, capture);
@@ -40,7 +40,7 @@ public final class UnitDecoderTests {
    @Test
    public void doesNotConsumeAnyAvailableBytes() {
       UnitDecoder decoder = new UnitDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x11, 0x22, 0x33 }, 0, 3);
@@ -52,7 +52,7 @@ public final class UnitDecoderTests {
    @Test
    public void waitsWhenSinkHasNoCapacity() {
       UnitDecoder decoder = new UnitDecoder();
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
       capture.capacity = 0;
 

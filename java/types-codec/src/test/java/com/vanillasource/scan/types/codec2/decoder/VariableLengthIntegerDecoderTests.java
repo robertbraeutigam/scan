@@ -3,7 +3,7 @@ package com.vanillasource.scan.types.codec2.decoder;
 import com.vanillasource.scan.types.codec2.Event;
 import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
 import com.vanillasource.scan.types.codec2.EventSink;
-import com.vanillasource.scan.types.codec2.bit.FedBitReader;
+import com.vanillasource.scan.types.codec2.bit.FedBitSource;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -116,7 +116,7 @@ public final class VariableLengthIntegerDecoderTests {
    @Test
    public void waitsForInputWhenNoBytesAvailable() {
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(decoder.parse(bits, capture));
@@ -127,7 +127,7 @@ public final class VariableLengthIntegerDecoderTests {
    public void doesNotEmitUntilTerminatorByteArrives() {
       // Encode 128 as 0x81 0x00; first byte has continuation set.
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(3);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0x81);
@@ -143,7 +143,7 @@ public final class VariableLengthIntegerDecoderTests {
    public void completesAcrossMultipleSingleByteFeedsUsingMaxN() {
       // maxBytes=3, all three bytes have continuation bit set; termination via maxN.
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(3);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(0xFF);
@@ -159,7 +159,7 @@ public final class VariableLengthIntegerDecoderTests {
    @Test
    public void multiByteFeedConsumedInOneParse() {
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       // Encode 128 = 0x81 0x00.
@@ -173,7 +173,7 @@ public final class VariableLengthIntegerDecoderTests {
    public void doesNotConsumeBytesPastTerminator() {
       // First byte (0x05) is a complete value. Second byte (0xAB) must remain.
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(4);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x05, (byte) 0xAB }, 0, 2);
@@ -200,7 +200,7 @@ public final class VariableLengthIntegerDecoderTests {
 
    private static void assertDecodes(int maxBytes, byte[] input, long expectedValue, int expectedSign) {
       VariableLengthIntegerDecoder decoder = new VariableLengthIntegerDecoder(maxBytes);
-      FedBitReader bits = new FedBitReader();
+      FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(input, 0, input.length);
