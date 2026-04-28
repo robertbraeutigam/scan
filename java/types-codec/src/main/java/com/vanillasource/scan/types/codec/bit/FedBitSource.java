@@ -130,13 +130,6 @@ public final class FedBitSource extends OutputStream implements BitSource {
       return value;
    }
 
-   @Override
-   public void closeBits() {
-      availableBits = 0;
-      bitByte = 0;
-      byteCountSinceBitByte = 0;
-   }
-
    /**
     * @return The number of bits available to be read, maximum 8.
     */

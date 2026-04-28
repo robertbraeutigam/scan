@@ -31,12 +31,4 @@ public interface BitSource {
    int readBits(int n);
 
    int availableBits();
-
-   /**
-    * Discard any currently-active bit byte's remaining bits. After this call,
-    * {@link #availableBits()} reflects only what subsequent bytes provide.
-    * Aggregate boundaries no longer reset bit state, so callers normally do not
-    * invoke this; the buffer cap force-close is implicit inside the source.
-    */
-   default void closeBits() {}
 }
