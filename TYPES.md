@@ -95,7 +95,9 @@ A `Stream` is a potentially infinite sequence of values of the given type:
 Samples = Stream(FloatingPoint(4))
 ```
 
-Because a `Stream` has no length terminator on the wire, nothing can follow it. Consequently **a type may contain at most one `Stream` or `ByteStream`, transitively** — whether on the top level or any sub-structure.
+A `Stream` has no terminator on the wire, so it will never terminate explicitly. It can only terminate implicitly if the communication frame it is in ends. 
+Consequently any data or information following a Stream in any structure will never be written nor read, so realistically any message may only contain
+one `Stream` and only as the last position in its data structure.
 
 A `ByteArray` is a finite, ordered run of raw bytes. The number of bytes is bounded by a `Constraint` passed as `size`, exactly as for `Array`; the wire form is identical to `Array(UnsignedInteger(1), size)`. The type exists as a distinct form because the decoder delivers its content as bounded `Chunk(bytes)` events instead of one event per byte — see *Per-Type Event Sequences* — which is the only practical way to relay bulk bytes (file content, firmware images, UTF-8 strings) without per-byte event overhead. Compilers are free to lower `Array(UnsignedInteger(1), size)` (or other byte-equivalent element types) to `ByteArray` since their wire forms coincide.
 
