@@ -11,7 +11,7 @@ import com.vanillasource.scan.types.codec2.DecodingEventHandler;
 import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 import com.vanillasource.scan.types.codec2.bit.FedBitReader;
-import com.vanillasource.scan.types.codec2.types.Array;
+import com.vanillasource.scan.types.codec2.type.Array;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
