@@ -1,8 +1,8 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEvent.UnitScalar;
-import com.vanillasource.scan.types.codec2.DecodingEventHandler;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.UnitScalar;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.bit.FedBitReader;
 import org.testng.annotations.Test;
 
@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 public final class UnitDecoderTests {
@@ -48,11 +49,32 @@ public final class UnitDecoderTests {
       assertEquals(bits.availableBytes(), 3);
    }
 
-   private static final class EventCapture implements DecodingEventHandler {
-      final List<DecodingEvent> events = new ArrayList<>();
+   @Test
+   public void waitsWhenSinkHasNoCapacity() {
+      UnitDecoder decoder = new UnitDecoder();
+      FedBitReader bits = new FedBitReader();
+      EventCapture capture = new EventCapture();
+      capture.capacity = 0;
+
+      assertFalse(decoder.parse(bits, capture));
+      assertEquals(capture.events.size(), 0);
+
+      capture.capacity = 1;
+      assertTrue(decoder.parse(bits, capture));
+      assertEquals(capture.events, List.of(new UnitScalar()));
+   }
+
+   private static final class EventCapture implements EventSink {
+      final List<Event> events = new ArrayList<>();
+      int capacity = Integer.MAX_VALUE;
 
       @Override
-      public void onEvent(DecodingEvent event) {
+      public int writableEvents() {
+         return capacity;
+      }
+
+      @Override
+      public void put(Event event) {
          events.add(event);
       }
    }

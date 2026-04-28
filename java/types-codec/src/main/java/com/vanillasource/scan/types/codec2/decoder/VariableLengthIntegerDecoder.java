@@ -1,8 +1,8 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
 import com.vanillasource.scan.types.codec2.BitReader;
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEventHandler;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /**
@@ -14,6 +14,7 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
     private final int maxBytes;
     private int bytesRead = 0;
     private long accumulator = 0;
+    private boolean readyToEmit = false;
 
     public VariableLengthIntegerDecoder(int maxBytes) {
         if (maxBytes < 1 || maxBytes > 8) {
@@ -23,27 +24,32 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
     }
 
     @Override
-    public boolean parse(BitReader bits, DecodingEventHandler handler) {
-        while (bits.availableBytes() > 0) {
-            int b = bits.readUnsignedByte();
-            bytesRead++;
-            if (bytesRead == maxBytes) {
-                accumulator = (accumulator << 8) | (b & 0xFF);
-                emit(handler);
-                return true;
+    public boolean parse(BitReader bits, EventSink sink) {
+        if (!readyToEmit) {
+            while (bits.availableBytes() > 0) {
+                int b = bits.readUnsignedByte();
+                bytesRead++;
+                if (bytesRead == maxBytes) {
+                    accumulator = (accumulator << 8) | (b & 0xFF);
+                    readyToEmit = true;
+                    break;
+                }
+                if ((b & 0x80) == 0) {
+                    accumulator = (accumulator << 7) | (b & 0xFF);
+                    readyToEmit = true;
+                    break;
+                }
+                accumulator = (accumulator << 7) | (b & 0x7F);
             }
-            if ((b & 0x80) == 0) {
-                accumulator = (accumulator << 7) | (b & 0xFF);
-                emit(handler);
-                return true;
+            if (!readyToEmit) {
+                return false;
             }
-            accumulator = (accumulator << 7) | (b & 0x7F);
         }
-        return false;
-    }
-
-    private void emit(DecodingEventHandler handler) {
+        if (sink.writableEvents() <= 0) {
+            return false;
+        }
         int sign = accumulator == 0 ? 0 : 1;
-        handler.onEvent(new DecodingEvent.IntegerScalar(accumulator, sign));
+        sink.put(new Event.IntegerScalar(accumulator, sign));
+        return true;
     }
 }

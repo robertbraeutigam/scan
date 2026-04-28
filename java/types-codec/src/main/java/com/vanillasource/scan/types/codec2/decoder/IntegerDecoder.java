@@ -1,8 +1,8 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
 import com.vanillasource.scan.types.codec2.BitReader;
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEventHandler;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 
 /** Reads a fixed-width signed or unsigned big-endian integer, sign-extending when signed. */
@@ -11,6 +11,7 @@ public final class IntegerDecoder implements ValueDecoder {
     private final boolean signed;
     private int remainingBytes;
     private long currentValue = 0;
+    private boolean readyToEmit = false;
 
     public IntegerDecoder(int byteSize, boolean signed) {
         this.byteSize = byteSize;
@@ -19,19 +20,25 @@ public final class IntegerDecoder implements ValueDecoder {
     }
 
     @Override
-    public boolean parse(BitReader bits, DecodingEventHandler handler) {
-        while (remainingBytes > 0 && bits.availableBytes() > 0) {
-            currentValue = (currentValue << 8) | bits.readUnsignedByte();
-            remainingBytes--;
-        }
-        if (remainingBytes > 0) {
-            return false;
-        }
-        if (signed && byteSize < 8) {
-            long signBit = 1L << (byteSize * 8 - 1);
-            if ((currentValue & signBit) != 0) {
-                currentValue |= -1L << (byteSize * 8);
+    public boolean parse(BitReader bits, EventSink sink) {
+        if (!readyToEmit) {
+            while (remainingBytes > 0 && bits.availableBytes() > 0) {
+                currentValue = (currentValue << 8) | bits.readUnsignedByte();
+                remainingBytes--;
             }
+            if (remainingBytes > 0) {
+                return false;
+            }
+            if (signed && byteSize < 8) {
+                long signBit = 1L << (byteSize * 8 - 1);
+                if ((currentValue & signBit) != 0) {
+                    currentValue |= -1L << (byteSize * 8);
+                }
+            }
+            readyToEmit = true;
+        }
+        if (sink.writableEvents() <= 0) {
+            return false;
         }
         int sign;
         if (signed) {
@@ -39,7 +46,7 @@ public final class IntegerDecoder implements ValueDecoder {
         } else {
             sign = currentValue == 0 ? 0 : 1;
         }
-        handler.onEvent(new DecodingEvent.IntegerScalar(currentValue, sign));
+        sink.put(new Event.IntegerScalar(currentValue, sign));
         return true;
     }
 }

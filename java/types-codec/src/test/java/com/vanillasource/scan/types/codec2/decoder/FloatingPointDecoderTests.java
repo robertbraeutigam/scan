@@ -1,8 +1,8 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEvent.FloatingPointScalar;
-import com.vanillasource.scan.types.codec2.DecodingEventHandler;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.FloatingPointScalar;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.bit.FedBitReader;
 import org.testng.annotations.Test;
 
@@ -265,11 +265,17 @@ public final class FloatingPointDecoderTests {
       return out;
    }
 
-   private static final class EventCapture implements DecodingEventHandler {
-      final List<DecodingEvent> events = new ArrayList<>();
+   private static final class EventCapture implements EventSink {
+      final List<Event> events = new ArrayList<>();
+      int capacity = Integer.MAX_VALUE;
 
       @Override
-      public void onEvent(DecodingEvent event) {
+      public int writableEvents() {
+         return capacity;
+      }
+
+      @Override
+      public void put(Event event) {
          events.add(event);
       }
    }

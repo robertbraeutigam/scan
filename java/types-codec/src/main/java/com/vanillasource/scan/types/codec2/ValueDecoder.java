@@ -2,11 +2,13 @@ package com.vanillasource.scan.types.codec2;
 
 public interface ValueDecoder {
    /**
-    * Try to parse from the given bits reader and issue events if any come up.
-    * @return True, iff the parser completed. Calling the parser after it completed
-    * is undefined.
+    * Try to parse from the given bits reader and push events into the given sink.
+    * Returns {@code false} when neither side can make further progress —
+    * either input bytes are exhausted or the sink has no room — and {@code true}
+    * exactly once when this decoder has emitted its full sequence of events.
+    * Calling the parser after it completed is undefined.
     */
-    boolean parse(BitReader bits, DecodingEventHandler handler);
+    boolean parse(BitReader bits, EventSink sink);
 
    /**
     * Sequence: run {@code this} until it completes, then run {@code other}. The composite
@@ -19,14 +21,14 @@ public interface ValueDecoder {
          private boolean firstDone = false;
 
          @Override
-         public boolean parse(BitReader bits, DecodingEventHandler handler) {
+         public boolean parse(BitReader bits, EventSink sink) {
             if (!firstDone) {
-               if (!self.parse(bits, handler)) {
+               if (!self.parse(bits, sink)) {
                   return false;
                }
                firstDone = true;
             }
-            return other.parse(bits, handler);
+            return other.parse(bits, sink);
          }
       };
    }

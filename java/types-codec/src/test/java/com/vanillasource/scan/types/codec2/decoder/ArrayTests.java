@@ -1,13 +1,13 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEvent.ContainerKind;
-import com.vanillasource.scan.types.codec2.DecodingEvent.EndContainer;
-import com.vanillasource.scan.types.codec2.DecodingEvent.EndItem;
-import com.vanillasource.scan.types.codec2.DecodingEvent.IntegerScalar;
-import com.vanillasource.scan.types.codec2.DecodingEvent.StartContainer;
-import com.vanillasource.scan.types.codec2.DecodingEvent.StartItem;
-import com.vanillasource.scan.types.codec2.DecodingEventHandler;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.ContainerKind;
+import com.vanillasource.scan.types.codec2.Event.EndContainer;
+import com.vanillasource.scan.types.codec2.Event.EndItem;
+import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
+import com.vanillasource.scan.types.codec2.Event.StartContainer;
+import com.vanillasource.scan.types.codec2.Event.StartItem;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.Type;
 import com.vanillasource.scan.types.codec2.ValueDecoder;
 import com.vanillasource.scan.types.codec2.bit.FedBitReader;
@@ -36,7 +36,7 @@ public final class ArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 0L),
             new EndContainer(ContainerKind.ARRAY)));
    }
 
@@ -50,7 +50,7 @@ public final class ArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 1L),
             new StartItem(),
             new IntegerScalar(0x42L, 1),
             new EndItem(),
@@ -67,7 +67,7 @@ public final class ArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 3L),
             new StartItem(),
             new IntegerScalar(0x10L, 1),
             new EndItem(),
@@ -81,15 +81,15 @@ public final class ArrayTests {
    }
 
    @Test
-   public void waitsForCountByteWhenInputEmpty() {
+   public void emitsNothingUntilCountByteArrives() {
       ValueDecoder dec = new Array(1, U8).createDecoder();
       FedBitReader bits = new FedBitReader();
       EventCapture capture = new EventCapture();
 
       assertFalse(dec.parse(bits, capture));
 
-      // StartContainer is emitted eagerly; nothing else without bytes.
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.ARRAY)));
+      // StartContainer carries the count; without the count byte, no events fire.
+      assertEquals(capture.events, List.of());
    }
 
    @Test
@@ -108,7 +108,7 @@ public final class ArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 1L),
             new StartItem(),
             new IntegerScalar(0x1234L, 1),
             new EndItem(),
@@ -132,7 +132,7 @@ public final class ArrayTests {
 
       // 1 StartContainer + 200*(StartItem + UnitScalar + EndItem) + 1 EndContainer
       assertEquals(capture.events.size(), 1 + 200 * 3 + 1);
-      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY));
+      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY, 200L));
       assertEquals(capture.events.get(capture.events.size() - 1), new EndContainer(ContainerKind.ARRAY));
    }
 
@@ -163,9 +163,9 @@ public final class ArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 2L),
             new StartItem(),
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 2L),
             new StartItem(),
             new IntegerScalar(0x10L, 1),
             new EndItem(),
@@ -175,7 +175,7 @@ public final class ArrayTests {
             new EndContainer(ContainerKind.ARRAY),
             new EndItem(),
             new StartItem(),
-            new StartContainer(ContainerKind.ARRAY),
+            new StartContainer(ContainerKind.ARRAY, 1L),
             new StartItem(),
             new IntegerScalar(0x30L, 1),
             new EndItem(),
@@ -197,11 +197,46 @@ public final class ArrayTests {
       assertEquals(bits.readUnsignedByte(), 0xAB);
    }
 
-   private static final class EventCapture implements DecodingEventHandler {
-      final List<DecodingEvent> events = new ArrayList<>();
+   @Test
+   public void waitsWhenSinkFillsMidArray() {
+      ValueDecoder dec = new Array(1, U8).createDecoder();
+      FedBitReader bits = new FedBitReader();
+      EventCapture capture = new EventCapture();
+
+      bits.write(new byte[] { 0x02, 0x10, 0x20 }, 0, 3);
+      capture.capacity = 3; // StartContainer, StartItem, IntegerScalar — then full
+
+      assertFalse(dec.parse(bits, capture));
+      assertEquals(capture.events.size(), 3);
+
+      capture.capacity = Integer.MAX_VALUE;
+      assertTrue(dec.parse(bits, capture));
+
+      assertEquals(capture.events, List.of(
+            new StartContainer(ContainerKind.ARRAY, 2L),
+            new StartItem(),
+            new IntegerScalar(0x10L, 1),
+            new EndItem(),
+            new StartItem(),
+            new IntegerScalar(0x20L, 1),
+            new EndItem(),
+            new EndContainer(ContainerKind.ARRAY)));
+   }
+
+   private static final class EventCapture implements EventSink {
+      final List<Event> events = new ArrayList<>();
+      int capacity = Integer.MAX_VALUE;
 
       @Override
-      public void onEvent(DecodingEvent event) {
+      public int writableEvents() {
+         return capacity;
+      }
+
+      @Override
+      public void put(Event event) {
+         if (capacity != Integer.MAX_VALUE) {
+            capacity--;
+         }
          events.add(event);
       }
    }

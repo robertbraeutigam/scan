@@ -1,7 +1,8 @@
 package com.vanillasource.scan.types.codec2.decoder;
 
-import com.vanillasource.scan.types.codec2.DecodingEvent;
-import com.vanillasource.scan.types.codec2.DecodingEvent.IntegerScalar;
+import com.vanillasource.scan.types.codec2.Event;
+import com.vanillasource.scan.types.codec2.Event.IntegerScalar;
+import com.vanillasource.scan.types.codec2.EventSink;
 import com.vanillasource.scan.types.codec2.bit.FedBitReader;
 import org.testng.annotations.Test;
 
@@ -264,6 +265,24 @@ public final class IntegerDecoderTests {
       assertEquals(capture.events, List.of(new IntegerScalar(0L, 0)));
    }
 
+   // ---- sink capacity ----
+
+   @Test
+   public void waitsForSinkCapacityAfterReadingAllBytes() {
+      IntegerDecoder decoder = new IntegerDecoder(2, false);
+      FedBitReader bits = new FedBitReader();
+      EventCapture capture = new EventCapture();
+      capture.capacity = 0;
+
+      bits.write(new byte[] { 0x12, 0x34 }, 0, 2);
+      assertFalse(decoder.parse(bits, capture));
+      assertEquals(capture.events.size(), 0);
+
+      capture.capacity = 1;
+      assertTrue(decoder.parse(bits, capture));
+      assertEquals(capture.events, List.of(new IntegerScalar(0x1234L, 1)));
+   }
+
    // ---- helpers ----
 
    private static void assertDecodes(int byteSize, boolean signed,
@@ -278,12 +297,17 @@ public final class IntegerDecoderTests {
       assertEquals(capture.events, List.of(expected));
    }
 
-   private static final class EventCapture
-         implements com.vanillasource.scan.types.codec2.DecodingEventHandler {
-      final List<DecodingEvent> events = new ArrayList<>();
+   private static final class EventCapture implements EventSink {
+      final List<Event> events = new ArrayList<>();
+      int capacity = Integer.MAX_VALUE;
 
       @Override
-      public void onEvent(DecodingEvent event) {
+      public int writableEvents() {
+         return capacity;
+      }
+
+      @Override
+      public void put(Event event) {
          events.add(event);
       }
    }
