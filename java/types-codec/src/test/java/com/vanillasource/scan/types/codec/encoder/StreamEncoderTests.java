@@ -21,12 +21,11 @@ import static org.testng.Assert.assertFalse;
 
 public final class StreamEncoderTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
    private static final Type U16 = new UnsignedInteger(2);
 
    @Test
    public void writesNothingForEmptyStream() {
-      ValueEncoder enc = new Stream(U8).createEncoder();
+      ValueEncoder enc = new Stream(U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -38,7 +37,7 @@ public final class StreamEncoderTests {
 
    @Test
    public void writesItemsAsEventsArrive() {
-      ValueEncoder enc = new Stream(U8).createEncoder();
+      ValueEncoder enc = new Stream(U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -51,12 +50,12 @@ public final class StreamEncoderTests {
       events.put(new EndItem());
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x10, 0x20));
+      assertEquals(sink.bytes, List.of(0x00, 0x10, 0x00, 0x20));
    }
 
    @Test
    public void neverCompletesEvenWhenIdle() {
-      ValueEncoder enc = new Stream(U8).createEncoder();
+      ValueEncoder enc = new Stream(U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -94,7 +93,7 @@ public final class StreamEncoderTests {
 
    @Test
    public void waitsWhenSinkFillsMidStream() {
-      ValueEncoder enc = new Stream(U8).createEncoder();
+      ValueEncoder enc = new Stream(U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -106,13 +105,13 @@ public final class StreamEncoderTests {
       events.put(new IntegerScalar(0x20L, 1));
       events.put(new EndItem());
 
-      sink.capacity = 1;
+      sink.capacity = 2;
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x10));
+      assertEquals(sink.bytes, List.of(0x00, 0x10));
 
       sink.capacity = Integer.MAX_VALUE;
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x10, 0x20));
+      assertEquals(sink.bytes, List.of(0x00, 0x10, 0x00, 0x20));
    }
 
    private static final class EventQueue implements EventSource {

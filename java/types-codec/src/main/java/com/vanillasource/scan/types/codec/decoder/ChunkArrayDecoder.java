@@ -4,28 +4,26 @@ import com.vanillasource.scan.types.codec.BitSource;
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.EventSink;
-import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
+ * Chunked array decode path: the {@code Array}-with-1-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Array}'s dispatch.
  * Composes the array's phases via {@link ValueDecoder#andThen}: read (or skip)
- * the count, emit {@code StartContainer(ARRAY, count)}, iterate {@code count}
- * items (each wrapped in {@code StartItem}/{@code EndItem} around a fresh
- * decoder from the given {@link Type}), then emit {@code EndContainer(ARRAY)}.
- *
- * <p>{@code countVarintBytes == 0} means no count is on the wire — the count
- * is fixed at {@code min}. Otherwise the wire carries
- * {@code VariableLengthInteger(countVarintBytes)} and {@code min} is added
- * back to its value to recover the actual count.
+ * the count, emit {@code StartContainer(ARRAY, count)}, drain the declared
+ * payload as opportunistically-sized {@code Chunk(bytes)} events, then emit
+ * {@code EndContainer(ARRAY)}. Batched (chunked) delivery is the
+ * implementation choice for runs of 1-byte-primitive elements; see the spec's
+ * <i>Incremental Consumption</i>.
  */
-public final class ArrayDecoder implements ValueDecoder {
+public final class ChunkArrayDecoder implements ValueDecoder {
     private final ValueDecoder pipeline;
 
-    public ArrayDecoder(int min, int countVarintBytes, Type itemType) {
+    public ChunkArrayDecoder(int min, int countVarintBytes) {
         long[] countHolder = new long[1];
         pipeline = captureCount(min, countVarintBytes, countHolder)
                 .andThen(ValueDecoder.writeEvent(() -> new Event.StartContainer(ContainerKind.ARRAY, countHolder[0])))
-                .andThen(items(countHolder, itemType))
+                .andThen(drainChunks(countHolder))
                 .andThen(ValueDecoder.writeEvent(new Event.EndContainer(ContainerKind.ARRAY)));
     }
 
@@ -58,10 +56,9 @@ public final class ArrayDecoder implements ValueDecoder {
         return (bits, sink) -> vli.parse(bits, capture);
     }
 
-    private static ValueDecoder items(long[] countHolder, Type itemType) {
+    private static ValueDecoder drainChunks(long[] countHolder) {
         return new ValueDecoder() {
             private long remaining = -1;
-            private ValueDecoder current;
 
             @Override
             public boolean parse(BitSource bits, EventSink sink) {
@@ -69,15 +66,26 @@ public final class ArrayDecoder implements ValueDecoder {
                     remaining = countHolder[0];
                 }
                 while (remaining > 0) {
-                    if (current == null) {
-                        current = itemType.createDecoder()
-                                .between(new Event.StartItem(), new Event.EndItem());
-                    }
-                    if (!current.parse(bits, sink)) {
+                    if (sink.writableEvents() <= 0) {
                         return false;
                     }
-                    current = null;
-                    remaining--;
+                    int avail = bits.availableBytes();
+                    if (avail <= 0) {
+                        return false;
+                    }
+                    int take = (int) Math.min(avail, remaining);
+                    byte[] chunk = new byte[take];
+                    int read = bits.readBytes(chunk, 0, take);
+                    if (read <= 0) {
+                        return false;
+                    }
+                    if (read < take) {
+                        byte[] shrunk = new byte[read];
+                        System.arraycopy(chunk, 0, shrunk, 0, read);
+                        chunk = shrunk;
+                    }
+                    sink.write(new Event.Chunk(chunk));
+                    remaining -= read;
                 }
                 return true;
             }

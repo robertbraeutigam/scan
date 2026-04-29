@@ -8,7 +8,8 @@ import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
-import com.vanillasource.scan.types.codec.type.ByteArray;
+import com.vanillasource.scan.types.codec.type.Array;
+import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -18,11 +19,20 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-public final class ByteArrayTests {
+/**
+ * Verifies the chunk-emitting decode path that {@link Array} dispatches to
+ * when its element type is a 1-byte primitive (per TYPES.md
+ * §"Incremental Consumption"). Bytes flow as {@code Chunk} events between the
+ * usual {@code StartContainer}/{@code EndContainer} markers, never as
+ * per-item {@code StartItem}/{@code EndItem} pairs.
+ */
+public final class ArrayOfBytesTests {
+
+   private static final UnsignedInteger BYTE = new UnsignedInteger(1);
 
    @Test
-   public void emptyByteArrayEmitsOnlyContainerMarkers() {
-      ValueDecoder dec = new ByteArray(0, 0xFF).createDecoder();
+   public void emptyArrayOfBytesEmitsOnlyContainerMarkers() {
+      ValueDecoder dec = new Array(0, 0xFF, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -36,7 +46,7 @@ public final class ByteArrayTests {
 
    @Test
    public void singleChunkWhenAllBytesPresent() {
-      ValueDecoder dec = new ByteArray(0, 0xFF).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -51,7 +61,7 @@ public final class ByteArrayTests {
 
    @Test
    public void splitsAcrossPartialFeeds() {
-      ValueDecoder dec = new ByteArray(0, 0xFF).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -76,7 +86,7 @@ public final class ByteArrayTests {
 
    @Test
    public void doesNotConsumeBytesPastDeclaredCount() {
-      ValueDecoder dec = new ByteArray(0, 0xFF).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -91,7 +101,7 @@ public final class ByteArrayTests {
    @Test
    public void fixedLengthReadsNoCount() {
       // min == max → no count on the wire; decoder reads exactly 4 payload bytes.
-      ValueDecoder dec = new ByteArray(4, 4).createDecoder();
+      ValueDecoder dec = new Array(4, 4, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -107,7 +117,7 @@ public final class ByteArrayTests {
    @Test
    public void nonZeroLowerBoundIsAddedBackToCount() {
       // min = 5, max = 10 → wire count = actual - 5; 0x02 → 7 bytes.
-      ValueDecoder dec = new ByteArray(5, 10).createDecoder();
+      ValueDecoder dec = new Array(5, 10, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -125,7 +135,7 @@ public final class ByteArrayTests {
 
    @Test
    public void waitsWhenSinkFillsMidStream() {
-      ValueDecoder dec = new ByteArray(0, 0xFF).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 

@@ -6,7 +6,9 @@ import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Composes the byte-array's phases via {@link ValueEncoder#andThen}: consume
+ * Chunked array encode path: the {@code Array}-with-1-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Array}'s dispatch.
+ * Composes the array's phases via {@link ValueEncoder#andThen}: consume
  * {@code StartContainer(ARRAY, count)} (validating the count against
  * {@code min} and the fixed-length contract), write the count (omitted when
  * {@code countVarintBytes == 0}, otherwise {@code count - min} as a
@@ -14,10 +16,10 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
  * whose total byte length must equal the declared count straight to the sink,
  * then consume {@code EndContainer(ARRAY)}.
  */
-public final class ByteArrayEncoder implements ValueEncoder {
+public final class ChunkArrayEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
-    public ByteArrayEncoder(int min, int countVarintBytes) {
+    public ChunkArrayEncoder(int min, int countVarintBytes) {
         long[] countHolder = new long[1];
         pipeline = captureStartContainer(countHolder, min, countVarintBytes)
                 .andThen(writeCount(min, countVarintBytes, countHolder))
@@ -42,7 +44,7 @@ public final class ByteArrayEncoder implements ValueEncoder {
             }
             if (countVarintBytes == 0 && count != min) {
                 throw new IllegalArgumentException(
-                        "fixed-length ByteArray requires count == " + min + ", got " + count);
+                        "fixed-length array requires count == " + min + ", got " + count);
             }
             target[0] = count;
             return true;

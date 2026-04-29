@@ -3,8 +3,10 @@ package com.vanillasource.scan.types.codec.type;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.decoder.ArrayDecoder;
-import com.vanillasource.scan.types.codec.encoder.ArrayEncoder;
+import com.vanillasource.scan.types.codec.decoder.ChunkArrayDecoder;
+import com.vanillasource.scan.types.codec.decoder.ItemArrayDecoder;
+import com.vanillasource.scan.types.codec.encoder.ChunkArrayEncoder;
+import com.vanillasource.scan.types.codec.encoder.ItemArrayEncoder;
 
 /**
  * Ordered aggregation of items of a given {@link Type} whose count lies in
@@ -21,9 +23,11 @@ import com.vanillasource.scan.types.codec.encoder.ArrayEncoder;
  *       back to recover the actual count.</li>
  * </ul>
  *
- * <p>The codec receives {@code min} and the precomputed VLI byte count
- * ({@code 0} when no count is written, otherwise the {@code v} above), so it
- * never has to consult {@code max} or recompute the sizing.
+ * <p>When the element type is a 1-byte primitive (per
+ * {@link Type#isPrimitiveByte()}), payload bytes are delivered as
+ * {@code Chunk} events instead of per-item {@code StartItem}/{@code EndItem}
+ * pairs — see TYPES.md §"Incremental Consumption". The wire form is identical
+ * either way.
  */
 public final class Array implements Type {
     private final int min;
@@ -44,12 +48,18 @@ public final class Array implements Type {
 
     @Override
     public ValueDecoder createDecoder() {
-        return new ArrayDecoder(min, countVarintBytes, itemType);
+        if (itemType.isPrimitiveByte()) {
+            return new ChunkArrayDecoder(min, countVarintBytes);
+        }
+        return new ItemArrayDecoder(min, countVarintBytes, itemType);
     }
 
     @Override
     public ValueEncoder createEncoder() {
-        return new ArrayEncoder(min, countVarintBytes, itemType);
+        if (itemType.isPrimitiveByte()) {
+            return new ChunkArrayEncoder(min, countVarintBytes);
+        }
+        return new ItemArrayEncoder(min, countVarintBytes, itemType);
     }
 
     private static int computeCountVarintBytes(int min, int max) {

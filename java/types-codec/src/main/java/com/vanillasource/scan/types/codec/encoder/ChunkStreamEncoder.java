@@ -6,14 +6,16 @@ import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Composes the byte-stream's phases via {@link ValueEncoder#andThen}: consume a
+ * Chunked stream encode path: the {@code Stream}-with-1-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Stream}'s dispatch.
+ * Composes the stream's phases via {@link ValueEncoder#andThen}: consume a
  * single {@code StartStream} event on entry, then write the bytes from each
  * subsequent {@code Chunk} event for as long as events are available and the
  * sink has room. The drain phase never completes — a byte stream has no
  * terminator on the wire, so completion is declared externally by the
  * transport.
  */
-public final class ByteStreamEncoder implements ValueEncoder {
+public final class ChunkStreamEncoder implements ValueEncoder {
     private final ValueEncoder pipeline = ValueEncoder.skipEvent().andThen(drainChunks());
 
     @Override

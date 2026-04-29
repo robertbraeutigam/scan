@@ -6,13 +6,15 @@ import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
- * Composes the byte-stream's phases via {@link ValueDecoder#andThen}: emit
+ * Chunked stream decode path: the {@code Stream}-with-1-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Stream}'s dispatch.
+ * Composes the stream's phases via {@link ValueDecoder#andThen}: emit
  * {@code StartStream} once on entry, then drain available bytes as
  * {@code Chunk(bytes)} events for as long as bytes are present and the sink
  * has room. The drain phase never completes — a byte stream has no terminator
  * on the wire, so completion is declared externally by the transport.
  */
-public final class ByteStreamDecoder implements ValueDecoder {
+public final class ChunkStreamDecoder implements ValueDecoder {
     private final ValueDecoder pipeline =
             ValueDecoder.writeEvent(new Event.StartStream()).andThen(drainBytes());
 

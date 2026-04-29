@@ -23,4 +23,9 @@ public final class SignedInteger implements Type {
     public ValueEncoder createEncoder() {
         return new IntegerEncoder(byteSize);
     }
+
+    @Override
+    public boolean isPrimitiveByte() {
+        return byteSize == 1;
+    }
 }

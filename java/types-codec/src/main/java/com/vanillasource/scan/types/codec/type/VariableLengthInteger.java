@@ -23,4 +23,9 @@ public final class VariableLengthInteger implements Type {
     public ValueEncoder createEncoder() {
         return new VariableLengthIntegerEncoder(maxBytes);
     }
+
+    @Override
+    public boolean isPrimitiveByte() {
+        return maxBytes == 1;
+    }
 }

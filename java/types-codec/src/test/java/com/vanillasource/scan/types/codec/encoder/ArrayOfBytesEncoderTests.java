@@ -8,7 +8,8 @@ import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
-import com.vanillasource.scan.types.codec.type.ByteArray;
+import com.vanillasource.scan.types.codec.type.Array;
+import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -17,11 +18,20 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-public final class ByteArrayEncoderTests {
+/**
+ * Verifies the chunk-consuming encode path that {@link Array} dispatches to
+ * when its element type is a 1-byte primitive (per TYPES.md
+ * §"Incremental Consumption"). The encoder accepts {@code Chunk} events
+ * between {@code StartContainer}/{@code EndContainer} and writes their bytes
+ * straight to the wire after the count prefix.
+ */
+public final class ArrayOfBytesEncoderTests {
+
+   private static final UnsignedInteger BYTE = new UnsignedInteger(1);
 
    @Test
-   public void writesEmptyByteArrayAsZeroCount() {
-      ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
+   public void writesEmptyArrayOfBytesAsZeroCount() {
+      ValueEncoder enc = new Array(0, 0xFF, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 0L),
             new EndContainer(ContainerKind.ARRAY)));
@@ -33,7 +43,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void writesCountThenBytesForSingleChunk() {
-      ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 3L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 }),
@@ -46,7 +56,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void writesMultipleChunksAsContiguousBytes() {
-      ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 5L),
             new Chunk(new byte[] { 0x10, 0x20 }),
@@ -61,7 +71,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void fixedLengthOmitsCount() {
-      ValueEncoder enc = new ByteArray(4, 4).createEncoder();
+      ValueEncoder enc = new Array(4, 4, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x01, 0x02, 0x03, 0x04 }),
@@ -75,7 +85,7 @@ public final class ByteArrayEncoderTests {
    @Test
    public void nonZeroLowerBoundSubtractedFromWireCount() {
       // min = 5, max = 10 → wire count = actual - 5; for 7 actual, wire = 0x02.
-      ValueEncoder enc = new ByteArray(5, 10).createEncoder();
+      ValueEncoder enc = new Array(5, 10, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 7L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70 }),
@@ -89,7 +99,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void countBelowMinIsRejected() {
-      ValueEncoder enc = new ByteArray(2, 10).createEncoder();
+      ValueEncoder enc = new Array(2, 10, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 1L)));
       BufferedBitSink sink = new BufferedBitSink();
@@ -99,7 +109,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void chunkOverflowingDeclaredCountIsRejected() {
-      ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 2L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
@@ -110,7 +120,7 @@ public final class ByteArrayEncoderTests {
 
    @Test
    public void fixedLengthRejectsMismatchedCount() {
-      ValueEncoder enc = new ByteArray(4, 4).createEncoder();
+      ValueEncoder enc = new Array(4, 4, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 5L)));
       BufferedBitSink sink = new BufferedBitSink();

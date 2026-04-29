@@ -27,12 +27,11 @@ import static org.testng.Assert.assertTrue;
 
 public final class ArrayTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
    private static final Type U16 = new UnsignedInteger(2);
 
    @Test
    public void emptyArrayEmitsOnlyContainerMarkers() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -46,11 +45,11 @@ public final class ArrayTests {
 
    @Test
    public void singleItemArray() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x01, 0x42 }, 0, 2);
+      bits.write(new byte[] { 0x01, 0x00, 0x42 }, 0, 3);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -63,11 +62,11 @@ public final class ArrayTests {
 
    @Test
    public void multipleItemsArray() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x03, 0x10, 0x20, 0x30 }, 0, 4);
+      bits.write(new byte[] { 0x03, 0x00, 0x10, 0x00, 0x20, 0x00, 0x30 }, 0, 7);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -86,7 +85,7 @@ public final class ArrayTests {
 
    @Test
    public void emitsNothingUntilCountByteArrives() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -145,11 +144,11 @@ public final class ArrayTests {
 
    @Test
    public void doesNotEmitCountAsIntegerScalar() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x02, 0x10, 0x20 }, 0, 3);
+      bits.write(new byte[] { 0x02, 0x00, 0x10, 0x00, 0x20 }, 0, 5);
       assertTrue(dec.parse(bits, capture));
 
       // Exactly two IntegerScalar events — for the items only, not the count.
@@ -161,12 +160,12 @@ public final class ArrayTests {
 
    @Test
    public void nestedArrays() {
-      ValueDecoder dec = new Array(0, 0xFF, new Array(0, 0xFF, U8)).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, new Array(0, 0xFF, U16)).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      // outer count = 2, inner1 = [0x10, 0x20], inner2 = [0x30]
-      bits.write(new byte[] { 0x02, 0x02, 0x10, 0x20, 0x01, 0x30 }, 0, 6);
+      // outer count = 2, inner1 = [0x10, 0x20] (U16), inner2 = [0x30] (U16)
+      bits.write(new byte[] { 0x02, 0x02, 0x00, 0x10, 0x00, 0x20, 0x01, 0x00, 0x30 }, 0, 9);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -193,11 +192,11 @@ public final class ArrayTests {
 
    @Test
    public void doesNotConsumeBytesPastEnd() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x01, 0x42, (byte) 0xAB }, 0, 3);
+      bits.write(new byte[] { 0x01, 0x00, 0x42, (byte) 0xAB }, 0, 4);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(bits.availableBytes(), 1);
@@ -206,11 +205,11 @@ public final class ArrayTests {
 
    @Test
    public void waitsWhenSinkFillsMidArray() {
-      ValueDecoder dec = new Array(0, 0xFF, U8).createDecoder();
+      ValueDecoder dec = new Array(0, 0xFF, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x02, 0x10, 0x20 }, 0, 3);
+      bits.write(new byte[] { 0x02, 0x00, 0x10, 0x00, 0x20 }, 0, 5);
       capture.capacity = 3; // StartContainer, StartItem, IntegerScalar — then full
 
       assertFalse(dec.parse(bits, capture));
@@ -233,11 +232,11 @@ public final class ArrayTests {
    @Test
    public void fixedLengthArrayReadsNoCount() {
       // min == max → no count on the wire; decoder reads exactly 3 items.
-      ValueDecoder dec = new Array(3, 3, U8).createDecoder();
+      ValueDecoder dec = new Array(3, 3, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x10, 0x20, 0x30 }, 0, 3);
+      bits.write(new byte[] { 0x00, 0x10, 0x00, 0x20, 0x00, 0x30 }, 0, 6);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -309,14 +308,14 @@ public final class ArrayTests {
    @Test
    public void nonZeroLowerBoundIsAddedBackToCount() {
       // min = 5, max = 10. Wire count = actual - min, so 0x02 → 5 + 2 = 7 items.
-      ValueDecoder dec = new Array(5, 10, U8).createDecoder();
+      ValueDecoder dec = new Array(5, 10, U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] {
             0x02,
-            0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70
-      }, 0, 8);
+            0x00, 0x10, 0x00, 0x20, 0x00, 0x30, 0x00, 0x40, 0x00, 0x50, 0x00, 0x60, 0x00, 0x70
+      }, 0, 15);
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY, 7L));

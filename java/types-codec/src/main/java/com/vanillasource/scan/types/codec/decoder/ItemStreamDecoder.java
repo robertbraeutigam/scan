@@ -7,6 +7,8 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
+ * Per-item stream decode path: the {@code Stream}-with-non-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Stream}'s dispatch.
  * Composes the stream's phases via {@link ValueDecoder#andThen}: emit
  * {@code StartStream} once on entry, then iterate items
  * ({@code StartItem}, item events, {@code EndItem}) for as long as bytes are
@@ -14,10 +16,10 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
  * stream has no terminator on the wire, so completion is declared externally
  * by the transport.
  */
-public final class StreamDecoder implements ValueDecoder {
+public final class ItemStreamDecoder implements ValueDecoder {
     private final ValueDecoder pipeline;
 
-    public StreamDecoder(Type itemType) {
+    public ItemStreamDecoder(Type itemType) {
         pipeline = ValueDecoder.writeEvent(new Event.StartStream()).andThen(itemLoop(itemType));
     }
 

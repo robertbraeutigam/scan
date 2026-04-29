@@ -30,12 +30,11 @@ import static org.testng.Assert.assertTrue;
 
 public final class ArrayEncoderTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
    private static final Type U16 = new UnsignedInteger(2);
 
    @Test
    public void emptyArrayWritesOnlyCount() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -48,7 +47,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void singleItemArray() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -59,12 +58,12 @@ public final class ArrayEncoderTests {
       events.put(new EndContainer(ContainerKind.ARRAY));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x01, 0x42));
+      assertEquals(sink.bytes, List.of(0x01, 0x00, 0x42));
    }
 
    @Test
    public void multipleItemsArray() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -81,12 +80,12 @@ public final class ArrayEncoderTests {
       events.put(new EndContainer(ContainerKind.ARRAY));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x03, 0x10, 0x20, 0x30));
+      assertEquals(sink.bytes, List.of(0x03, 0x00, 0x10, 0x00, 0x20, 0x00, 0x30));
    }
 
    @Test
    public void writesNothingUntilStartContainerArrives() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -142,7 +141,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void nestedArrays() {
-      ValueEncoder enc = new Array(0, 0xFF, new Array(0, 0xFF, U8)).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, new Array(0, 0xFF, U16)).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -167,12 +166,12 @@ public final class ArrayEncoderTests {
       events.put(new EndContainer(ContainerKind.ARRAY));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x02, 0x02, 0x10, 0x20, 0x01, 0x30));
+      assertEquals(sink.bytes, List.of(0x02, 0x02, 0x00, 0x10, 0x00, 0x20, 0x01, 0x00, 0x30));
    }
 
    @Test
    public void doesNotConsumeEventsPastEndContainer() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -184,14 +183,14 @@ public final class ArrayEncoderTests {
       events.put(new IntegerScalar(0x99L, 1)); // sentinel: must remain
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x01, 0x42));
+      assertEquals(sink.bytes, List.of(0x01, 0x00, 0x42));
       assertEquals(events.availableEvents(), 1);
       assertTrue(events.read() instanceof IntegerScalar);
    }
 
    @Test
    public void waitsWhenSinkFillsMidArray() {
-      ValueEncoder enc = new Array(0, 0xFF, U8).createEncoder();
+      ValueEncoder enc = new Array(0, 0xFF, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -204,19 +203,19 @@ public final class ArrayEncoderTests {
       events.put(new EndItem());
       events.put(new EndContainer(ContainerKind.ARRAY));
 
-      sink.capacity = 2; // count + first item
+      sink.capacity = 3; // count + first U16 item
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x02, 0x10));
+      assertEquals(sink.bytes, List.of(0x02, 0x00, 0x10));
 
       sink.capacity = Integer.MAX_VALUE;
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x02, 0x10, 0x20));
+      assertEquals(sink.bytes, List.of(0x02, 0x00, 0x10, 0x00, 0x20));
    }
 
    @Test
    public void fixedLengthArrayWritesNoCount() {
       // min == max → no count is written; only the items appear on the wire.
-      ValueEncoder enc = new Array(3, 3, U8).createEncoder();
+      ValueEncoder enc = new Array(3, 3, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -233,13 +232,13 @@ public final class ArrayEncoderTests {
       events.put(new EndContainer(ContainerKind.ARRAY));
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.bytes, List.of(0x10, 0x20, 0x30));
+      assertEquals(sink.bytes, List.of(0x00, 0x10, 0x00, 0x20, 0x00, 0x30));
    }
 
    @Test
    public void nonZeroLowerBoundIsSubtractedFromCount() {
       // min = 5, max = 10. count = 7 → wire byte = 7 - 5 = 2.
-      ValueEncoder enc = new Array(5, 10, U8).createEncoder();
+      ValueEncoder enc = new Array(5, 10, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -253,12 +252,12 @@ public final class ArrayEncoderTests {
 
       assertTrue(enc.generate(events, sink));
       assertEquals(sink.bytes.get(0).intValue(), 0x02);
-      assertEquals(sink.bytes.size(), 1 + 7);
+      assertEquals(sink.bytes.size(), 1 + 7 * 2);
    }
 
    @Test
    public void countBelowMinThrows() {
-      ValueEncoder enc = new Array(2, 5, U8).createEncoder();
+      ValueEncoder enc = new Array(2, 5, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
@@ -269,7 +268,7 @@ public final class ArrayEncoderTests {
 
    @Test
    public void fixedLengthRejectsMismatchedCount() {
-      ValueEncoder enc = new Array(3, 3, U8).createEncoder();
+      ValueEncoder enc = new Array(3, 3, U16).createEncoder();
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 

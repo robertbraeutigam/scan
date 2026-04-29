@@ -6,7 +6,8 @@ import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
-import com.vanillasource.scan.types.codec.type.ByteStream;
+import com.vanillasource.scan.types.codec.type.Stream;
+import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -14,11 +15,19 @@ import java.util.List;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
-public final class ByteStreamEncoderTests {
+/**
+ * Verifies the chunk-consuming encode path that {@link Stream} dispatches to
+ * when its element type is a 1-byte primitive (per TYPES.md
+ * §"Incremental Consumption"). The encoder accepts {@code Chunk} events after
+ * a single {@code StartStream} and writes their bytes straight to the wire.
+ */
+public final class StreamOfBytesEncoderTests {
+
+   private static final UnsignedInteger BYTE = new UnsignedInteger(1);
 
    @Test
    public void writesNothingForJustStart() {
-      ValueEncoder enc = new ByteStream().createEncoder();
+      ValueEncoder enc = new Stream(BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartStream()));
       BufferedBitSink sink = new BufferedBitSink();
@@ -29,7 +38,7 @@ public final class ByteStreamEncoderTests {
 
    @Test
    public void writesBytesFromChunks() {
-      ValueEncoder enc = new ByteStream().createEncoder();
+      ValueEncoder enc = new Stream(BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
@@ -41,7 +50,7 @@ public final class ByteStreamEncoderTests {
 
    @Test
    public void writesMultipleChunksAsContiguousBytes() {
-      ValueEncoder enc = new ByteStream().createEncoder();
+      ValueEncoder enc = new Stream(BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20 }),
@@ -55,7 +64,7 @@ public final class ByteStreamEncoderTests {
 
    @Test
    public void neverCompletes() {
-      ValueEncoder enc = new ByteStream().createEncoder();
+      ValueEncoder enc = new Stream(BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartStream(),
             new Chunk(new byte[] { 0x10 })));

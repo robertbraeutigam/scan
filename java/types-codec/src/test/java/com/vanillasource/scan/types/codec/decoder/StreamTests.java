@@ -21,12 +21,11 @@ import static org.testng.Assert.assertFalse;
 
 public final class StreamTests {
 
-   private static final Type U8 = new UnsignedInteger(1);
    private static final Type U16 = new UnsignedInteger(2);
 
    @Test
    public void emitsStartStreamEvenWithNoBytes() {
-      ValueDecoder dec = new Stream(U8).createDecoder();
+      ValueDecoder dec = new Stream(U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -36,11 +35,11 @@ public final class StreamTests {
 
    @Test
    public void emitsItemsAsBytesArrive() {
-      ValueDecoder dec = new Stream(U8).createDecoder();
+      ValueDecoder dec = new Stream(U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x10, 0x20, 0x30 }, 0, 3);
+      bits.write(new byte[] { 0x00, 0x10, 0x00, 0x20, 0x00, 0x30 }, 0, 6);
       assertFalse(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
@@ -58,11 +57,11 @@ public final class StreamTests {
 
    @Test
    public void neverCompletesEvenWhenIdle() {
-      ValueDecoder dec = new Stream(U8).createDecoder();
+      ValueDecoder dec = new Stream(U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(0x10);
+      bits.write(new byte[] { 0x00, 0x10 }, 0, 2);
       assertFalse(dec.parse(bits, capture));
       // Drained — but stream never reports done.
       assertFalse(dec.parse(bits, capture));
@@ -91,11 +90,11 @@ public final class StreamTests {
 
    @Test
    public void waitsWhenSinkFillsMidStream() {
-      ValueDecoder dec = new Stream(U8).createDecoder();
+      ValueDecoder dec = new Stream(U16).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
-      bits.write(new byte[] { 0x10, 0x20 }, 0, 2);
+      bits.write(new byte[] { 0x00, 0x10, 0x00, 0x20 }, 0, 4);
       capture.capacity = 3; // StartStream + StartItem + IntegerScalar — then full
       assertFalse(dec.parse(bits, capture));
       assertEquals(capture.events.size(), 3);

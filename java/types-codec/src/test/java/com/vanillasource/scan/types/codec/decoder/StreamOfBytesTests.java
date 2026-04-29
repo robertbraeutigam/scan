@@ -6,7 +6,8 @@ import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
-import com.vanillasource.scan.types.codec.type.ByteStream;
+import com.vanillasource.scan.types.codec.type.Stream;
+import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -15,11 +16,20 @@ import java.util.List;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
-public final class ByteStreamTests {
+/**
+ * Verifies the chunk-emitting decode path that {@link Stream} dispatches to
+ * when its element type is a 1-byte primitive (per TYPES.md
+ * §"Incremental Consumption"). Bytes flow as {@code Chunk} events after a
+ * single {@code StartStream}, never as per-item {@code StartItem}/{@code EndItem}
+ * pairs.
+ */
+public final class StreamOfBytesTests {
+
+   private static final UnsignedInteger BYTE = new UnsignedInteger(1);
 
    @Test
    public void emitsStartEvenWithNoBytes() {
-      ValueDecoder dec = new ByteStream().createDecoder();
+      ValueDecoder dec = new Stream(BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -29,7 +39,7 @@ public final class ByteStreamTests {
 
    @Test
    public void emitsChunkWhenBytesArrive() {
-      ValueDecoder dec = new ByteStream().createDecoder();
+      ValueDecoder dec = new Stream(BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -43,7 +53,7 @@ public final class ByteStreamTests {
 
    @Test
    public void emitsSeparateChunksAcrossFeeds() {
-      ValueDecoder dec = new ByteStream().createDecoder();
+      ValueDecoder dec = new Stream(BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
@@ -61,7 +71,7 @@ public final class ByteStreamTests {
 
    @Test
    public void neverCompletesEvenWhenIdle() {
-      ValueDecoder dec = new ByteStream().createDecoder();
+      ValueDecoder dec = new Stream(BYTE).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 

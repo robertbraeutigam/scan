@@ -7,8 +7,6 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
 import com.vanillasource.scan.types.codec.type.Array;
-import com.vanillasource.scan.types.codec.type.ByteArray;
-import com.vanillasource.scan.types.codec.type.ByteStream;
 import com.vanillasource.scan.types.codec.type.FloatingPoint;
 import com.vanillasource.scan.types.codec.type.Set;
 import com.vanillasource.scan.types.codec.type.SignedInteger;
@@ -32,11 +30,12 @@ import static org.testng.Assert.assertEquals;
  * sequence as a single bulk feed. This is what makes the push design sound —
  * fragmentation across {@code feed()} calls cannot change semantics.
  *
- * <p>Chunk granularity is the one exception. ByteArray/ByteStream emit
- * opportunistic chunks of {@code min(availableBytes, remaining)}, so the
- * sliced run produces many small chunks while the bulk run produces one. We
- * compare after merging adjacent {@code Chunk} events — the byte payload is
- * what's semantically meaningful.
+ * <p>Chunk granularity is the one exception. {@code Array}/{@code Stream} of
+ * a 1-byte-primitive element type emit opportunistic chunks of
+ * {@code min(availableBytes, remaining)}, so the sliced run produces many
+ * small chunks while the bulk run produces one. We compare after merging
+ * adjacent {@code Chunk} events — the byte payload is what's semantically
+ * meaningful.
  */
 public final class PartialFeedRobustnessTests {
 
@@ -244,26 +243,6 @@ public final class PartialFeedRobustnessTests {
    public void streamOfU16SplitsItemsAcrossFeeds() {
       assertPartialFeedMatchesBulk(new Stream(U16),
             new byte[] { 0x12, 0x34, 0x56, 0x78 });
-   }
-
-   // ---- byte array & byte stream ----
-
-   @Test
-   public void byteArrayVariableLength() {
-      assertPartialFeedMatchesBulk(new ByteArray(0, 0xFF),
-            new byte[] { 0x03, 0x10, 0x20, 0x30 });
-   }
-
-   @Test
-   public void byteArrayFixedLengthNoCount() {
-      assertPartialFeedMatchesBulk(new ByteArray(4, 4),
-            new byte[] { 0x01, 0x02, 0x03, 0x04 });
-   }
-
-   @Test
-   public void byteStreamMultipleBytes() {
-      assertPartialFeedMatchesBulk(new ByteStream(),
-            new byte[] { 0x10, 0x20, 0x30, 0x40 });
    }
 
    // ---- helpers ----

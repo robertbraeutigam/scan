@@ -7,6 +7,8 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
+ * Per-item array encode path: the {@code Array}-with-non-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Array}'s dispatch.
  * Composes the array's phases via {@link ValueEncoder#andThen}: consume
  * {@code StartContainer(ARRAY, count)} (validating the count against
  * {@code min} and the fixed-length contract), write the count (omitted when
@@ -16,10 +18,10 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
  * encoder from the given {@link Type}), finally consume
  * {@code EndContainer(ARRAY)}.
  */
-public final class ArrayEncoder implements ValueEncoder {
+public final class ItemArrayEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
-    public ArrayEncoder(int min, int countVarintBytes, Type itemType) {
+    public ItemArrayEncoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = captureStartContainer(countHolder, min, countVarintBytes)
                 .andThen(writeCount(min, countVarintBytes, countHolder))

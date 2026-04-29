@@ -6,6 +6,8 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
+ * Per-item stream encode path: the {@code Stream}-with-non-byte-primitive-element
+ * branch of {@link com.vanillasource.scan.types.codec.type.Stream}'s dispatch.
  * Composes the stream's phases via {@link ValueEncoder#andThen}: consume a
  * single {@code StartStream} event on entry, then iterate items
  * ({@code StartItem}, item events, {@code EndItem}) for as long as events are
@@ -13,10 +15,10 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
  * stream has no terminator on the wire, so completion is declared externally
  * by the transport.
  */
-public final class StreamEncoder implements ValueEncoder {
+public final class ItemStreamEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
-    public StreamEncoder(Type itemType) {
+    public ItemStreamEncoder(Type itemType) {
         pipeline = ValueEncoder.skipEvent().andThen(itemLoop(itemType));
     }
 
