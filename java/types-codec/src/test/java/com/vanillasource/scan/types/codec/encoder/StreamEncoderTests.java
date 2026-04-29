@@ -2,10 +2,11 @@ package com.vanillasource.scan.types.codec.encoder;
 
 import com.vanillasource.scan.types.codec.BitSink;
 import com.vanillasource.scan.types.codec.Event;
+import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.Event.EndItem;
 import com.vanillasource.scan.types.codec.Event.IntegerScalar;
+import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.Event.StartItem;
-import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
@@ -30,7 +31,7 @@ public final class StreamEncoderTests {
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartStream());
+      events.put(new StartContainer(ContainerKind.STREAM, 0L));
 
       assertFalse(enc.generate(events, sink));
       assertEquals(sink.bytes, List.of());
@@ -42,7 +43,7 @@ public final class StreamEncoderTests {
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartStream());
+      events.put(new StartContainer(ContainerKind.STREAM, 0L));
       events.put(new StartItem());
       events.put(new IntegerScalar(0x10L, 1));
       events.put(new EndItem());
@@ -60,7 +61,7 @@ public final class StreamEncoderTests {
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartStream());
+      events.put(new StartContainer(ContainerKind.STREAM, 0L));
       events.put(new StartItem());
       events.put(new IntegerScalar(0x10L, 1));
       events.put(new EndItem());
@@ -76,7 +77,7 @@ public final class StreamEncoderTests {
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartStream());
+      events.put(new StartContainer(ContainerKind.STREAM, 0L));
       assertFalse(enc.generate(events, sink));
       assertEquals(sink.bytes, List.of());
 
@@ -98,7 +99,7 @@ public final class StreamEncoderTests {
       EventQueue events = new EventQueue();
       ByteCollector sink = new ByteCollector();
 
-      events.put(new StartStream());
+      events.put(new StartContainer(ContainerKind.STREAM, 0L));
       events.put(new StartItem());
       events.put(new IntegerScalar(0x10L, 1));
       events.put(new EndItem());
