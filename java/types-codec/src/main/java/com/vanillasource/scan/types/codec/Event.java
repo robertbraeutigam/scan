@@ -13,13 +13,14 @@ public sealed interface Event {
     /**
      * Tags a {@link StartContainer} / {@link EndContainer} pair with the kind of
      * finite aggregate it delimits. All container kinds are bounded — both Start
-     * and End fire, and the Start carries the wire-declared item or byte count.
-     * Open-ended streams use {@link StartStream} instead and have no end event.
+     * and End fire, and the Start carries the wire-declared count. The chunked
+     * vs. itemized item-delivery split is determined by the element type's wire
+     * footprint (see the spec), not by a separate kind. Open-ended streams use
+     * {@link StartStream} instead and have no end event.
      */
     enum ContainerKind {
         ARRAY,
-        SET,
-        BYTE_ARRAY
+        SET
     }
 
     record IntegerScalar(long value, int sign) implements Event {}

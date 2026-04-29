@@ -23,8 +23,8 @@ public final class ByteArrayEncoderTests {
    public void writesEmptyByteArrayAsZeroCount() {
       ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 0L),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new StartContainer(ContainerKind.ARRAY, 0L),
+            new EndContainer(ContainerKind.ARRAY)));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertTrue(enc.generate(events, sink));
@@ -35,9 +35,9 @@ public final class ByteArrayEncoderTests {
    public void writesCountThenBytesForSingleChunk() {
       ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 3L),
+            new StartContainer(ContainerKind.ARRAY, 3L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertTrue(enc.generate(events, sink));
@@ -48,11 +48,11 @@ public final class ByteArrayEncoderTests {
    public void writesMultipleChunksAsContiguousBytes() {
       ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 5L),
+            new StartContainer(ContainerKind.ARRAY, 5L),
             new Chunk(new byte[] { 0x10, 0x20 }),
             new Chunk(new byte[] { 0x30 }),
             new Chunk(new byte[] { 0x40, 0x50 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertTrue(enc.generate(events, sink));
@@ -63,9 +63,9 @@ public final class ByteArrayEncoderTests {
    public void fixedLengthOmitsCount() {
       ValueEncoder enc = new ByteArray(4, 4).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 4L),
+            new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x01, 0x02, 0x03, 0x04 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertTrue(enc.generate(events, sink));
@@ -77,9 +77,9 @@ public final class ByteArrayEncoderTests {
       // min = 5, max = 10 → wire count = actual - 5; for 7 actual, wire = 0x02.
       ValueEncoder enc = new ByteArray(5, 10).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 7L),
+            new StartContainer(ContainerKind.ARRAY, 7L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertTrue(enc.generate(events, sink));
@@ -91,7 +91,7 @@ public final class ByteArrayEncoderTests {
    public void countBelowMinIsRejected() {
       ValueEncoder enc = new ByteArray(2, 10).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 1L)));
+            new StartContainer(ContainerKind.ARRAY, 1L)));
       BufferedBitSink sink = new BufferedBitSink();
 
       expectThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
@@ -101,7 +101,7 @@ public final class ByteArrayEncoderTests {
    public void chunkOverflowingDeclaredCountIsRejected() {
       ValueEncoder enc = new ByteArray(0, 0xFF).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 2L),
+            new StartContainer(ContainerKind.ARRAY, 2L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
       BufferedBitSink sink = new BufferedBitSink();
 
@@ -112,7 +112,7 @@ public final class ByteArrayEncoderTests {
    public void fixedLengthRejectsMismatchedCount() {
       ValueEncoder enc = new ByteArray(4, 4).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 5L)));
+            new StartContainer(ContainerKind.ARRAY, 5L)));
       BufferedBitSink sink = new BufferedBitSink();
 
       expectThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));

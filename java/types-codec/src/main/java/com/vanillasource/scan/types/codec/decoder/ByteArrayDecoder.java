@@ -7,11 +7,13 @@ import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
- * Reads (or skips) the count, emits {@code StartContainer(BYTE_ARRAY, count)},
+ * Reads (or skips) the count, emits {@code StartContainer(ARRAY, count)},
  * then drains the byte payload as a sequence of {@code Chunk(bytes)} events
  * sized opportunistically — at each call, one chunk is emitted of
  * {@code min(availableBytes, remainingPayload)}. After all bytes are read,
- * emits {@code EndContainer(BYTE_ARRAY)}.
+ * emits {@code EndContainer(ARRAY)}. The chunked-form delivery (rather than
+ * StartItem/EndItem pairs) follows from the element type being a 1-byte
+ * primitive; see the spec's <i>Per-Type Event Sequences</i>.
  */
 public final class ByteArrayDecoder implements ValueDecoder {
     private final int min;
@@ -49,7 +51,7 @@ public final class ByteArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartContainer(ContainerKind.BYTE_ARRAY, count));
+            sink.put(new Event.StartContainer(ContainerKind.ARRAY, count));
             startEmitted = true;
         }
         while (remaining > 0) {
@@ -78,7 +80,7 @@ public final class ByteArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.EndContainer(ContainerKind.BYTE_ARRAY));
+            sink.put(new Event.EndContainer(ContainerKind.ARRAY));
             endEmitted = true;
         }
         return true;

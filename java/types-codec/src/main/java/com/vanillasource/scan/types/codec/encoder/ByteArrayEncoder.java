@@ -6,10 +6,10 @@ import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Consumes {@code StartContainer(BYTE_ARRAY, count)}, writes the count VLI
+ * Consumes {@code StartContainer(ARRAY, count)}, writes the count VLI
  * (omitted when {@code countVarintBytes == 0}), then accepts {@code Chunk}
  * events whose total byte length must equal the declared count, finally
- * consumes {@code EndContainer(BYTE_ARRAY)}. Bytes from each chunk are written
+ * consumes {@code EndContainer(ARRAY)}. Bytes from each chunk are written
  * straight through to the sink; partial sink space is honoured by buffering
  * the in-flight chunk's offset.
  */

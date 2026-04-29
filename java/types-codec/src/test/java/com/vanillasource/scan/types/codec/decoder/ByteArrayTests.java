@@ -30,8 +30,8 @@ public final class ByteArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 0L),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new StartContainer(ContainerKind.ARRAY, 0L),
+            new EndContainer(ContainerKind.ARRAY)));
    }
 
    @Test
@@ -44,9 +44,9 @@ public final class ByteArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 3L),
+            new StartContainer(ContainerKind.ARRAY, 3L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
    }
 
    @Test
@@ -57,21 +57,21 @@ public final class ByteArrayTests {
 
       bits.write(0x04); // count = 4
       assertFalse(dec.parse(bits, capture));
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.BYTE_ARRAY, 4L)));
+      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.ARRAY, 4L)));
 
       bits.write(new byte[] { 0x10, 0x20 }, 0, 2);
       assertFalse(dec.parse(bits, capture));
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 4L),
+            new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x10, 0x20 })));
 
       bits.write(new byte[] { 0x30, 0x40 }, 0, 2);
       assertTrue(dec.parse(bits, capture));
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 4L),
+            new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x10, 0x20 }),
             new Chunk(new byte[] { 0x30, 0x40 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
    }
 
    @Test
@@ -99,9 +99,9 @@ public final class ByteArrayTests {
       assertTrue(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_ARRAY, 4L),
+            new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x01, 0x02, 0x03, 0x04 }),
-            new EndContainer(ContainerKind.BYTE_ARRAY)));
+            new EndContainer(ContainerKind.ARRAY)));
    }
 
    @Test
@@ -114,7 +114,7 @@ public final class ByteArrayTests {
       bits.write(new byte[] { 0x02, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70 }, 0, 8);
       assertTrue(dec.parse(bits, capture));
 
-      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.BYTE_ARRAY, 7L));
+      assertEquals(capture.events.get(0), new StartContainer(ContainerKind.ARRAY, 7L));
       // Total bytes across all Chunk events sums to 7.
       int totalBytes = capture.events.stream()
             .filter(e -> e instanceof Chunk)
@@ -132,7 +132,7 @@ public final class ByteArrayTests {
       bits.write(new byte[] { 0x03, 0x10, 0x20, 0x30 }, 0, 4);
       capture.capacity = 1; // StartContainer only — then full
       assertFalse(dec.parse(bits, capture));
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.BYTE_ARRAY, 3L)));
+      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.ARRAY, 3L)));
 
       capture.capacity = Integer.MAX_VALUE;
       assertTrue(dec.parse(bits, capture));
