@@ -39,7 +39,7 @@ public final class ArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(event);
+            sink.write(event);
             return true;
         };
     }
@@ -49,7 +49,7 @@ public final class ArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartContainer(ContainerKind.ARRAY, countHolder[0]));
+            sink.write(new Event.StartContainer(ContainerKind.ARRAY, countHolder[0]));
             return true;
         };
     }
@@ -69,7 +69,7 @@ public final class ArrayDecoder implements ValueDecoder {
             }
 
             @Override
-            public void put(Event event) {
+            public void write(Event event) {
                 if (event instanceof Event.IntegerScalar is) {
                     target[0] = is.value() + min;
                 }

@@ -61,7 +61,7 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
             }
             long v = valueHolder[0];
             int sign = v == 0 ? 0 : 1;
-            sink.put(new Event.IntegerScalar(v, sign));
+            sink.write(new Event.IntegerScalar(v, sign));
             return true;
         };
     }

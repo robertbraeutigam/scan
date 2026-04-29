@@ -51,7 +51,7 @@ public final class FloatingPointDecoder implements ValueDecoder {
             double value = (byteSize == 4)
                     ? Float.intBitsToFloat((int) bitsHolder[0])
                     : Double.longBitsToDouble(bitsHolder[0]);
-            sink.put(new Event.FloatingPointScalar(value));
+            sink.write(new Event.FloatingPointScalar(value));
             return true;
         };
     }

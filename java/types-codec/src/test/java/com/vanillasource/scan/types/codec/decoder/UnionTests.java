@@ -222,7 +222,7 @@ public final class UnionTests {
       }
 
       @Override
-      public void put(Event event) {
+      public void write(Event event) {
          if (capacity != Integer.MAX_VALUE) {
             capacity--;
          }

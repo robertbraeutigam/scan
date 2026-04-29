@@ -142,7 +142,7 @@ public final class ValueDecoderTests {
          if (sink.writableEvents() <= 0) {
             return false;
          }
-         sink.put(event);
+         sink.write(event);
          return true;
       };
    }
@@ -179,7 +179,7 @@ public final class ValueDecoderTests {
       }
 
       @Override
-      public void put(Event event) {
+      public void write(Event event) {
          if (capacity != Integer.MAX_VALUE) {
             capacity--;
          }

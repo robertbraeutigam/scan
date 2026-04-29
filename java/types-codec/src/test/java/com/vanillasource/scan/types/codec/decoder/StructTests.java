@@ -188,7 +188,7 @@ public final class StructTests {
       }
 
       @Override
-      public void put(Event event) {
+      public void write(Event event) {
          if (capacity != Integer.MAX_VALUE) {
             capacity--;
          }

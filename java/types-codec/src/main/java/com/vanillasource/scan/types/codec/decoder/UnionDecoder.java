@@ -52,7 +52,7 @@ public final class UnionDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.Constructor(indexHolder[0]));
+            sink.write(new Event.Constructor(indexHolder[0]));
             return true;
         };
     }

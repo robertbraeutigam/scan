@@ -74,7 +74,7 @@ public final class UnitDecoderTests {
       }
 
       @Override
-      public void put(Event event) {
+      public void write(Event event) {
          events.add(event);
       }
    }

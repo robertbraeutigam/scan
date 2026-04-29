@@ -307,7 +307,7 @@ public final class IntegerDecoderTests {
       }
 
       @Override
-      public void put(Event event) {
+      public void write(Event event) {
          events.add(event);
       }
    }

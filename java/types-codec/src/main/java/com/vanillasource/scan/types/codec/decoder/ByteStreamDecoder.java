@@ -25,7 +25,7 @@ public final class ByteStreamDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartStream());
+            sink.write(new Event.StartStream());
             return true;
         };
     }
@@ -50,7 +50,7 @@ public final class ByteStreamDecoder implements ValueDecoder {
                     System.arraycopy(chunk, 0, shrunk, 0, read);
                     chunk = shrunk;
                 }
-                sink.put(new Event.Chunk(chunk));
+                sink.write(new Event.Chunk(chunk));
             }
         };
     }

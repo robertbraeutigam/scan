@@ -35,7 +35,7 @@ public final class SetDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(eventFn.get());
+            sink.write(eventFn.get());
             return true;
         };
     }

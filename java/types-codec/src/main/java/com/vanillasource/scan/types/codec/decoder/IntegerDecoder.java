@@ -53,7 +53,7 @@ public final class IntegerDecoder implements ValueDecoder {
             }
             long v = valueHolder[0];
             int sign = signed ? Long.signum(v) : (v == 0 ? 0 : 1);
-            sink.put(new Event.IntegerScalar(v, sign));
+            sink.write(new Event.IntegerScalar(v, sign));
             return true;
         };
     }

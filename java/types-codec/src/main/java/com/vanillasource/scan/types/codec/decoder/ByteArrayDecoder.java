@@ -37,7 +37,7 @@ public final class ByteArrayDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(eventFn.get());
+            sink.write(eventFn.get());
             return true;
         };
     }
@@ -57,7 +57,7 @@ public final class ByteArrayDecoder implements ValueDecoder {
             }
 
             @Override
-            public void put(Event event) {
+            public void write(Event event) {
                 if (event instanceof Event.IntegerScalar is) {
                     target[0] = is.value() + min;
                 }
@@ -94,7 +94,7 @@ public final class ByteArrayDecoder implements ValueDecoder {
                         System.arraycopy(chunk, 0, shrunk, 0, read);
                         chunk = shrunk;
                     }
-                    sink.put(new Event.Chunk(chunk));
+                    sink.write(new Event.Chunk(chunk));
                     remaining -= read;
                 }
                 return true;

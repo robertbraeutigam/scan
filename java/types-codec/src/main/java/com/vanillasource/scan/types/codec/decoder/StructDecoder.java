@@ -44,7 +44,7 @@ public final class StructDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(event);
+            sink.write(event);
             return true;
         };
     }

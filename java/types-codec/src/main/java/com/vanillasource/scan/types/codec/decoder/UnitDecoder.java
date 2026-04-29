@@ -15,7 +15,7 @@ public final class UnitDecoder implements ValueDecoder {
         if (sink.writableEvents() <= 0) {
             return false;
         }
-        sink.put(new Event.UnitScalar());
+        sink.write(new Event.UnitScalar());
         return true;
     }
 }
