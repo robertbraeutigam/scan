@@ -980,10 +980,10 @@ modality's output is bounded statically by its type (up to any trailing `Stream`
 state as they are emitted), so the resource budget per modality is bounded.
 
 Inputs arriving from remote peers, in contrast, may be **stream-processed**: a device may consume the bytes of an incoming `State`
-as they arrive, apply them to its local state event by event, and discard the input bytes as they pass — without ever holding the
+as they arrive, apply them to its local state piece by piece, and discard the input bytes as they pass — without ever holding the
 full input. This lets modalities accept inputs arbitrarily larger than the device's available memory — firmware blobs, backups,
-video streams — provided the device's input processing is event-driven. See *Value Decoding Events* in `TYPES.md` for the event
-model.
+video streams — provided the device's input processing is incremental. See *Incremental Consumption* in `TYPES.md` for the
+memory-bound property that makes this possible.
 
 Beyond this, the only per-instance state the protocol itself requires is the small Lamport metadata used to order writes (see
 *Last-Writer-Wins Ordering* below).

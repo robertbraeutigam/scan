@@ -98,7 +98,7 @@ A `Stream` has no terminator on the wire, so it will never terminate explicitly.
 Consequently any data or information following a Stream in any structure will never be written nor read, so realistically any message may only contain
 one `Stream` and only as the last position in its data structure.
 
-Bulk byte content — file content, firmware images, UTF-8 strings, live media — is expressed as `Array(T, size)` or `Stream(T)` where *T* is a 1-byte primitive (`UnsignedInteger(1)`, `SignedInteger(1)`, `VariableLengthInteger(1)`). For such element types decoders deliver content as bounded `Chunk(bytes)` events rather than one event per element — see *Per-Type Event Sequences*. This is the only practical way to relay bulk byte runs without per-byte event overhead.
+Bulk byte content — file content, firmware images, UTF-8 strings, live media — is expressed as `Array(T, size)` or `Stream(T)` where *T* is a 1-byte primitive (`UnsignedInteger(1)`, `SignedInteger(1)`, `VariableLengthInteger(1)`). On the wire, each element is one byte interpreted per *T*; how a decoder delivers those bytes to its consumer is implementation-defined, but is expected to be in batches rather than one element at a time (see *Incremental Consumption*).
 
 ```
 Firmware = Array(Byte, size = MaxInclusive(1048576))
@@ -406,57 +406,11 @@ The cap costs at most 7 wasted bits per 32 bytes (≈ 2.7 %) and only applies in
 
 **Stream(T)** — a concatenation of *T*-encodings, running until the enclosing transport frames end. No count, no terminator. Bit state carries across items as it does in an `Array`.
 
-## Value Decoding Events
+### Incremental Consumption
 
-The wire form defined in *Values Binary Representation* is consumed incrementally. As bytes arrive, a decoder walks the type in lockstep with the encoder and produces a sequence of **decoding events** for its consumer. This lets a consumer process values larger than its available memory — values containing a `Stream`, long `Array`s, long `String`s — by handling each event as it arrives and discarding its content before the next event.
+The encoding above is sequential — byte by byte for byte-aligned data, bit by bit within an active bit byte — and the decoder advances through the input cursor by cursor without ever needing to look ahead beyond the bounded primitive currently being read. Memory consumed by the decoder while traversing a value of type *T* is therefore bounded by `max(largest declared primitive in T, transport frame budget)`, independent of the value's size. A value containing a `Stream`, a long `Array`, or a long `String` can be processed end-to-end by a consumer with only that bounded working memory, by handling each piece of the value as the decoder produces it.
 
-Each event has a memory footprint bounded at compile time by the type alone. A consumer — a transform, a relay, a debugger — observes the value's structure and data without assembling the whole value in memory.
-
-### Event Set
-
-```
-Event = Scalar        { value: <primitive value> }     // bounded primitive
-      | StartField    { index: UnsignedInteger }        // entering a struct field
-      | EndField      { index: UnsignedInteger }        // leaving a struct field
-      | Constructor   { index: UnsignedInteger }        // union variant selected; its fields follow
-      | StartContainer { kind: ContainerKind, count: UnsignedInteger } // begins a finite container
-      | EndContainer  { kind: ContainerKind }           // ends a finite container
-      | StartStream                                     // begins an open-ended stream
-      | StartItem                                       // item-bearing container/stream: item begins
-      | EndItem                                         // item-bearing container/stream: item ends
-      | Chunk         { bytes: Array(Byte) }            // byte-bearing container/stream: bounded byte run
-
-ContainerKind = Array | Set
-```
-
-`index` is the declared position of the field or constructor within its enclosing type. `kind` records which container kind a Start/End pair delimits. `count` is the container's wire-declared length — the number of items for `Array` and `Set`, the number of bytes for chunked-form containers. `StartContainer` always has a matching `EndContainer`; `StartStream` never does — the stream runs until the enclosing transport ends.
-
-### Per-Type Event Sequences
-
-**Primitive** (`Unit`, `UnsignedInteger(n)`, `SignedInteger(n)`, `FloatingPoint(n)`, `VariableLengthInteger(maxN)`) — one `Scalar(v)` event.
-
-**Single-constructor type** `T { f₀: T₀, ..., fₖ₋₁: Tₖ₋₁ }` — for each field *i* in declaration order: `StartField(i)`, the events for the field's value (recursive), `EndField(i)`. If `Tᵢ = Stream(U)`, no `EndField(i)` is emitted — the stream runs until the enclosing transport ends.
-
-**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — `Constructor(j)` where *j* is the index of the selected constructor, followed by the event sequence for that constructor's fields (using the single-constructor rule).
-
-**`Array(T, size)` and `Set(T)`** — `StartContainer(Array)` or `StartContainer(Set)`, followed by item events, followed by `EndContainer(kind)`. Items are delivered in one of two forms, determined by the element type's wire footprint:
-
-* **Itemized form** (default): a sequence of `StartItem`, the event sequence for one item (recursive), `EndItem`.
-* **Chunked form** (when *T* is a 1-byte primitive — `UnsignedInteger(1)`, `SignedInteger(1)`, or `VariableLengthInteger(1)`): zero or more `Chunk(bytes)` events whose concatenated bytes total the container's declared length. Each byte is one element, interpreted by the consumer per *T*. Chunk boundaries are not significant — a decoder may split the byte run into chunks at any byte boundary, bounded above by the transport's frame budget. Two event sequences that differ only in how their `Chunk` events partition the same byte run are equivalent.
-
-`Set` is always itemized — its element type is constrained to bare-identifier sums and never has a 1-byte primitive wire footprint.
-
-**`Stream(T)`** — `StartStream`, followed by item events using the same itemized-vs-chunked split as `Array(T, ...)` (chosen by the element type's wire footprint). No `count` precedes the items and no terminating event is emitted; the sequence runs until the enclosing transport ends.
-
-### Memory Bound
-
-Each event's in-memory size is bounded:
-
-* `Scalar(v)` — the declared primitive size (at most 8 bytes for fixed primitives; at most `maxN` bytes for `VariableLengthInteger(maxN)`).
-* `StartField`, `EndField`, `Constructor`, `StartContainer`, `EndContainer`, `StartStream`, `StartItem`, `EndItem` — constant-size markers (the `count` carried by `StartContainer` is a single bounded integer).
-* `Chunk(bytes)` — bounded by the transport's frame budget.
-
-The maximum per-event memory a consumer must handle for a given type is statically known: the greater of the largest bounded primitive appearing in the type and the transport's frame budget.
+How a decoder presents these pieces to its caller — events, callbacks, an iterator, push or pull — is an implementation choice, not pinned by the protocol. In particular, runs of consecutive bytes within an `Array` or `Stream` whose element type is a 1-byte primitive (`UnsignedInteger(1)`, `SignedInteger(1)`, `VariableLengthInteger(1)`) are expected to be delivered in batches rather than one element at a time; this is the only practical way to relay bulk byte runs at line rate, but it has no effect on the wire form.
 
 ## Type Membership
 
@@ -542,38 +496,40 @@ The exact concrete syntax is not yet fixed (TODO), but the semantics described h
 ### Streams
 
 `Stream(T)` is a first-class type in the source language as it is in the type system. Every transformation works,
-ultimately, by consuming events from `input` and constructing the events of the returned `outputs`. Stream-valued
-expressions name stages of the dataflow; the compiler fuses them into a single event-driven traversal that walks
-the input and the output type trees in lockstep.
+ultimately, by consuming `input` step by step (as the decoder advances through it) and constructing `outputs`
+step by step (which the encoder serializes as it advances). Stream-valued expressions name stages of the
+dataflow; the compiler fuses them into a single structural traversal that walks the input and the output type
+trees in lockstep.
 
-A finite value (a struct, a primitive) can be treated as a degenerate stream: its event sequence is a complete
-walk of its structure. The streamability rules below apply uniformly.
+A finite value (a struct, a primitive) can be treated as a degenerate stream: its structural traversal is a
+complete walk of its shape. The streamability rules below apply uniformly.
 
 ### Streamability Classification
 
-The standard library is closed under streamability: every primitive operation has a known event-driven lowering,
+The standard library is closed under streamability: every primitive operation has a known step-by-step lowering,
 every composition of streamable operations is streamable, and each operation's contribution to the enclosing
 frame's size is fixed by its lowering. Operations not in this list are not in the library; programs that attempt
 to realise them by composition are rejected at compile time.
 
 * **Pointwise** — one input element produces exactly one output element with no cross-element dependency:
   `map(s, f)`, arithmetic (`+`, `-`, `*`, `/`), comparison (`<`, `==`, ...), boolean (`and`, `or`, `not`), type
-  coercions. Lowering: per input event, evaluate `f` and emit one output event. Frame contribution: none.
+  coercions. Lowering: per input element, evaluate `f` and emit one output element. Frame contribution: none.
 
 * **Predicated pointwise** — zero or one output per input: `filter(s, p)`, `takeWhile(s, p)`. Lowering: per input
-  event, evaluate the predicate; emit if true. Frame contribution: none.
+  element, evaluate the predicate; emit if true. Frame contribution: none.
 
 * **Folded** — consume the whole stream, produce one value: `fold(s, f, z)`, `sum(s)`, `count(s)`, `max(s)`,
   `min(s)`, `any(s, p)`, `all(s, p)`. Lowering: maintain an accumulator in the enclosing aggregate's frame;
-  update on each input event; on end-of-input the accumulator is the result, ready to be emitted or fed
+  update on each input element; on end-of-input the accumulator is the result, ready to be emitted or fed
   downstream. Frame contribution: one slot of the accumulator's type, in the frame of the aggregate being folded.
 
 * **Field projection** — select a sub-tree of a structured value: struct-field access (`v.f`), union case
-  selection (`v as C`). Lowering: forward events that fall inside the projected sub-tree to the consumer; ignore
-  events outside it. Frame contribution: none — the structural depth tracking is the decoder's own.
+  selection (`v as C`). Lowering: forward the traversal steps that fall inside the projected sub-tree to the
+  consumer; ignore steps outside it. Frame contribution: none — the structural depth tracking is the decoder's
+  own.
 
-* **Concatenation** — `concat(s1, s2)`. Lowering: dispatch s1's events to s1's handlers; on s1 end, switch to s2.
-  Frame contribution: a small phase tag per concat node, in the enclosing frame.
+* **Concatenation** — `concat(s1, s2)`. Lowering: dispatch s1's traversal to s1's handlers; on s1 end, switch to
+  s2. Frame contribution: a small phase tag per concat node, in the enclosing frame.
 
 * **Bounded windowing** — operations parameterised by a static integer *n*: `take(s, n)`, `drop(s, n)`,
   `chunkBy(s, n)`. Lowering: maintain a counter (`take`, `drop`) or a buffer of *n* elements (`chunkBy`).
@@ -581,18 +537,17 @@ to realise them by composition are rejected at compile time.
 
 Operations explicitly excluded because they have no streamable lowering: `reverse`, `sort` over arbitrary input,
 last-element extraction without bound, `zip` over two streams unless one is statically bounded and small,
-arbitrary indexing, second-pass scans. Their absence is the discipline that keeps every program a one-pass
-event-driven program.
+arbitrary indexing, second-pass scans. Their absence is the discipline that keeps every program one-pass.
 
 A composition of streamable operations is streamable. Its memory cost is computed structurally from the input
 type and the expression — see *Structural Alignment* below.
 
 ### Structural Alignment
 
-Beyond per-operation streamability, a transformation must align *structurally*: the output events it must produce,
-ordered by the output type's traversal, must be fillable from the input events the decoder produces, ordered by
-the input type's traversal, with bounded look-ahead only. The look-ahead is exactly the run stack described in
-*Virtual Modalities* in `README.md`.
+Beyond per-operation streamability, a transformation must align *structurally*: the output traversal it must
+produce, ordered by the output type, must be fillable from the input traversal the decoder drives, ordered by
+the input type, with bounded look-ahead only. The look-ahead is exactly the run stack described in *Virtual
+Modalities* in `README.md`.
 
 The stack mirrors the input type's structural tree. As the decoder enters an aggregate sub-element (a struct, a
 union variant, an array / set / stream item), the bytecode pushes a frame for that sub-element; on leaving, it
@@ -628,16 +583,16 @@ bounded captures only:
 * **Bounded reordering allowed.** Output positions may be filled by input scalars (or bounded sub-aggregates)
   declared earlier in the input than the output position, by adding capture slots to the appropriate frames.
 * **Stream reordering forbidden.** A stream-typed output position must be filled by a stream-typed input
-  sub-element whose events the bytecode is currently consuming under the active frame. The output schedule cannot
-  "skip past" a stream to reach events that come after it, because a stream may be unbounded and capturing it
+  sub-element the bytecode is currently traversing under the active frame. The output schedule cannot "skip
+  past" a stream to reach material that comes after it, because a stream may be unbounded and capturing it
   would require unbounded memory.
 * **Folds bridge the gap.** A fold over a stream produces a bounded value that may be placed anywhere
   structurally later than the stream itself; the fold accumulator lives in the frame and is consumed after the
   stream has been fully walked.
 
 A program that violates structural streamability is rejected at compile time with a precise diagnostic naming the
-output position whose dependency is unsatisfiable, the input position whose events would have had to be buffered
-or revisited, and which of the rules above was violated.
+output position whose dependency is unsatisfiable, the input position whose data would have had to be buffered or
+revisited, and which of the rules above was violated.
 
 ### Accumulator and Outputs
 
@@ -671,9 +626,9 @@ The compiler in the admin tool, given a cluster declaration and a member's trans
   under bounded captures only.
 * Computes `frame(T_in, E)` recursively, lays out each frame, and emits the total stack budget and per-frame
   layout in the bytecode preamble.
-* Lowers the expression tree into per-event dispatch bytecode driven by the decoder's structural events; push and
-  pop instructions correspond exactly to entry into and exit from input aggregates (see *Transformation Language
-  Binary Representation*).
+* Lowers the expression tree into per-position dispatch bytecode driven by the decoder's traversal of the input
+  value; push and pop instructions correspond exactly to entry into and exit from input aggregates (see
+  *Transformation Language Binary Representation*).
 * Rejects programs that fail any of the above: not type-correct, an excluded operation, structurally unalignable,
   total stack budget exceeds what the target device advertises, or attempting effects outside the permitted set.
 
@@ -696,15 +651,20 @@ program is just a value.
 
 ### Virtual Machine Model
 
+The VM observes the input value's structural traversal as a sequence of **events**: entry into and exit from each
+structural sub-element, each scalar, each chunk of bulk bytes. The full vocabulary is enumerated as `EventKind`
+in *Handlers and Triggers* below; it is internal to the bytecode VM and not part of the on-the-wire protocol.
+
 The VM exposes three regions of state, all stack-discipline (no heap, no allocation at runtime):
 
 * A **frame stack** of typed slots that mirrors the input decoder's depth: a frame is pushed on entry to an input aggregate and
   popped on exit. Frames hold values that must outlive a single event — captures, fold accumulators, union discriminators.
 * An **operand stack** of 64-bit slots used within a single handler for expression evaluation. It empties between events.
-* An **output emitter** the device's encoder drains. The bytecode produces structural events (start-field, constructor, scalar,
-  ...); the encoder serializes them per *Values Binary Representation*. The bytecode never sees wire bytes.
+* An **output emitter** the device's encoder drains. The bytecode produces output events drawn from the same
+  vocabulary (see *Instructions* below — the `Emit*` family); the encoder serializes them per *Values Binary
+  Representation*. The bytecode never sees wire bytes.
 
-Execution is event-driven. The runtime fetches the next decoder event, looks up a handler for the `(input position, event)`
+Execution is event-driven. The runtime fetches the next event, looks up a handler for the `(input position, event)`
 pair, and runs it to completion. Handlers do not suspend. Total RAM is `frameStackBytes + operandStackSlots × 8` plus a small
 output buffer; all three are statically known per program.
 
@@ -795,18 +755,25 @@ HandlerTrigger = ProgramStart
 EventKind = OnStartField | OnEndField
          |  OnConstructor
          |  OnStartContainer | OnEndContainer
+         |  OnStartStream
          |  OnStartItem | OnEndItem
          |  OnScalar | OnChunk
 ```
 
-A handler runs in response to one specific decoder event at one specific input position. The trigger identifies that position:
+`OnStartContainer` / `OnEndContainer` fire on entry to and exit from finite containers (`Array`, `Set`).
+`OnStartStream` fires on entry to a `Stream`; there is no end event because a stream has no terminator on the
+wire (see *Stream(T)* in *Per-Type Encoding*). `OnStartItem` / `OnEndItem` wrap each item of an itemized
+container or stream; `OnChunk` carries one batch of bulk bytes and never co-occurs with item events for the same
+sub-element.
+
+A handler runs in response to one specific event at one specific input position. The trigger identifies that position:
 
 * `ProgramStart` — fires once, before any input event, after the runtime has pushed the top-level frame and loaded the prior
   accumulator into it.
 * `TransportEnd` — fires once, after the last input event, while every frame is still on the stack.
-* `AtNode { node, event }` — fires when the decoder produces `event` at input-tree node `node`. Node IDs are assigned by the
-  compiler in a canonical pre-order walk of the input type; the runtime maintains the current node as it advances and uses it
-  to look up handlers.
+* `AtNode { node, event }` — fires when the input traversal reaches `event` at input-tree node `node`. Node IDs are assigned by
+  the compiler in a canonical pre-order walk of the input type; the runtime maintains the current node as it advances and uses
+  it to look up handlers.
 
 The handler list is unordered; the runtime builds whatever dispatch index it needs at load time. Multiple handlers for the
 same trigger are not allowed — the compiler fuses overlapping work. A program with no handler for some `(node, event)` does
@@ -851,6 +818,7 @@ Instruction = ConstI    { value: SignedInteger(8) }
            |  EmitConstructor    { index: VariableLengthInteger(2) }
            |  EmitStartContainer { kind:  ContainerKind }
            |  EmitEndContainer   { kind:  ContainerKind }
+           |  EmitStartStream
            |  EmitStartItem | EmitEndItem
            |  EmitScalar         { kind:  ScalarType }
            |  EmitChunk          { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
@@ -861,10 +829,10 @@ ScalarType = U8 | U16 | U32 | U64
           |  F32 | F64
           |  Vli { maxBytes: VariableLengthInteger(1) }
 
-ContainerKind = ArrayKind | SetKind | StreamKind
+ContainerKind = ArrayKind | SetKind
 ```
 
-The instruction set has 54 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with the
+The instruction set has 55 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with the
 discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 0, 3` is roughly three bytes
 after VLI encoding.
 
@@ -897,9 +865,9 @@ Behaviour by group:
   frame slot at `(depth, slot)`; the slot must be a `SlotBytes` of size at least `count`.
 
 * **Event output.** Each `Emit*` instruction produces one output event. Structural events (`EmitStartField`, `EmitEndField`,
-  `EmitConstructor`, `EmitStartContainer`, `EmitEndContainer`, `EmitStartItem`, `EmitEndItem`) carry their own descriptor.
-  `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits raw bytes from a frame
-  slot region.
+  `EmitConstructor`, `EmitStartContainer`, `EmitEndContainer`, `EmitStartStream`, `EmitStartItem`, `EmitEndItem`) carry their
+  own descriptor. `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits raw
+  bytes from a frame slot region.
 
 ### Accumulator Loading
 

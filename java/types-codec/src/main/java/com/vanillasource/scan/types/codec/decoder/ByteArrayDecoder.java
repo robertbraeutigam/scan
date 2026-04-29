@@ -11,9 +11,9 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
  * then drains the byte payload as a sequence of {@code Chunk(bytes)} events
  * sized opportunistically — at each call, one chunk is emitted of
  * {@code min(availableBytes, remainingPayload)}. After all bytes are read,
- * emits {@code EndContainer(ARRAY)}. The chunked-form delivery (rather than
- * StartItem/EndItem pairs) follows from the element type being a 1-byte
- * primitive; see the spec's <i>Per-Type Event Sequences</i>.
+ * emits {@code EndContainer(ARRAY)}. Batched (chunked) delivery is the
+ * implementation choice for runs of 1-byte-primitive elements; see the spec's
+ * <i>Incremental Consumption</i>.
  */
 public final class ByteArrayDecoder implements ValueDecoder {
     private final int min;
