@@ -6,99 +6,99 @@ import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
+import java.util.function.Supplier;
+
 /**
- * Reads (or skips) the count, emits {@code StartContainer(ARRAY, count)},
- * then drains the byte payload as a sequence of {@code Chunk(bytes)} events
- * sized opportunistically — at each call, one chunk is emitted of
- * {@code min(availableBytes, remainingPayload)}. After all bytes are read,
- * emits {@code EndContainer(ARRAY)}. Batched (chunked) delivery is the
+ * Composes the byte-array's phases via {@link ValueDecoder#andThen}: read (or
+ * skip) the count, emit {@code StartContainer(ARRAY, count)}, drain the
+ * declared payload as opportunistically-sized {@code Chunk(bytes)} events, then
+ * emit {@code EndContainer(ARRAY)}. Batched (chunked) delivery is the
  * implementation choice for runs of 1-byte-primitive elements; see the spec's
  * <i>Incremental Consumption</i>.
  */
 public final class ByteArrayDecoder implements ValueDecoder {
-    private final int min;
-    private final int countVarintBytes;
-    private VariableLengthIntegerDecoder vli;
-    private long count = -1;
-    private long remaining = -1;
-    private boolean startEmitted = false;
-    private boolean endEmitted = false;
+    private final ValueDecoder pipeline;
 
     public ByteArrayDecoder(int min, int countVarintBytes) {
-        this.min = min;
-        this.countVarintBytes = countVarintBytes;
+        long[] countHolder = new long[1];
+        pipeline = captureCount(min, countVarintBytes, countHolder)
+                .andThen(emit(() -> new Event.StartContainer(ContainerKind.ARRAY, countHolder[0])))
+                .andThen(drainChunks(countHolder))
+                .andThen(emit(() -> new Event.EndContainer(ContainerKind.ARRAY)));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
-        if (count < 0) {
-            if (countVarintBytes == 0) {
-                count = min;
-                remaining = count;
-            } else {
-                if (vli == null) {
-                    vli = new VariableLengthIntegerDecoder(countVarintBytes);
-                }
-                LongCapture capture = new LongCapture();
-                if (!vli.parse(bits, capture)) {
-                    return false;
-                }
-                count = capture.value + min;
-                remaining = count;
-            }
-        }
-        if (!startEmitted) {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.put(new Event.StartContainer(ContainerKind.ARRAY, count));
-            startEmitted = true;
-        }
-        while (remaining > 0) {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            int avail = bits.availableBytes();
-            if (avail <= 0) {
-                return false;
-            }
-            int take = (int) Math.min(avail, remaining);
-            byte[] chunk = new byte[take];
-            int read = bits.readBytes(chunk, 0, take);
-            if (read <= 0) {
-                return false;
-            }
-            if (read < take) {
-                byte[] shrunk = new byte[read];
-                System.arraycopy(chunk, 0, shrunk, 0, read);
-                chunk = shrunk;
-            }
-            sink.put(new Event.Chunk(chunk));
-            remaining -= read;
-        }
-        if (!endEmitted) {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.put(new Event.EndContainer(ContainerKind.ARRAY));
-            endEmitted = true;
-        }
-        return true;
+        return pipeline.parse(bits, sink);
     }
 
-    private static final class LongCapture implements EventSink {
-        long value;
-
-        @Override
-        public int writableEvents() {
-            return Integer.MAX_VALUE;
-        }
-
-        @Override
-        public void put(Event event) {
-            if (event instanceof Event.IntegerScalar is) {
-                value = is.value();
+    private static ValueDecoder emit(Supplier<Event> eventFn) {
+        return (bits, sink) -> {
+            if (sink.writableEvents() <= 0) {
+                return false;
             }
+            sink.put(eventFn.get());
+            return true;
+        };
+    }
+
+    private static ValueDecoder captureCount(int min, int countVarintBytes, long[] target) {
+        if (countVarintBytes == 0) {
+            return (bits, sink) -> {
+                target[0] = min;
+                return true;
+            };
         }
+        ValueDecoder vli = new VariableLengthIntegerDecoder(countVarintBytes);
+        EventSink capture = new EventSink() {
+            @Override
+            public int writableEvents() {
+                return Integer.MAX_VALUE;
+            }
+
+            @Override
+            public void put(Event event) {
+                if (event instanceof Event.IntegerScalar is) {
+                    target[0] = is.value() + min;
+                }
+            }
+        };
+        return (bits, sink) -> vli.parse(bits, capture);
+    }
+
+    private static ValueDecoder drainChunks(long[] countHolder) {
+        return new ValueDecoder() {
+            private long remaining = -1;
+
+            @Override
+            public boolean parse(BitSource bits, EventSink sink) {
+                if (remaining < 0) {
+                    remaining = countHolder[0];
+                }
+                while (remaining > 0) {
+                    if (sink.writableEvents() <= 0) {
+                        return false;
+                    }
+                    int avail = bits.availableBytes();
+                    if (avail <= 0) {
+                        return false;
+                    }
+                    int take = (int) Math.min(avail, remaining);
+                    byte[] chunk = new byte[take];
+                    int read = bits.readBytes(chunk, 0, take);
+                    if (read <= 0) {
+                        return false;
+                    }
+                    if (read < take) {
+                        byte[] shrunk = new byte[read];
+                        System.arraycopy(chunk, 0, shrunk, 0, read);
+                        chunk = shrunk;
+                    }
+                    sink.put(new Event.Chunk(chunk));
+                    remaining -= read;
+                }
+                return true;
+            }
+        };
     }
 }

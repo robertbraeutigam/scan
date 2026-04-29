@@ -6,58 +6,57 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Consumes a single {@code StartStream} event on entry, then iterates items
+ * Composes the stream's phases via {@link ValueEncoder#andThen}: consume a
+ * single {@code StartStream} event on entry, then iterate items
  * ({@code StartItem}, item events, {@code EndItem}) for as long as events are
- * available and the sink has room. Always returns {@code false} from
- * {@link #generate}: a stream has no terminator on the wire, so completion is
- * declared externally by the transport.
+ * available and the sink has room. The item-loop phase never completes — a
+ * stream has no terminator on the wire, so completion is declared externally
+ * by the transport.
  */
 public final class StreamEncoder implements ValueEncoder {
-    private final Type itemType;
-    private boolean startConsumed = false;
-    private ValueEncoder currentItem;
-    private int itemPhase = PHASE_BEFORE_START_ITEM;
-
-    private static final int PHASE_BEFORE_START_ITEM = 0;
-    private static final int PHASE_BODY = 1;
-    private static final int PHASE_BEFORE_END_ITEM = 2;
+    private final ValueEncoder pipeline;
 
     public StreamEncoder(Type itemType) {
-        this.itemType = itemType;
+        pipeline = consumeOne().andThen(itemLoop(itemType));
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
-        if (!startConsumed) {
+        return pipeline.generate(events, sink);
+    }
+
+    private static ValueEncoder consumeOne() {
+        return (events, sink) -> {
             if (events.availableEvents() <= 0) {
                 return false;
             }
-            events.read(); // StartStream
-            startConsumed = true;
-        }
-        while (true) {
-            if (itemPhase == PHASE_BEFORE_START_ITEM) {
-                if (events.availableEvents() <= 0) {
-                    return false;
+            events.read();
+            return true;
+        };
+    }
+
+    private static ValueEncoder oneItem(Type itemType) {
+        return consumeOne()
+                .andThen(itemType.createEncoder())
+                .andThen(consumeOne());
+    }
+
+    private static ValueEncoder itemLoop(Type itemType) {
+        return new ValueEncoder() {
+            private ValueEncoder current;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
+                while (true) {
+                    if (current == null) {
+                        current = oneItem(itemType);
+                    }
+                    if (!current.generate(events, sink)) {
+                        return false;
+                    }
+                    current = null;
                 }
-                events.read(); // StartItem
-                currentItem = itemType.createEncoder();
-                itemPhase = PHASE_BODY;
             }
-            if (itemPhase == PHASE_BODY) {
-                if (!currentItem.generate(events, sink)) {
-                    return false;
-                }
-                currentItem = null;
-                itemPhase = PHASE_BEFORE_END_ITEM;
-            }
-            if (itemPhase == PHASE_BEFORE_END_ITEM) {
-                if (events.availableEvents() <= 0) {
-                    return false;
-                }
-                events.read(); // EndItem
-                itemPhase = PHASE_BEFORE_START_ITEM;
-            }
-        }
+        };
     }
 }

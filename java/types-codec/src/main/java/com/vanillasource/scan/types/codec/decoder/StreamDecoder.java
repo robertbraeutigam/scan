@@ -7,61 +7,60 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
- * Emits {@code StartStream} once on entry, then iterates items
+ * Composes the stream's phases via {@link ValueDecoder#andThen}: emit
+ * {@code StartStream} once on entry, then iterate items
  * ({@code StartItem}, item events, {@code EndItem}) for as long as bytes are
- * available and the sink has room. Always returns {@code false} from
- * {@link #parse}: a stream has no terminator on the wire, so completion is
- * declared externally by the transport.
+ * available and the sink has room. The item-loop phase never completes — a
+ * stream has no terminator on the wire, so completion is declared externally
+ * by the transport.
  */
 public final class StreamDecoder implements ValueDecoder {
-    private final Type itemType;
-    private boolean startEmitted = false;
-    private ValueDecoder currentItem;
-    private int itemPhase = PHASE_BEFORE_START_ITEM;
-
-    private static final int PHASE_BEFORE_START_ITEM = 0;
-    private static final int PHASE_BODY = 1;
-    private static final int PHASE_BEFORE_END_ITEM = 2;
+    private final ValueDecoder pipeline;
 
     public StreamDecoder(Type itemType) {
-        this.itemType = itemType;
+        pipeline = emit(new Event.StartStream()).andThen(itemLoop(itemType));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
-        if (!startEmitted) {
+        return pipeline.parse(bits, sink);
+    }
+
+    private static ValueDecoder emit(Event event) {
+        return (bits, sink) -> {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartStream());
-            startEmitted = true;
-        }
-        while (true) {
-            if (itemPhase == PHASE_BEFORE_START_ITEM) {
-                if (sink.writableEvents() <= 0) {
-                    return false;
+            sink.put(event);
+            return true;
+        };
+    }
+
+    private static ValueDecoder oneItem(Type itemType) {
+        return emit(new Event.StartItem())
+                .andThen(itemType.createDecoder())
+                .andThen(emit(new Event.EndItem()));
+    }
+
+    private static ValueDecoder itemLoop(Type itemType) {
+        return new ValueDecoder() {
+            private ValueDecoder current;
+
+            @Override
+            public boolean parse(BitSource bits, EventSink sink) {
+                while (true) {
+                    if (current == null) {
+                        if (bits.availableBytes() <= 0 && bits.availableBits() <= 0) {
+                            return false;
+                        }
+                        current = oneItem(itemType);
+                    }
+                    if (!current.parse(bits, sink)) {
+                        return false;
+                    }
+                    current = null;
                 }
-                if (bits.availableBytes() <= 0 && bits.availableBits() <= 0) {
-                    return false;
-                }
-                sink.put(new Event.StartItem());
-                currentItem = itemType.createDecoder();
-                itemPhase = PHASE_BODY;
             }
-            if (itemPhase == PHASE_BODY) {
-                if (!currentItem.parse(bits, sink)) {
-                    return false;
-                }
-                currentItem = null;
-                itemPhase = PHASE_BEFORE_END_ITEM;
-            }
-            if (itemPhase == PHASE_BEFORE_END_ITEM) {
-                if (sink.writableEvents() <= 0) {
-                    return false;
-                }
-                sink.put(new Event.EndItem());
-                itemPhase = PHASE_BEFORE_START_ITEM;
-            }
-        }
+        };
     }
 }

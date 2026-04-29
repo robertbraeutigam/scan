@@ -11,45 +11,58 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
  * either because its high bit is clear or because {@code maxBytes} bytes have been read.
  */
 public final class VariableLengthIntegerDecoder implements ValueDecoder {
-    private final int maxBytes;
-    private int bytesRead = 0;
-    private long accumulator = 0;
-    private boolean readyToEmit = false;
+    private final ValueDecoder pipeline;
 
     public VariableLengthIntegerDecoder(int maxBytes) {
         if (maxBytes < 1 || maxBytes > 8) {
             throw new IllegalArgumentException("maxBytes must be 1..8: " + maxBytes);
         }
-        this.maxBytes = maxBytes;
+        long[] valueHolder = new long[1];
+        pipeline = readBytes(maxBytes, valueHolder)
+                .andThen(emitInteger(valueHolder));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
-        if (!readyToEmit) {
-            while (bits.availableBytes() > 0) {
-                int b = bits.readUnsignedByte();
-                bytesRead++;
-                if (bytesRead == maxBytes) {
-                    accumulator = (accumulator << 8) | (b & 0xFF);
-                    readyToEmit = true;
-                    break;
+        return pipeline.parse(bits, sink);
+    }
+
+    private static ValueDecoder readBytes(int maxBytes, long[] valueHolder) {
+        return new ValueDecoder() {
+            private int bytesRead = 0;
+            private long accumulator = 0;
+
+            @Override
+            public boolean parse(BitSource bits, EventSink sink) {
+                while (bits.availableBytes() > 0) {
+                    int b = bits.readUnsignedByte();
+                    bytesRead++;
+                    if (bytesRead == maxBytes) {
+                        accumulator = (accumulator << 8) | (b & 0xFF);
+                        valueHolder[0] = accumulator;
+                        return true;
+                    }
+                    if ((b & 0x80) == 0) {
+                        accumulator = (accumulator << 7) | (b & 0xFF);
+                        valueHolder[0] = accumulator;
+                        return true;
+                    }
+                    accumulator = (accumulator << 7) | (b & 0x7F);
                 }
-                if ((b & 0x80) == 0) {
-                    accumulator = (accumulator << 7) | (b & 0xFF);
-                    readyToEmit = true;
-                    break;
-                }
-                accumulator = (accumulator << 7) | (b & 0x7F);
-            }
-            if (!readyToEmit) {
                 return false;
             }
-        }
-        if (sink.writableEvents() <= 0) {
-            return false;
-        }
-        int sign = accumulator == 0 ? 0 : 1;
-        sink.put(new Event.IntegerScalar(accumulator, sign));
-        return true;
+        };
+    }
+
+    private static ValueDecoder emitInteger(long[] valueHolder) {
+        return (bits, sink) -> {
+            if (sink.writableEvents() <= 0) {
+                return false;
+            }
+            long v = valueHolder[0];
+            int sign = v == 0 ? 0 : 1;
+            sink.put(new Event.IntegerScalar(v, sign));
+            return true;
+        };
     }
 }

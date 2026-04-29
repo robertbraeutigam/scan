@@ -6,39 +6,46 @@ import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Consumes {@code StartContainer(ARRAY, count)}, writes the count VLI
- * (omitted when {@code countVarintBytes == 0}), then accepts {@code Chunk}
- * events whose total byte length must equal the declared count, finally
- * consumes {@code EndContainer(ARRAY)}. Bytes from each chunk are written
- * straight through to the sink; partial sink space is honoured by buffering
- * the in-flight chunk's offset.
+ * Composes the byte-array's phases via {@link ValueEncoder#andThen}: consume
+ * {@code StartContainer(ARRAY, count)} (validating the count against
+ * {@code min} and the fixed-length contract), write the count (omitted when
+ * {@code countVarintBytes == 0}, otherwise {@code count - min} as a
+ * {@code VariableLengthInteger(countVarintBytes)}), drain {@code Chunk} events
+ * whose total byte length must equal the declared count straight to the sink,
+ * then consume {@code EndContainer(ARRAY)}.
  */
 public final class ByteArrayEncoder implements ValueEncoder {
-    private final int min;
-    private final int countVarintBytes;
-    private boolean startConsumed = false;
-    private long count = -1;
-    private long remaining = -1;
-    private VariableLengthIntegerEncoder vli;
-    private EventSource vliSource;
-    private boolean countWritten = false;
-    private byte[] pendingChunk;
-    private int pendingOffset = 0;
-    private boolean endConsumed = false;
+    private final ValueEncoder pipeline;
 
     public ByteArrayEncoder(int min, int countVarintBytes) {
-        this.min = min;
-        this.countVarintBytes = countVarintBytes;
+        long[] countHolder = new long[1];
+        pipeline = captureStartContainer(countHolder, min, countVarintBytes)
+                .andThen(writeCount(min, countVarintBytes, countHolder))
+                .andThen(drainChunks(countHolder))
+                .andThen(consumeOne());
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
-        if (!startConsumed) {
+        return pipeline.generate(events, sink);
+    }
+
+    private static ValueEncoder consumeOne() {
+        return (events, sink) -> {
             if (events.availableEvents() <= 0) {
                 return false;
             }
-            Event.StartContainer sc = (Event.StartContainer) events.read();
-            count = sc.count();
+            events.read();
+            return true;
+        };
+    }
+
+    private static ValueEncoder captureStartContainer(long[] target, int min, int countVarintBytes) {
+        return (events, sink) -> {
+            if (events.availableEvents() <= 0) {
+                return false;
+            }
+            long count = ((Event.StartContainer) events.read()).count();
             if (count < min) {
                 throw new IllegalArgumentException(
                         "count " + count + " is below min " + min);
@@ -47,61 +54,30 @@ public final class ByteArrayEncoder implements ValueEncoder {
                 throw new IllegalArgumentException(
                         "fixed-length ByteArray requires count == " + min + ", got " + count);
             }
-            remaining = count;
-            startConsumed = true;
+            target[0] = count;
+            return true;
+        };
+    }
+
+    private static ValueEncoder writeCount(int min, int countVarintBytes, long[] countHolder) {
+        if (countVarintBytes == 0) {
+            return (events, sink) -> true;
         }
-        if (!countWritten) {
-            if (countVarintBytes == 0) {
-                countWritten = true;
-            } else {
+        return new ValueEncoder() {
+            private ValueEncoder vli;
+            private EventSource fixedSource;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
                 if (vli == null) {
                     vli = new VariableLengthIntegerEncoder(countVarintBytes);
-                    long delta = count - min;
-                    vliSource = singletonSource(
+                    long delta = countHolder[0] - min;
+                    fixedSource = singletonSource(
                             new Event.IntegerScalar(delta, delta == 0 ? 0 : 1));
                 }
-                if (!vli.generate(vliSource, sink)) {
-                    return false;
-                }
-                countWritten = true;
+                return vli.generate(fixedSource, sink);
             }
-        }
-        while (remaining > 0) {
-            if (pendingChunk == null) {
-                if (events.availableEvents() <= 0) {
-                    return false;
-                }
-                Event.Chunk chunk = (Event.Chunk) events.read();
-                if (chunk.bytes().length > remaining) {
-                    throw new IllegalArgumentException(
-                            "chunk of " + chunk.bytes().length
-                                    + " bytes overflows remaining " + remaining);
-                }
-                pendingChunk = chunk.bytes();
-                pendingOffset = 0;
-            }
-            while (pendingOffset < pendingChunk.length) {
-                if (sink.writableBytes() <= 0) {
-                    return false;
-                }
-                int n = sink.write(pendingChunk, pendingOffset,
-                        pendingChunk.length - pendingOffset);
-                if (n <= 0) {
-                    return false;
-                }
-                pendingOffset += n;
-            }
-            remaining -= pendingChunk.length;
-            pendingChunk = null;
-        }
-        if (!endConsumed) {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read(); // EndContainer
-            endConsumed = true;
-        }
-        return true;
+        };
     }
 
     private static EventSource singletonSource(Event event) {
@@ -120,6 +96,50 @@ public final class ByteArrayEncoder implements ValueEncoder {
                 }
                 remaining--;
                 return event;
+            }
+        };
+    }
+
+    private static ValueEncoder drainChunks(long[] countHolder) {
+        return new ValueEncoder() {
+            private long remaining = -1;
+            private byte[] pendingChunk;
+            private int pendingOffset = 0;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
+                if (remaining < 0) {
+                    remaining = countHolder[0];
+                }
+                while (remaining > 0) {
+                    if (pendingChunk == null) {
+                        if (events.availableEvents() <= 0) {
+                            return false;
+                        }
+                        Event.Chunk chunk = (Event.Chunk) events.read();
+                        if (chunk.bytes().length > remaining) {
+                            throw new IllegalArgumentException(
+                                    "chunk of " + chunk.bytes().length
+                                            + " bytes overflows remaining " + remaining);
+                        }
+                        pendingChunk = chunk.bytes();
+                        pendingOffset = 0;
+                    }
+                    while (pendingOffset < pendingChunk.length) {
+                        if (sink.writableBytes() <= 0) {
+                            return false;
+                        }
+                        int n = sink.write(pendingChunk, pendingOffset,
+                                pendingChunk.length - pendingOffset);
+                        if (n <= 0) {
+                            return false;
+                        }
+                        pendingOffset += n;
+                    }
+                    remaining -= pendingChunk.length;
+                    pendingChunk = null;
+                }
+                return true;
             }
         };
     }

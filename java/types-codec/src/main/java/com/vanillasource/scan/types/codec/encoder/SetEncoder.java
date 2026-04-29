@@ -6,88 +6,110 @@ import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Consumes the {@code StartContainer(SET, count)} /
- * {@code StartItem}/{@code Constructor(i)}/{@code EndItem} ... /
- * {@code EndContainer(SET)} event sequence, accumulates the constructor
- * indices into a {@code memberCount}-bit bitmask, then writes those bits into
- * the bit stream MSB-first per TYPES.md §"Set(T)".
+ * Composes the set's phases via {@link ValueEncoder#andThen}: consume
+ * {@code StartContainer(SET, count)}, then {@code count} items
+ * ({@code StartItem}/{@code Constructor(i)}/{@code EndItem}) accumulating the
+ * indices into a {@code memberCount}-bit bitmask, then consume
+ * {@code EndContainer(SET)}, finally write the bitmask MSB-first per
+ * TYPES.md §"Set(T)".
  */
 public final class SetEncoder implements ValueEncoder {
-    private final int memberCount;
-    private final byte[] bitmask;
-    private int phase = PHASE_CONSUME_START;
-    private int itemsRemaining = -1;
-    private int itemSubPhase = 0; // 0=StartItem, 1=Constructor, 2=EndItem
-    private int bitsWritten = 0;
-
-    private static final int PHASE_CONSUME_START = 0;
-    private static final int PHASE_CONSUME_ITEMS = 1;
-    private static final int PHASE_CONSUME_END = 2;
-    private static final int PHASE_WRITE_BITS = 3;
-    private static final int PHASE_DONE = 4;
+    private final ValueEncoder pipeline;
 
     public SetEncoder(int memberCount) {
-        this.memberCount = memberCount;
-        this.bitmask = new byte[(memberCount + 7) / 8];
+        byte[] bitmask = new byte[(memberCount + 7) / 8];
+        int[] itemsRemainingHolder = new int[]{-1};
+        pipeline = consumeStartContainer(itemsRemainingHolder)
+                .andThen(consumeItems(itemsRemainingHolder, bitmask, memberCount))
+                .andThen(consumeOne())
+                .andThen(writeBitmask(bitmask, memberCount));
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
-        if (phase == PHASE_CONSUME_START) {
+        return pipeline.generate(events, sink);
+    }
+
+    private static ValueEncoder consumeOne() {
+        return (events, sink) -> {
+            if (events.availableEvents() <= 0) {
+                return false;
+            }
+            events.read();
+            return true;
+        };
+    }
+
+    private static ValueEncoder consumeStartContainer(int[] itemsRemainingHolder) {
+        return (events, sink) -> {
             if (events.availableEvents() <= 0) {
                 return false;
             }
             Event.StartContainer sc = (Event.StartContainer) events.read();
-            itemsRemaining = (int) sc.count();
-            phase = PHASE_CONSUME_ITEMS;
-        }
-        while (phase == PHASE_CONSUME_ITEMS) {
-            if (itemsRemaining == 0) {
-                phase = PHASE_CONSUME_END;
-                break;
-            }
-            if (itemSubPhase == 0) {
-                if (events.availableEvents() <= 0) return false;
-                events.read(); // StartItem
-                itemSubPhase = 1;
-            }
-            if (itemSubPhase == 1) {
-                if (events.availableEvents() <= 0) return false;
-                int index = ((Event.Constructor) events.read()).index();
-                if (index < 0 || index >= memberCount) {
-                    throw new IllegalArgumentException(
-                            "constructor index " + index + " out of range for "
-                                    + memberCount + "-member set");
-                }
-                setBit(bitmask, index);
-                itemSubPhase = 2;
-            }
-            if (itemSubPhase == 2) {
-                if (events.availableEvents() <= 0) return false;
-                events.read(); // EndItem
-                itemSubPhase = 0;
-                itemsRemaining--;
-            }
-        }
-        if (phase == PHASE_CONSUME_END) {
-            if (events.availableEvents() <= 0) return false;
-            events.read(); // EndContainer
-            phase = PHASE_WRITE_BITS;
-        }
-        if (phase == PHASE_WRITE_BITS) {
-            while (bitsWritten < memberCount && sink.writableBits() > 0) {
-                int byteIndex = bitsWritten / 8;
-                int bitInByte = 7 - (bitsWritten % 8);
-                int bit = (bitmask[byteIndex] >>> bitInByte) & 1;
-                sink.writeBits(bit, 1);
-                bitsWritten++;
-            }
-            if (bitsWritten < memberCount) {
+            itemsRemainingHolder[0] = (int) sc.count();
+            return true;
+        };
+    }
+
+    private static ValueEncoder consumeConstructor(byte[] bitmask, int memberCount) {
+        return (events, sink) -> {
+            if (events.availableEvents() <= 0) {
                 return false;
             }
-            phase = PHASE_DONE;
-        }
-        return phase == PHASE_DONE;
+            int index = ((Event.Constructor) events.read()).index();
+            if (index < 0 || index >= memberCount) {
+                throw new IllegalArgumentException(
+                        "constructor index " + index + " out of range for "
+                                + memberCount + "-member set");
+            }
+            setBit(bitmask, index);
+            return true;
+        };
+    }
+
+    private static ValueEncoder oneItem(byte[] bitmask, int memberCount) {
+        return consumeOne()
+                .andThen(consumeConstructor(bitmask, memberCount))
+                .andThen(consumeOne());
+    }
+
+    private static ValueEncoder consumeItems(int[] itemsRemainingHolder, byte[] bitmask, int memberCount) {
+        return new ValueEncoder() {
+            private ValueEncoder current;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
+                while (itemsRemainingHolder[0] > 0) {
+                    if (current == null) {
+                        current = oneItem(bitmask, memberCount);
+                    }
+                    if (!current.generate(events, sink)) {
+                        return false;
+                    }
+                    current = null;
+                    itemsRemainingHolder[0]--;
+                }
+                return true;
+            }
+        };
+    }
+
+    private static ValueEncoder writeBitmask(byte[] bitmask, int memberCount) {
+        return new ValueEncoder() {
+            private int bitsWritten = 0;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
+                while (bitsWritten < memberCount && sink.writableBits() > 0) {
+                    int byteIndex = bitsWritten / 8;
+                    int bitInByte = 7 - (bitsWritten % 8);
+                    int bit = (bitmask[byteIndex] >>> bitInByte) & 1;
+                    sink.writeBits(bit, 1);
+                    bitsWritten++;
+                }
+                return bitsWritten == memberCount;
+            }
+        };
     }
 
     private static void setBit(byte[] mask, int i) {

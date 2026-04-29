@@ -7,30 +7,43 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /** Writes a fixed-width big-endian integer from a single {@link Event.IntegerScalar}. */
 public final class IntegerEncoder implements ValueEncoder {
-    private final int byteSize;
-    private long value;
-    private int remainingBytes;
-    private boolean valueRead = false;
+    private final ValueEncoder pipeline;
 
     public IntegerEncoder(int byteSize) {
-        this.byteSize = byteSize;
-        this.remainingBytes = byteSize;
+        long[] valueHolder = new long[1];
+        pipeline = consumeValue(valueHolder)
+                .andThen(writeBytes(byteSize, valueHolder));
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
-        if (!valueRead) {
+        return pipeline.generate(events, sink);
+    }
+
+    private static ValueEncoder consumeValue(long[] valueHolder) {
+        return (events, sink) -> {
             if (events.availableEvents() <= 0) {
                 return false;
             }
-            value = ((Event.IntegerScalar) events.read()).value();
-            valueRead = true;
-        }
-        while (remainingBytes > 0 && sink.writableBytes() > 0) {
-            int b = (int) ((value >>> ((remainingBytes - 1) * 8)) & 0xFF);
-            sink.writeUnsignedByte(b);
-            remainingBytes--;
-        }
-        return remainingBytes == 0;
+            valueHolder[0] = ((Event.IntegerScalar) events.read()).value();
+            return true;
+        };
+    }
+
+    private static ValueEncoder writeBytes(int byteSize, long[] valueHolder) {
+        return new ValueEncoder() {
+            private int remainingBytes = byteSize;
+
+            @Override
+            public boolean generate(EventSource events, BitSink sink) {
+                long value = valueHolder[0];
+                while (remainingBytes > 0 && sink.writableBytes() > 0) {
+                    int b = (int) ((value >>> ((remainingBytes - 1) * 8)) & 0xFF);
+                    sink.writeUnsignedByte(b);
+                    remainingBytes--;
+                }
+                return remainingBytes == 0;
+            }
+        };
     }
 }

@@ -9,10 +9,10 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
 import java.util.List;
 
 /**
- * Walks a list of fields in declaration order, emitting
- * {@code StartField(i)} / {@code EndField(i)} around each field's value
- * events. Bit state is left to the underlying {@link BitSource} so it carries
- * across the field boundaries as the spec requires.
+ * Composes the struct's fields via {@link ValueDecoder#andThen}: for each field
+ * in declaration order emit {@code StartField(i)} / {@code EndField(i)} around
+ * its value events. Bit state is left to the underlying {@link BitSource} so
+ * it carries across the field boundaries as the spec requires.
  *
  * <p>If a field's decoder never completes (e.g. a {@code Stream}) the struct
  * decoder also never completes — no {@code EndField} is emitted, matching
@@ -20,42 +20,38 @@ import java.util.List;
  * transport ends" in TYPES.md.
  */
 public final class StructDecoder implements ValueDecoder {
-    private final List<Type> fieldTypes;
-    private int fieldIndex = 0;
-    private ValueDecoder currentField;
-    private boolean startEmitted = false;
-    private boolean fieldComplete = false;
+    private final ValueDecoder pipeline;
 
     public StructDecoder(List<Type> fieldTypes) {
-        this.fieldTypes = fieldTypes;
+        ValueDecoder p = noOp();
+        for (int i = 0; i < fieldTypes.size(); i++) {
+            p = p.andThen(oneField(i, fieldTypes.get(i)));
+        }
+        pipeline = p;
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
-        while (fieldIndex < fieldTypes.size()) {
-            if (!startEmitted) {
-                if (sink.writableEvents() <= 0) {
-                    return false;
-                }
-                sink.put(new Event.StartField(fieldIndex));
-                startEmitted = true;
-                currentField = fieldTypes.get(fieldIndex).createDecoder();
-            }
-            if (!fieldComplete) {
-                if (!currentField.parse(bits, sink)) {
-                    return false;
-                }
-                fieldComplete = true;
-                currentField = null;
-            }
+        return pipeline.parse(bits, sink);
+    }
+
+    private static ValueDecoder noOp() {
+        return (bits, sink) -> true;
+    }
+
+    private static ValueDecoder emit(Event event) {
+        return (bits, sink) -> {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.EndField(fieldIndex));
-            fieldIndex++;
-            startEmitted = false;
-            fieldComplete = false;
-        }
-        return true;
+            sink.put(event);
+            return true;
+        };
+    }
+
+    private static ValueDecoder oneField(int index, Type type) {
+        return emit(new Event.StartField(index))
+                .andThen(type.createDecoder())
+                .andThen(emit(new Event.EndField(index)));
     }
 }
