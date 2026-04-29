@@ -24,22 +24,12 @@ public final class ArrayEncoder implements ValueEncoder {
         pipeline = captureStartContainer(countHolder, min, countVarintBytes)
                 .andThen(writeCount(min, countVarintBytes, countHolder))
                 .andThen(items(countHolder, itemType))
-                .andThen(consumeOne());
+                .andThen(ValueEncoder.skipEvent());
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
         return pipeline.generate(events, sink);
-    }
-
-    private static ValueEncoder consumeOne() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
     }
 
     private static ValueEncoder captureStartContainer(long[] target, int min, int countVarintBytes) {
@@ -102,12 +92,6 @@ public final class ArrayEncoder implements ValueEncoder {
         };
     }
 
-    private static ValueEncoder oneItem(Type itemType) {
-        return consumeOne()
-                .andThen(itemType.createEncoder())
-                .andThen(consumeOne());
-    }
-
     private static ValueEncoder items(long[] countHolder, Type itemType) {
         return new ValueEncoder() {
             private long remaining = -1;
@@ -120,7 +104,7 @@ public final class ArrayEncoder implements ValueEncoder {
                 }
                 while (remaining > 0) {
                     if (current == null) {
-                        current = oneItem(itemType);
+                        current = itemType.createEncoder().bracketed();
                     }
                     if (!current.generate(events, sink)) {
                         return false;

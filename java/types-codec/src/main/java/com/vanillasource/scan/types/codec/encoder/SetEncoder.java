@@ -21,23 +21,13 @@ public final class SetEncoder implements ValueEncoder {
         int[] itemsRemainingHolder = new int[]{-1};
         pipeline = consumeStartContainer(itemsRemainingHolder)
                 .andThen(consumeItems(itemsRemainingHolder, bitmask, memberCount))
-                .andThen(consumeOne())
+                .andThen(ValueEncoder.skipEvent())
                 .andThen(writeBitmask(bitmask, memberCount));
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
         return pipeline.generate(events, sink);
-    }
-
-    private static ValueEncoder consumeOne() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
     }
 
     private static ValueEncoder consumeStartContainer(int[] itemsRemainingHolder) {
@@ -68,9 +58,7 @@ public final class SetEncoder implements ValueEncoder {
     }
 
     private static ValueEncoder oneItem(byte[] bitmask, int memberCount) {
-        return consumeOne()
-                .andThen(consumeConstructor(bitmask, memberCount))
-                .andThen(consumeOne());
+        return consumeConstructor(bitmask, memberCount).bracketed();
     }
 
     private static ValueEncoder consumeItems(int[] itemsRemainingHolder, byte[] bitmask, int memberCount) {

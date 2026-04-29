@@ -17,28 +17,12 @@ public final class StreamEncoder implements ValueEncoder {
     private final ValueEncoder pipeline;
 
     public StreamEncoder(Type itemType) {
-        pipeline = consumeOne().andThen(itemLoop(itemType));
+        pipeline = ValueEncoder.skipEvent().andThen(itemLoop(itemType));
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
         return pipeline.generate(events, sink);
-    }
-
-    private static ValueEncoder consumeOne() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
-    }
-
-    private static ValueEncoder oneItem(Type itemType) {
-        return consumeOne()
-                .andThen(itemType.createEncoder())
-                .andThen(consumeOne());
     }
 
     private static ValueEncoder itemLoop(Type itemType) {
@@ -49,7 +33,7 @@ public final class StreamEncoder implements ValueEncoder {
             public boolean generate(EventSource events, BitSink sink) {
                 while (true) {
                     if (current == null) {
-                        current = oneItem(itemType);
+                        current = itemType.createEncoder().bracketed();
                     }
                     if (!current.generate(events, sink)) {
                         return false;

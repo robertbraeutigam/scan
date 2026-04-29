@@ -20,24 +20,14 @@ public final class SetDecoder implements ValueDecoder {
         byte[] bitmask = new byte[(memberCount + 7) / 8];
         int[] popCountHolder = new int[1];
         pipeline = readBits(memberCount, bitmask, popCountHolder)
-                .andThen(emit(() -> new Event.StartContainer(ContainerKind.SET, popCountHolder[0])))
+                .andThen(ValueDecoder.writeEvent(() -> new Event.StartContainer(ContainerKind.SET, popCountHolder[0])))
                 .andThen(emitItems(bitmask, memberCount))
-                .andThen(emit(() -> new Event.EndContainer(ContainerKind.SET)));
+                .andThen(ValueDecoder.writeEvent(new Event.EndContainer(ContainerKind.SET)));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         return pipeline.parse(bits, sink);
-    }
-
-    private static ValueDecoder emit(java.util.function.Supplier<Event> eventFn) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(eventFn.get());
-            return true;
-        };
     }
 
     private static ValueDecoder readBits(int memberCount, byte[] bitmask, int[] popCountHolder) {
@@ -65,9 +55,8 @@ public final class SetDecoder implements ValueDecoder {
     }
 
     private static ValueDecoder oneItem(int index) {
-        return emit(() -> new Event.StartItem())
-                .andThen(emit(() -> new Event.Constructor(index)))
-                .andThen(emit(() -> new Event.EndItem()));
+        return ValueDecoder.writeEvent(new Event.Constructor(index))
+                .between(new Event.StartItem(), new Event.EndItem());
     }
 
     private static ValueDecoder emitItems(byte[] bitmask, int memberCount) {

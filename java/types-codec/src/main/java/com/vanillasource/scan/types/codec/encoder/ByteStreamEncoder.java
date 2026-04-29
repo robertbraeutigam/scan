@@ -14,21 +14,11 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
  * transport.
  */
 public final class ByteStreamEncoder implements ValueEncoder {
-    private final ValueEncoder pipeline = consumeStartStream().andThen(drainChunks());
+    private final ValueEncoder pipeline = ValueEncoder.skipEvent().andThen(drainChunks());
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
         return pipeline.generate(events, sink);
-    }
-
-    private static ValueEncoder consumeStartStream() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
     }
 
     private static ValueEncoder drainChunks() {

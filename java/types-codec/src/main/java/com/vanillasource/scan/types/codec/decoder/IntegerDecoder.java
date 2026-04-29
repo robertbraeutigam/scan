@@ -12,7 +12,11 @@ public final class IntegerDecoder implements ValueDecoder {
     public IntegerDecoder(int byteSize, boolean signed) {
         long[] valueHolder = new long[1];
         pipeline = readBytes(byteSize, signed, valueHolder)
-                .andThen(emitInteger(valueHolder, signed));
+                .andThen(ValueDecoder.writeEvent(() -> {
+                    long v = valueHolder[0];
+                    int sign = signed ? Long.signum(v) : (v == 0 ? 0 : 1);
+                    return new Event.IntegerScalar(v, sign);
+                }));
     }
 
     @Override
@@ -46,15 +50,4 @@ public final class IntegerDecoder implements ValueDecoder {
         };
     }
 
-    private static ValueDecoder emitInteger(long[] valueHolder, boolean signed) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            long v = valueHolder[0];
-            int sign = signed ? Long.signum(v) : (v == 0 ? 0 : 1);
-            sink.write(new Event.IntegerScalar(v, sign));
-            return true;
-        };
-    }
 }

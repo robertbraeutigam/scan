@@ -19,7 +19,8 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
         }
         long[] valueHolder = new long[1];
         pipeline = readBytes(maxBytes, valueHolder)
-                .andThen(emitInteger(valueHolder));
+                .andThen(ValueDecoder.writeEvent(() -> new Event.IntegerScalar(
+                        valueHolder[0], valueHolder[0] == 0 ? 0 : 1)));
     }
 
     @Override
@@ -54,15 +55,4 @@ public final class VariableLengthIntegerDecoder implements ValueDecoder {
         };
     }
 
-    private static ValueDecoder emitInteger(long[] valueHolder) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            long v = valueHolder[0];
-            int sign = v == 0 ? 0 : 1;
-            sink.write(new Event.IntegerScalar(v, sign));
-            return true;
-        };
-    }
 }

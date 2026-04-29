@@ -22,7 +22,7 @@ public final class UnionDecoder implements ValueDecoder {
         int discriminatorBits = Union.discriminatorBits(constructorFields.size());
         int[] indexHolder = new int[1];
         pipeline = readDiscriminator(discriminatorBits, constructorFields.size(), indexHolder)
-                .andThen(emitConstructor(indexHolder))
+                .andThen(ValueDecoder.writeEvent(() -> new Event.Constructor(indexHolder[0])))
                 .andThen(runBody(constructorFields, indexHolder));
     }
 
@@ -43,16 +43,6 @@ public final class UnionDecoder implements ValueDecoder {
                                 + " for union with " + constructorCount + " constructors");
             }
             indexHolder[0] = chosenIndex;
-            return true;
-        };
-    }
-
-    private static ValueDecoder emitConstructor(int[] indexHolder) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(new Event.Constructor(indexHolder[0]));
             return true;
         };
     }

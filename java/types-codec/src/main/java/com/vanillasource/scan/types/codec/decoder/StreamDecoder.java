@@ -18,28 +18,12 @@ public final class StreamDecoder implements ValueDecoder {
     private final ValueDecoder pipeline;
 
     public StreamDecoder(Type itemType) {
-        pipeline = emit(new Event.StartStream()).andThen(itemLoop(itemType));
+        pipeline = ValueDecoder.writeEvent(new Event.StartStream()).andThen(itemLoop(itemType));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         return pipeline.parse(bits, sink);
-    }
-
-    private static ValueDecoder emit(Event event) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(event);
-            return true;
-        };
-    }
-
-    private static ValueDecoder oneItem(Type itemType) {
-        return emit(new Event.StartItem())
-                .andThen(itemType.createDecoder())
-                .andThen(emit(new Event.EndItem()));
     }
 
     private static ValueDecoder itemLoop(Type itemType) {
@@ -53,7 +37,8 @@ public final class StreamDecoder implements ValueDecoder {
                         if (bits.availableBytes() <= 0 && bits.availableBits() <= 0) {
                             return false;
                         }
-                        current = oneItem(itemType);
+                        current = itemType.createDecoder()
+                                .between(new Event.StartItem(), new Event.EndItem());
                     }
                     if (!current.parse(bits, sink)) {
                         return false;

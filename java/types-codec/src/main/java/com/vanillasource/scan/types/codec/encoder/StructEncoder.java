@@ -18,8 +18,8 @@ public final class StructEncoder implements ValueEncoder {
 
     public StructEncoder(List<Type> fieldTypes) {
         ValueEncoder p = noOp();
-        for (int i = 0; i < fieldTypes.size(); i++) {
-            p = p.andThen(oneField(fieldTypes.get(i)));
+        for (Type fieldType : fieldTypes) {
+            p = p.andThen(fieldType.createEncoder().bracketed());
         }
         pipeline = p;
     }
@@ -31,21 +31,5 @@ public final class StructEncoder implements ValueEncoder {
 
     private static ValueEncoder noOp() {
         return (events, sink) -> true;
-    }
-
-    private static ValueEncoder consumeOne() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
-    }
-
-    private static ValueEncoder oneField(Type type) {
-        return consumeOne()
-                .andThen(type.createEncoder())
-                .andThen(consumeOne());
     }
 }

@@ -25,7 +25,8 @@ public final class StructDecoder implements ValueDecoder {
     public StructDecoder(List<Type> fieldTypes) {
         ValueDecoder p = noOp();
         for (int i = 0; i < fieldTypes.size(); i++) {
-            p = p.andThen(oneField(i, fieldTypes.get(i)));
+            p = p.andThen(fieldTypes.get(i).createDecoder()
+                    .between(new Event.StartField(i), new Event.EndField(i)));
         }
         pipeline = p;
     }
@@ -37,21 +38,5 @@ public final class StructDecoder implements ValueDecoder {
 
     private static ValueDecoder noOp() {
         return (bits, sink) -> true;
-    }
-
-    private static ValueDecoder emit(Event event) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(event);
-            return true;
-        };
-    }
-
-    private static ValueDecoder oneField(int index, Type type) {
-        return emit(new Event.StartField(index))
-                .andThen(type.createDecoder())
-                .andThen(emit(new Event.EndField(index)));
     }
 }

@@ -22,22 +22,12 @@ public final class ByteArrayEncoder implements ValueEncoder {
         pipeline = captureStartContainer(countHolder, min, countVarintBytes)
                 .andThen(writeCount(min, countVarintBytes, countHolder))
                 .andThen(drainChunks(countHolder))
-                .andThen(consumeOne());
+                .andThen(ValueEncoder.skipEvent());
     }
 
     @Override
     public boolean generate(EventSource events, BitSink sink) {
         return pipeline.generate(events, sink);
-    }
-
-    private static ValueEncoder consumeOne() {
-        return (events, sink) -> {
-            if (events.availableEvents() <= 0) {
-                return false;
-            }
-            events.read();
-            return true;
-        };
     }
 
     private static ValueEncoder captureStartContainer(long[] target, int min, int countVarintBytes) {

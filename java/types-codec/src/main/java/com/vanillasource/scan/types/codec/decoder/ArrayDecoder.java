@@ -24,34 +24,14 @@ public final class ArrayDecoder implements ValueDecoder {
     public ArrayDecoder(int min, int countVarintBytes, Type itemType) {
         long[] countHolder = new long[1];
         pipeline = captureCount(min, countVarintBytes, countHolder)
-                .andThen(emitStartContainer(countHolder))
+                .andThen(ValueDecoder.writeEvent(() -> new Event.StartContainer(ContainerKind.ARRAY, countHolder[0])))
                 .andThen(items(countHolder, itemType))
-                .andThen(emit(new Event.EndContainer(ContainerKind.ARRAY)));
+                .andThen(ValueDecoder.writeEvent(new Event.EndContainer(ContainerKind.ARRAY)));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         return pipeline.parse(bits, sink);
-    }
-
-    private static ValueDecoder emit(Event event) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(event);
-            return true;
-        };
-    }
-
-    private static ValueDecoder emitStartContainer(long[] countHolder) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(new Event.StartContainer(ContainerKind.ARRAY, countHolder[0]));
-            return true;
-        };
     }
 
     private static ValueDecoder captureCount(int min, int countVarintBytes, long[] target) {
@@ -78,12 +58,6 @@ public final class ArrayDecoder implements ValueDecoder {
         return (bits, sink) -> vli.parse(bits, capture);
     }
 
-    private static ValueDecoder oneItem(Type itemType) {
-        return emit(new Event.StartItem())
-                .andThen(itemType.createDecoder())
-                .andThen(emit(new Event.EndItem()));
-    }
-
     private static ValueDecoder items(long[] countHolder, Type itemType) {
         return new ValueDecoder() {
             private long remaining = -1;
@@ -96,7 +70,8 @@ public final class ArrayDecoder implements ValueDecoder {
                 }
                 while (remaining > 0) {
                     if (current == null) {
-                        current = oneItem(itemType);
+                        current = itemType.createDecoder()
+                                .between(new Event.StartItem(), new Event.EndItem());
                     }
                     if (!current.parse(bits, sink)) {
                         return false;

@@ -32,4 +32,28 @@ public interface ValueEncoder {
          }
       };
    }
+
+   /**
+    * Bracket {@code this} between two structural events: skip one event, run
+    * {@code this}, then skip one event. The skipped events are the structural
+    * markers (e.g. {@code StartItem} / {@code EndItem}, {@code StartField} /
+    * {@code EndField}) the decoder counterpart emits.
+    */
+   default ValueEncoder bracketed() {
+      return skipEvent().andThen(this).andThen(skipEvent());
+   }
+
+   /**
+    * Single-event consumer: drops one event from the source (subject to
+    * availability) and completes.
+    */
+   static ValueEncoder skipEvent() {
+      return (events, sink) -> {
+         if (events.availableEvents() <= 0) {
+            return false;
+         }
+         events.read();
+         return true;
+      };
+   }
 }

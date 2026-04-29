@@ -1,5 +1,7 @@
 package com.vanillasource.scan.types.codec;
 
+import java.util.function.Supplier;
+
 public interface ValueDecoder {
    /**
     * Try to parse from the given bits reader and push events into the given sink.
@@ -30,6 +32,43 @@ public interface ValueDecoder {
             }
             return other.parse(bits, sink);
          }
+      };
+   }
+
+   /**
+    * Bracket {@code this} between two structural events: emit {@code start},
+    * run {@code this}, then emit {@code end}. If {@code this} never completes
+    * (e.g. a {@code Stream}), {@code end} is never emitted.
+    */
+   default ValueDecoder between(Event start, Event end) {
+      return writeEvent(start).andThen(this).andThen(writeEvent(end));
+   }
+
+   /**
+    * Single-event producer: writes {@code event} to the sink (subject to
+    * capacity) and completes.
+    */
+   static ValueDecoder writeEvent(Event event) {
+      return (bits, sink) -> {
+         if (sink.writableEvents() <= 0) {
+            return false;
+         }
+         sink.write(event);
+         return true;
+      };
+   }
+
+   /**
+    * Single-event producer whose payload is computed lazily — useful when the
+    * event depends on state populated by an earlier pipeline stage.
+    */
+   static ValueDecoder writeEvent(Supplier<Event> eventFn) {
+      return (bits, sink) -> {
+         if (sink.writableEvents() <= 0) {
+            return false;
+         }
+         sink.write(eventFn.get());
+         return true;
       };
    }
 }

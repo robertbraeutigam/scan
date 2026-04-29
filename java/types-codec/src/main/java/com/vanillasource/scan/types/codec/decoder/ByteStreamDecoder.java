@@ -13,21 +13,12 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
  * on the wire, so completion is declared externally by the transport.
  */
 public final class ByteStreamDecoder implements ValueDecoder {
-    private final ValueDecoder pipeline = emitStartStream().andThen(drainBytes());
+    private final ValueDecoder pipeline =
+            ValueDecoder.writeEvent(new Event.StartStream()).andThen(drainBytes());
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         return pipeline.parse(bits, sink);
-    }
-
-    private static ValueDecoder emitStartStream() {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(new Event.StartStream());
-            return true;
-        };
     }
 
     private static ValueDecoder drainBytes() {

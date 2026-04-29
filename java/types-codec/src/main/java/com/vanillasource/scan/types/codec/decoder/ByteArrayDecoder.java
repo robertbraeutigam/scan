@@ -6,8 +6,6 @@ import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
-import java.util.function.Supplier;
-
 /**
  * Composes the byte-array's phases via {@link ValueDecoder#andThen}: read (or
  * skip) the count, emit {@code StartContainer(ARRAY, count)}, drain the
@@ -22,24 +20,14 @@ public final class ByteArrayDecoder implements ValueDecoder {
     public ByteArrayDecoder(int min, int countVarintBytes) {
         long[] countHolder = new long[1];
         pipeline = captureCount(min, countVarintBytes, countHolder)
-                .andThen(emit(() -> new Event.StartContainer(ContainerKind.ARRAY, countHolder[0])))
+                .andThen(ValueDecoder.writeEvent(() -> new Event.StartContainer(ContainerKind.ARRAY, countHolder[0])))
                 .andThen(drainChunks(countHolder))
-                .andThen(emit(() -> new Event.EndContainer(ContainerKind.ARRAY)));
+                .andThen(ValueDecoder.writeEvent(new Event.EndContainer(ContainerKind.ARRAY)));
     }
 
     @Override
     public boolean parse(BitSource bits, EventSink sink) {
         return pipeline.parse(bits, sink);
-    }
-
-    private static ValueDecoder emit(Supplier<Event> eventFn) {
-        return (bits, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            sink.write(eventFn.get());
-            return true;
-        };
     }
 
     private static ValueDecoder captureCount(int min, int countVarintBytes, long[] target) {

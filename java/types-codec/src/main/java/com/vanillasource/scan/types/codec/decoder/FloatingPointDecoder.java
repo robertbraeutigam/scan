@@ -15,7 +15,10 @@ public final class FloatingPointDecoder implements ValueDecoder {
         }
         long[] bitsHolder = new long[1];
         pipeline = readBytes(byteSize, bitsHolder)
-                .andThen(emitFloat(byteSize, bitsHolder));
+                .andThen(ValueDecoder.writeEvent(() -> new Event.FloatingPointScalar(
+                        byteSize == 4
+                                ? Float.intBitsToFloat((int) bitsHolder[0])
+                                : Double.longBitsToDouble(bitsHolder[0]))));
     }
 
     @Override
@@ -40,19 +43,6 @@ public final class FloatingPointDecoder implements ValueDecoder {
                 bitsHolder[0] = bits;
                 return true;
             }
-        };
-    }
-
-    private static ValueDecoder emitFloat(int byteSize, long[] bitsHolder) {
-        return (reader, sink) -> {
-            if (sink.writableEvents() <= 0) {
-                return false;
-            }
-            double value = (byteSize == 4)
-                    ? Float.intBitsToFloat((int) bitsHolder[0])
-                    : Double.longBitsToDouble(bitsHolder[0]);
-            sink.write(new Event.FloatingPointScalar(value));
-            return true;
         };
     }
 }
