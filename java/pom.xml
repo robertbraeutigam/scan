@@ -10,6 +10,7 @@
 
     <modules>
         <module>types-codec</module>
+        <module>types-types</module>
     </modules>
 
     <properties>
