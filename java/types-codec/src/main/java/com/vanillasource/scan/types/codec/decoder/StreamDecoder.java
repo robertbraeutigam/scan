@@ -2,18 +2,16 @@ package com.vanillasource.scan.types.codec.decoder;
 
 import com.vanillasource.scan.types.codec.BitSource;
 import com.vanillasource.scan.types.codec.Event;
-import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 
 /**
- * Emits {@code StartContainer(STREAM, 0)} once on entry, then iterates items
+ * Emits {@code StartStream} once on entry, then iterates items
  * ({@code StartItem}, item events, {@code EndItem}) for as long as bytes are
  * available and the sink has room. Always returns {@code false} from
  * {@link #parse}: a stream has no terminator on the wire, so completion is
- * declared externally by the transport. The {@code count} field of the Start
- * event is meaningless for streams and is set to {@code 0}.
+ * declared externally by the transport.
  */
 public final class StreamDecoder implements ValueDecoder {
     private final Type itemType;
@@ -35,7 +33,7 @@ public final class StreamDecoder implements ValueDecoder {
             if (sink.writableEvents() <= 0) {
                 return false;
             }
-            sink.put(new Event.StartContainer(ContainerKind.STREAM, 0L));
+            sink.put(new Event.StartStream());
             startEmitted = true;
         }
         while (true) {

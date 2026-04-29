@@ -12,17 +12,14 @@ import java.util.Arrays;
 public sealed interface Event {
     /**
      * Tags a {@link StartContainer} / {@link EndContainer} pair with the kind of
-     * aggregate it delimits. {@code ARRAY}, {@code SET}, and {@code BYTE_ARRAY}
-     * are finite — both Start and End fire. {@code STREAM} and {@code BYTE_STREAM}
-     * are open-ended: {@link StartContainer} fires at entry, no {@link EndContainer}
-     * ever fires. Their {@code count} field is meaningless and emitted as {@code 0}.
+     * finite aggregate it delimits. All container kinds are bounded — both Start
+     * and End fire, and the Start carries the wire-declared item or byte count.
+     * Open-ended streams use {@link StartStream} instead and have no end event.
      */
     enum ContainerKind {
         ARRAY,
         SET,
-        STREAM,
-        BYTE_ARRAY,
-        BYTE_STREAM
+        BYTE_ARRAY
     }
 
     record IntegerScalar(long value, int sign) implements Event {}
@@ -41,6 +38,15 @@ public sealed interface Event {
     record StartContainer(ContainerKind kind, long count) implements Event {}
 
     record EndContainer(ContainerKind kind) implements Event {}
+
+    /**
+     * Begins an open-ended stream. No length precedes the items; no terminating
+     * event is emitted — the stream runs until the enclosing transport ends.
+     * Whether items follow as {@link StartItem}/{@link EndItem} pairs (itemized)
+     * or as {@link Chunk} events (chunked) is determined by the element type's
+     * wire footprint, exactly as for finite item-bearing containers.
+     */
+    record StartStream() implements Event {}
 
     record StartItem() implements Event {}
 

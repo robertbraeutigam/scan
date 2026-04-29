@@ -2,8 +2,7 @@ package com.vanillasource.scan.types.codec.encoder;
 
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.Chunk;
-import com.vanillasource.scan.types.codec.Event.ContainerKind;
-import com.vanillasource.scan.types.codec.Event.StartContainer;
+import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
@@ -21,7 +20,7 @@ public final class ByteStreamEncoderTests {
    public void writesNothingForJustStart() {
       ValueEncoder enc = new ByteStream().createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L)));
+            new StartStream()));
       BufferedBitSink sink = new BufferedBitSink();
 
       assertFalse(enc.generate(events, sink));
@@ -32,7 +31,7 @@ public final class ByteStreamEncoderTests {
    public void writesBytesFromChunks() {
       ValueEncoder enc = new ByteStream().createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L),
+            new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
       BufferedBitSink sink = new BufferedBitSink();
 
@@ -44,7 +43,7 @@ public final class ByteStreamEncoderTests {
    public void writesMultipleChunksAsContiguousBytes() {
       ValueEncoder enc = new ByteStream().createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L),
+            new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20 }),
             new Chunk(new byte[] { 0x30 }),
             new Chunk(new byte[] { 0x40, 0x50 })));
@@ -58,7 +57,7 @@ public final class ByteStreamEncoderTests {
    public void neverCompletes() {
       ValueEncoder enc = new ByteStream().createEncoder();
       ListEventSource events = new ListEventSource(List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L),
+            new StartStream(),
             new Chunk(new byte[] { 0x10 })));
       BufferedBitSink sink = new BufferedBitSink();
 

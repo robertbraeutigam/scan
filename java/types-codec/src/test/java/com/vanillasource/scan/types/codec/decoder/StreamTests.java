@@ -1,11 +1,10 @@
 package com.vanillasource.scan.types.codec.decoder;
 
 import com.vanillasource.scan.types.codec.Event;
-import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.Event.EndItem;
 import com.vanillasource.scan.types.codec.Event.IntegerScalar;
-import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.Event.StartItem;
+import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
@@ -26,13 +25,13 @@ public final class StreamTests {
    private static final Type U16 = new UnsignedInteger(2);
 
    @Test
-   public void emitsStartContainerEvenWithNoBytes() {
+   public void emitsStartStreamEvenWithNoBytes() {
       ValueDecoder dec = new Stream(U8).createDecoder();
       FedBitSource bits = new FedBitSource();
       EventCapture capture = new EventCapture();
 
       assertFalse(dec.parse(bits, capture));
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.STREAM, 0L)));
+      assertEquals(capture.events, List.of(new StartStream()));
    }
 
    @Test
@@ -45,7 +44,7 @@ public final class StreamTests {
       assertFalse(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.STREAM, 0L),
+            new StartStream(),
             new StartItem(),
             new IntegerScalar(0x10L, 1),
             new EndItem(),
@@ -78,13 +77,13 @@ public final class StreamTests {
 
       bits.write(0x12);
       assertFalse(dec.parse(bits, capture));
-      // StartContainer + StartItem (waiting for second byte of U16)
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.STREAM, 0L), new StartItem()));
+      // StartStream + StartItem (waiting for second byte of U16)
+      assertEquals(capture.events, List.of(new StartStream(), new StartItem()));
 
       bits.write(0x34);
       assertFalse(dec.parse(bits, capture));
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.STREAM, 0L),
+            new StartStream(),
             new StartItem(),
             new IntegerScalar(0x1234L, 1),
             new EndItem()));
@@ -97,14 +96,14 @@ public final class StreamTests {
       EventCapture capture = new EventCapture();
 
       bits.write(new byte[] { 0x10, 0x20 }, 0, 2);
-      capture.capacity = 3; // StartContainer + StartItem + IntegerScalar — then full
+      capture.capacity = 3; // StartStream + StartItem + IntegerScalar — then full
       assertFalse(dec.parse(bits, capture));
       assertEquals(capture.events.size(), 3);
 
       capture.capacity = Integer.MAX_VALUE;
       assertFalse(dec.parse(bits, capture));
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.STREAM, 0L),
+            new StartStream(),
             new StartItem(),
             new IntegerScalar(0x10L, 1),
             new EndItem(),

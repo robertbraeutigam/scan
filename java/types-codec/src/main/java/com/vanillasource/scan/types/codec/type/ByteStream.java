@@ -9,9 +9,9 @@ import com.vanillasource.scan.types.codec.encoder.ByteStreamEncoder;
 /**
  * Open-ended counterpart of {@link ByteArray}: a potentially infinite run of
  * raw bytes. No count and no terminator on the wire — chunks continue until
- * the enclosing transport ends. Decoder emits {@code StartContainer(BYTE_STREAM)}
- * once and then streams {@code Chunk(bytes)} events; no {@code EndContainer}
- * is ever emitted.
+ * the enclosing transport ends. Decoder emits {@code StartStream} once and
+ * then streams {@code Chunk(bytes)} events; no terminating event is ever
+ * emitted.
  */
 public final class ByteStream implements Type {
     public ByteStream() {

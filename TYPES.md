@@ -419,16 +419,17 @@ Event = Scalar        { value: <primitive value> }     // bounded primitive
       | StartField    { index: UnsignedInteger }        // entering a struct field
       | EndField      { index: UnsignedInteger }        // leaving a struct field
       | Constructor   { index: UnsignedInteger }        // union variant selected; its fields follow
-      | StartContainer { kind: ContainerKind }          // begins a container
-      | EndContainer  { kind: ContainerKind }           // ends a finite container; Stream has no end event
-      | StartItem                                       // item-bearing container: item begins
-      | EndItem                                         // item-bearing container: item ends
-      | Chunk         { bytes: Array(Byte) }            // byte-bearing container: bounded byte run
+      | StartContainer { kind: ContainerKind, count: UnsignedInteger } // begins a finite container
+      | EndContainer  { kind: ContainerKind }           // ends a finite container
+      | StartStream                                     // begins an open-ended stream
+      | StartItem                                       // item-bearing container/stream: item begins
+      | EndItem                                         // item-bearing container/stream: item ends
+      | Chunk         { bytes: Array(Byte) }            // byte-bearing container/stream: bounded byte run
 
-ContainerKind = Array | Set | Stream
+ContainerKind = Array | Set
 ```
 
-`index` is the declared position of the field or constructor within its enclosing type. `kind` records which container kind a Start/End pair delimits.
+`index` is the declared position of the field or constructor within its enclosing type. `kind` records which container kind a Start/End pair delimits. `count` is the container's wire-declared length — the number of items for `Array` and `Set`, the number of bytes for chunked-form containers. `StartContainer` always has a matching `EndContainer`; `StartStream` never does — the stream runs until the enclosing transport ends.
 
 ### Per-Type Event Sequences
 
@@ -445,14 +446,14 @@ ContainerKind = Array | Set | Stream
 
 `Set` is always itemized — its element type is constrained to bare-identifier sums and never has a 1-byte primitive wire footprint.
 
-**`Stream(T)`** — identical to `Array(T, ...)` (using the same itemized-vs-chunked split), except no `EndContainer(Stream)` event is emitted; the sequence runs until the enclosing transport ends.
+**`Stream(T)`** — `StartStream`, followed by item events using the same itemized-vs-chunked split as `Array(T, ...)` (chosen by the element type's wire footprint). No `count` precedes the items and no terminating event is emitted; the sequence runs until the enclosing transport ends.
 
 ### Memory Bound
 
 Each event's in-memory size is bounded:
 
 * `Scalar(v)` — the declared primitive size (at most 8 bytes for fixed primitives; at most `maxN` bytes for `VariableLengthInteger(maxN)`).
-* `StartField`, `EndField`, `Constructor`, `StartContainer`, `EndContainer`, `StartItem`, `EndItem` — constant-size markers.
+* `StartField`, `EndField`, `Constructor`, `StartContainer`, `EndContainer`, `StartStream`, `StartItem`, `EndItem` — constant-size markers (the `count` carried by `StartContainer` is a single bounded integer).
 * `Chunk(bytes)` — bounded by the transport's frame budget.
 
 The maximum per-event memory a consumer must handle for a given type is statically known: the greater of the largest bounded primitive appearing in the type and the transport's frame budget.

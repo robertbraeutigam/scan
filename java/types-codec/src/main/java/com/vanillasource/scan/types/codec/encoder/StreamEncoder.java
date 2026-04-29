@@ -6,11 +6,11 @@ import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 
 /**
- * Consumes a single {@code StartContainer(STREAM, ...)} event on entry, then
- * iterates items ({@code StartItem}, item events, {@code EndItem}) for as long
- * as events are available and the sink has room. Always returns {@code false}
- * from {@link #generate}: a stream has no terminator on the wire, so completion
- * is declared externally by the transport.
+ * Consumes a single {@code StartStream} event on entry, then iterates items
+ * ({@code StartItem}, item events, {@code EndItem}) for as long as events are
+ * available and the sink has room. Always returns {@code false} from
+ * {@link #generate}: a stream has no terminator on the wire, so completion is
+ * declared externally by the transport.
  */
 public final class StreamEncoder implements ValueEncoder {
     private final Type itemType;
@@ -32,7 +32,7 @@ public final class StreamEncoder implements ValueEncoder {
             if (events.availableEvents() <= 0) {
                 return false;
             }
-            events.read(); // StartContainer(STREAM, ...)
+            events.read(); // StartStream
             startConsumed = true;
         }
         while (true) {

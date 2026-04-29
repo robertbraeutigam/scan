@@ -2,8 +2,7 @@ package com.vanillasource.scan.types.codec.decoder;
 
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.Chunk;
-import com.vanillasource.scan.types.codec.Event.ContainerKind;
-import com.vanillasource.scan.types.codec.Event.StartContainer;
+import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSink;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
@@ -25,7 +24,7 @@ public final class ByteStreamTests {
       EventCapture capture = new EventCapture();
 
       assertFalse(dec.parse(bits, capture));
-      assertEquals(capture.events, List.of(new StartContainer(ContainerKind.BYTE_STREAM, 0L)));
+      assertEquals(capture.events, List.of(new StartStream()));
    }
 
    @Test
@@ -38,7 +37,7 @@ public final class ByteStreamTests {
       assertFalse(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L),
+            new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
    }
 
@@ -55,7 +54,7 @@ public final class ByteStreamTests {
       assertFalse(dec.parse(bits, capture));
 
       assertEquals(capture.events, List.of(
-            new StartContainer(ContainerKind.BYTE_STREAM, 0L),
+            new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20 }),
             new Chunk(new byte[] { 0x30, 0x40 })));
    }
