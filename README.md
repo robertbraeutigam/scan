@@ -1109,8 +1109,8 @@ InitiatorMessage = Subscribe | Unsubscribe | State | Busy | Ready
 Request the Responder to send state values indefinitely for the specified modality.
 
 ```
-Subscribe {
-   modality:            IndexedModalityReference,
+Subscribe(keyType: Type) {
+   modality:            IndexedModalityReference(keyType),
    minimumSendWait:     Duration,
    priority:            Option(Priority),
    livenessTimeout:     Option(Duration)
@@ -1158,8 +1158,8 @@ output copy and transmitted after the current message completes.
 Request the Responder to stop sending state values.
 
 ```
-Unsubscribe {
-   modality: IndexedModalityReference
+Unsubscribe(keyType: Type) {
+   modality: IndexedModalityReference(keyType)
 }
 ```
 
@@ -1172,11 +1172,11 @@ The Initiator may send this message, if it does not use the state updates anymor
 Signal a change of the visible state of a modality.
 
 ```
-State {
-   modality:      IndexedModalityReference,
+State(keyType: Type, valueType: Type) {
+   modality:      IndexedModalityReference(keyType),
    counter:       VariableLengthInteger(8),
    writer:        Option(PeerAddress),
-   value:         DynamicValue
+   value:         valueType
 }
 ```
 
@@ -1248,11 +1248,11 @@ Send state values to a subscribed Initiator. This is the same `State` type the I
 modality not the target modality.
 
 ```
-State {
-   modality:      IndexedModalityReference,
+State(keyType: Type, valueType: Type) {
+   modality:      IndexedModalityReference(keyType),
    counter:       VariableLengthInteger(8),
    writer:        Option(PeerAddress),
-   value:         DynamicValue
+   value:         valueType
 }
 ```
 
@@ -1290,8 +1290,8 @@ for the same modality instance (or, for `scan.vmods` cluster members, for any me
 of the same cluster).
 
 ```
-Busy {
-   modality: IndexedModalityReference
+Busy(keyType: Type) {
+   modality: IndexedModalityReference(keyType)
 }
 ```
 
@@ -1316,8 +1316,8 @@ only the value the sender holds at the moment `Ready` arrives is transmitted.
 Invite a previously-rejected sender to resume `State` transmission for a modality.
 
 ```
-Ready {
-   modality: IndexedModalityReference
+Ready(keyType: Type) {
+   modality: IndexedModalityReference(keyType)
 }
 ```
 
@@ -2002,13 +2002,18 @@ Modality(
 
 Messages = Stream(MessageEvent)
 
-MessageEvent = Sent     { localModality:  LocalModalityReference,
-                          remoteModality: RemoteModalityReference,
-                          state:          State }
-             | Received { localModality:  LocalModalityReference,
-                          remotePeer:     PeerAddress,
-                          state:          State }
+MessageEvent = Sent     { localModalityIndex:  VariableLengthInteger(8),
+                          remotePeer:          PeerAddress,
+                          remoteModalityName:  String,
+                          counter:             VariableLengthInteger(8),
+                          writer:              Option(PeerAddress) }
+             | Received { localModalityIndex:  VariableLengthInteger(8),
+                          remotePeer:          PeerAddress,
+                          counter:             VariableLengthInteger(8),
+                          writer:              Option(PeerAddress) }
 ```
+
+The trace logs only the metadata of each `State` exchange — modality identity, sequencing, and the writer — never the value itself. Carrying the value would force this modality to fan out an arbitrarily-large stream (when `outputType` is itself a `Stream`), blocking other traffic on the same connection. Consumers correlate `localModalityIndex` against the device's `Modalities` to recover types and full context. Per-instance granularity is intentionally lost: the modalityInstanceKey is a heterogeneous-typed value across events and is not reproducible in a uniformly-typed stream.
 
 ### Interoperability Modalities
 
@@ -2181,21 +2186,21 @@ this locator function may switch itself off after a given time period.
 
 ```
 // A reference to a modality's index in the Modalities message.
-IndexedModalityReference {
+IndexedModalityReference(keyType: Type) {
    modalityIndex:       VariableLengthInteger(8), // The index in Modalities modality array
-   modalityInstanceKey: DynamicValue              // The key of the modality instance
+   modalityInstanceKey: keyType                   // The key of the modality instance
 }
 
 // A reference to a modality in the whole system, potentially local
-RemoteModalityReference {
+RemoteModalityReference(keyType: Type) {
    peer:                 PeerAddress,
-   modalityReference:    LocalModalityReference
+   modalityReference:    LocalModalityReference(keyType)
 }
 
 // A reference to a local modality, relative a peer
-LocalModalityReference {
+LocalModalityReference(keyType: Type) {
    modality:             String,
-   modalityInstanceKey:  DynamicValue
+   modalityInstanceKey:  keyType
 }
 
 // Traffic priority for network-level quality of service

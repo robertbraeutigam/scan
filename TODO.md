@@ -55,6 +55,8 @@
 
 ## Application Layer & Modalities
 
+- **Busy.** Add indicator in stats whether / how much the node was busy (i.e. blocking everything)
+
 - **Auditing / transparency.** Make it transparent what happens.
   - Introduce tracing (similar to observability)?
   - If "intent" chains are tracked, loops/recursions can be detected.
