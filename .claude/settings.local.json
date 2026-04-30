@@ -72,7 +72,8 @@
       "Bash(mvn -pl types-codec,types-types -am test)",
       "Bash(mvn -pl types-types test -q)",
       "Bash(mvn install *)",
-      "Bash(mvn -pl types-types clean test)"
+      "Bash(mvn -pl types-types clean test)",
+      "Bash(mvn -pl types-types -am test -q)"
     ]
   }
 }
