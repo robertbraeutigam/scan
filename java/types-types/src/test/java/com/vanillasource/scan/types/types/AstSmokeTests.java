@@ -2,6 +2,7 @@ package com.vanillasource.scan.types.types;
 
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import com.vanillasource.scan.types.types.ast.*;
+import com.vanillasource.scan.types.types.value.Value;
 import org.testng.annotations.Test;
 
 import java.util.List;

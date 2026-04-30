@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.types.codec;
 
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.type.Array;
@@ -7,9 +7,6 @@ import com.vanillasource.scan.types.codec.type.SignedInteger;
 import com.vanillasource.scan.types.codec.type.Struct;
 import com.vanillasource.scan.types.codec.type.Union;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
-import com.vanillasource.scan.types.types.ast.ConstructorDefinition;
-import com.vanillasource.scan.types.types.ast.Expression;
-import com.vanillasource.scan.types.types.ast.FieldDefinition;
 import com.vanillasource.scan.types.types.ast.TypeDefinition;
 
 import java.util.List;
@@ -26,11 +23,10 @@ import java.util.List;
  * {@link TypeDefinition}; the self-consistency test verifies the two agree by
  * round-tripping {@code META.serialize()} through {@link TypeDefinition#deserialize}.
  */
-public final class Meta {
+public final class AstType {
     public static final Type META_TYPE = buildMetaType();
-    public static final TypeDefinition META = buildMetaAst();
 
-    private Meta() {
+    private AstType() {
     }
 
     private static Type buildMetaType() {
@@ -58,22 +54,5 @@ public final class Meta {
                 stringT,
                 new Array(0, Integer.MAX_VALUE, paramDefT),
                 new Array(1, Integer.MAX_VALUE, constructorDefT));
-    }
-
-    private static TypeDefinition buildMetaAst() {
-       return new TypeDefinition(
-                "TypeDefinition",
-                List.of(),
-                List.of(new ConstructorDefinition(
-                        "TypeDefinition",
-                        new FieldDefinition("name", new Expression.Invocation("String")),
-                        new FieldDefinition("parameters",
-                                new Expression.Invocation("Array",
-                                        new Expression.Invocation("ParameterDefinition"))),
-                        new FieldDefinition("union",
-                                new Expression.Invocation("Array",
-                                        new Expression.Invocation("ConstructorDefinition"),
-                                        new Expression.Invocation("MinInclusive",
-                                                new Expression.IntegerLiteral(1)))))));
     }
 }

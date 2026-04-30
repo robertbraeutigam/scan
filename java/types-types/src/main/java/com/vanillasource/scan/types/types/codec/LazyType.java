@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.types.codec;
 
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;

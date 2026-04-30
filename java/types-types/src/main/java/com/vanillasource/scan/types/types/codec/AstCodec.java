@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.types.codec;
 
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.ContainerKind;
@@ -18,14 +18,14 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Drives a {@link TypeDefinition} AST through the {@link Meta#META_TYPE}
+ * Drives a {@link TypeDefinition} AST through the {@link AstType#META_TYPE}
  * runtime type's encoder and decoder. Iteration 2 plumbing — flattens the AST
  * into the {@code types-codec} {@link Event} vocabulary on the way out and
  * rebuilds the AST records from the event stream on the way in. UTF-8 is used
  * for all name strings.
  */
-final class MetaCodec {
-    private MetaCodec() {
+final class AstCodec {
+    private AstCodec() {
     }
 
     static byte[] serialize(TypeDefinition def) {
@@ -34,7 +34,7 @@ final class MetaCodec {
 
         ListEventSource src = new ListEventSource(events);
         BufferedBitSink sink = new BufferedBitSink();
-        ValueEncoder enc = Meta.META_TYPE.createEncoder();
+        ValueEncoder enc = AstType.META_TYPE.createEncoder();
         if (!enc.generate(src, sink)) {
             throw new IllegalStateException("META encoder did not complete with full event input");
         }
@@ -52,7 +52,7 @@ final class MetaCodec {
         }
         List<Event> events = new ArrayList<>();
         ListEventSink sink = new ListEventSink(events);
-        ValueDecoder dec = Meta.META_TYPE.createDecoder();
+        ValueDecoder dec = AstType.META_TYPE.createDecoder();
         if (!dec.parse(src, sink)) {
             throw new IllegalArgumentException("incomplete TypeDefinition encoding");
         }

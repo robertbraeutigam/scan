@@ -1,6 +1,7 @@
 package com.vanillasource.scan.types.types;
 
 import com.vanillasource.scan.types.types.ast.*;
+import com.vanillasource.scan.types.types.codec.AstType;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -107,9 +108,9 @@ public final class AstCodecTests {
 
     @Test
     public void selfConsistentMetaRoundTrip() {
-        TypeDefinition restored = roundTrip(Meta.META);
+        TypeDefinition restored = roundTrip(AstType.META);
 
-        assertEquals(restored, Meta.META);
+        assertEquals(restored, AstType.META);
     }
 
     @Test
