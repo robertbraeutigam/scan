@@ -2002,18 +2002,19 @@ Modality(
 
 Messages = Stream(MessageEvent)
 
-MessageEvent = Sent     { localModalityIndex:  VariableLengthInteger(8),
-                          remotePeer:          PeerAddress,
-                          remoteModalityName:  String,
-                          counter:             VariableLengthInteger(8),
-                          writer:              Option(PeerAddress) }
-             | Received { localModalityIndex:  VariableLengthInteger(8),
-                          remotePeer:          PeerAddress,
-                          counter:             VariableLengthInteger(8),
-                          writer:              Option(PeerAddress) }
+MessageEvent = Sent     { localModality:  LocalModalityReference(Array(Byte)),
+                          remoteModality: RemoteModalityReference(Array(Byte)),
+                          counter:        VariableLengthInteger(8),
+                          writer:         Option(PeerAddress) }
+             | Received { localModality:  LocalModalityReference(Array(Byte)),
+                          remotePeer:     PeerAddress,
+                          counter:        VariableLengthInteger(8),
+                          writer:         Option(PeerAddress) }
 ```
 
-The trace logs only the metadata of each `State` exchange — modality identity, sequencing, and the writer — never the value itself. Carrying the value would force this modality to fan out an arbitrarily-large stream (when `outputType` is itself a `Stream`), blocking other traffic on the same connection. Consumers correlate `localModalityIndex` against the device's `Modalities` to recover types and full context. Per-instance granularity is intentionally lost: the modalityInstanceKey is a heterogeneous-typed value across events and is not reproducible in a uniformly-typed stream.
+The trace logs only the metadata of each `State` exchange — modality identity, the modality instance key as opaque bytes, sequencing, and the writer — never the value itself. Carrying the value would force this modality to fan out an arbitrarily-large stream (when `outputType` is itself a `Stream`), blocking other traffic on the same connection. Instance keys are carried as `Array(Byte)` because their type varies per event; consumers look up the referenced modality in the device's `Modalities` to recover the modality's `keyType` and decode the bytes.
+
+If the consumer cannot drain the trace stream as fast as events are produced, the resulting back-pressure can block the device's processing of further state messages on the node. A subscriber to `scan.messages` must drain promptly, or accept the impact on the device under load.
 
 ### Interoperability Modalities
 

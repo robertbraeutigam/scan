@@ -92,6 +92,8 @@
 
 - **Network stats.** Make it per interface, reflecting netconfig
 
+- **Messages.** Does not contain key for modality instance, it is of limited use because of generics.
+
 ---
 
 ## State & Consistency
