@@ -1,5 +1,6 @@
 package com.vanillasource.scan.types.types;
 
+import com.vanillasource.scan.types.types.ast.*;
 import org.testng.annotations.Test;
 
 import java.util.List;

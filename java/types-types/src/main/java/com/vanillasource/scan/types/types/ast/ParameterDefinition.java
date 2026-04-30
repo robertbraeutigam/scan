@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.types.ast;
 
 import java.util.Optional;
 

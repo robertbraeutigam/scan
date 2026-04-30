@@ -7,6 +7,10 @@ import com.vanillasource.scan.types.codec.type.SignedInteger;
 import com.vanillasource.scan.types.codec.type.Struct;
 import com.vanillasource.scan.types.codec.type.Union;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
+import com.vanillasource.scan.types.types.ast.ConstructorDefinition;
+import com.vanillasource.scan.types.types.ast.Expression;
+import com.vanillasource.scan.types.types.ast.FieldDefinition;
+import com.vanillasource.scan.types.types.ast.TypeDefinition;
 
 import java.util.List;
 
@@ -57,14 +61,12 @@ public final class Meta {
     }
 
     private static TypeDefinition buildMetaAst() {
-        Expression stringInv = new Expression.Invocation("String");
-        Expression expressionInv = new Expression.Invocation("Expression");
-        return new TypeDefinition(
+       return new TypeDefinition(
                 "TypeDefinition",
                 List.of(),
                 List.of(new ConstructorDefinition(
                         "TypeDefinition",
-                        new FieldDefinition("name", stringInv),
+                        new FieldDefinition("name", new Expression.Invocation("String")),
                         new FieldDefinition("parameters",
                                 new Expression.Invocation("Array",
                                         new Expression.Invocation("ParameterDefinition"))),

@@ -1,6 +1,7 @@
 package com.vanillasource.scan.types.types;
 
 import com.vanillasource.scan.types.codec.Type;
+import com.vanillasource.scan.types.types.ast.TypeDefinition;
 
 import java.util.List;
 import java.util.Map;

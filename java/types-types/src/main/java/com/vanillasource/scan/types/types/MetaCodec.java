@@ -8,6 +8,7 @@ import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
+import com.vanillasource.scan.types.types.ast.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

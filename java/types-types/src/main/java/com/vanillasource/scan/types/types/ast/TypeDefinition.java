@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.types.ast;
 
 import java.util.List;
 
@@ -35,21 +35,5 @@ public record TypeDefinition(
 
     public TypeDefinition(String name, List<ConstructorDefinition> constructors) {
         this(name, List.of(), constructors);
-    }
-
-    /**
-     * Encodes this AST to its wire form per TYPES.md §"Types Binary
-     * Representation", driven through the {@link Meta#META_TYPE} runtime type.
-     */
-    public byte[] serialize() {
-        return MetaCodec.serialize(this);
-    }
-
-    /**
-     * Decodes the wire form of a {@code TypeDefinition} back into the AST.
-     * Inverse of {@link #serialize()}.
-     */
-    public static TypeDefinition deserialize(byte[] bytes) {
-        return MetaCodec.deserialize(bytes);
     }
 }
