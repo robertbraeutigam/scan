@@ -68,7 +68,8 @@
       "Bash(mvn -pl types-codec test -Dtest=PartialFeedRobustnessTests)",
       "Bash(mvn -pl types-types -am test)",
       "Bash(mvn -pl types-types -am compile -q)",
-      "Bash(mvn -pl types-types test)"
+      "Bash(mvn -pl types-types test)",
+      "Bash(mvn -pl types-codec,types-types -am test)"
     ]
   }
 }

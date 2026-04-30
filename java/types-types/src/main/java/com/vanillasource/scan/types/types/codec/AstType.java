@@ -13,15 +13,14 @@ import java.util.List;
 
 /**
  * The meta-type — runtime {@link Type} corresponding to the AST in
- * TYPES.md §"Types Binary Representation". Hand-built so iteration 2 can
- * serialize and deserialize {@link TypeDefinition} values without yet having a
- * general {@code TypeDefinition.toType} walker.
+ * TYPES.md §"Types Binary Representation". This schema is built into every
+ * peer (it never travels on the wire); {@link AstCodec} drives user
+ * {@link TypeDefinition} values through it.
  *
- * <p>Recursion in {@code Expression.Invocation.arguments: Array(Expression)}
- * is broken by a {@link LazyType} forward-reference set after the union is
- * built. The companion AST constant {@link #META} encodes the same shape as a
- * {@link TypeDefinition}; the self-consistency test verifies the two agree by
- * round-tripping {@code META.serialize()} through {@link TypeDefinition#deserialize}.
+ * <p>Hand-built rather than derived from an AST self-description so the
+ * codec has no chicken-and-egg dependency. Recursion in
+ * {@code Expression.Invocation.arguments: Array(Expression)} is broken by a
+ * {@link LazyType} forward-reference set after the union is built.
  */
 public final class AstType {
     public static final Type META_TYPE = buildMetaType();

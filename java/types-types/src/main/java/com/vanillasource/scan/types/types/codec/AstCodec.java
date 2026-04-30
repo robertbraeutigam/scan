@@ -24,11 +24,11 @@ import java.util.function.Supplier;
  * rebuilds the AST records from the event stream on the way in. UTF-8 is used
  * for all name strings.
  */
-final class AstCodec {
+public final class AstCodec {
     private AstCodec() {
     }
 
-    static byte[] serialize(TypeDefinition def) {
+    public static byte[] serialize(TypeDefinition def) {
         List<Event> events = new ArrayList<>();
         new EventWriter(events).writeTypeDefinition(def);
 
@@ -45,7 +45,7 @@ final class AstCodec {
         return sink.toBytes();
     }
 
-    static TypeDefinition deserialize(byte[] bytes) {
+    public static TypeDefinition deserialize(byte[] bytes) {
         FedBitSource src = new FedBitSource();
         if (bytes.length > 0) {
             src.write(bytes, 0, bytes.length);

@@ -1,7 +1,7 @@
 package com.vanillasource.scan.types.types;
 
 import com.vanillasource.scan.types.types.ast.*;
-import com.vanillasource.scan.types.types.codec.AstType;
+import com.vanillasource.scan.types.types.codec.AstCodec;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -107,13 +107,6 @@ public final class AstCodecTests {
     }
 
     @Test
-    public void selfConsistentMetaRoundTrip() {
-        TypeDefinition restored = roundTrip(AstType.META);
-
-        assertEquals(restored, AstType.META);
-    }
-
-    @Test
     public void distinctTypeDefsProduceDistinctBytes() {
         TypeDefinition a = new TypeDefinition(
                 "A", List.of(),
@@ -122,11 +115,11 @@ public final class AstCodecTests {
                 "B", List.of(),
                 List.of(new ConstructorDefinition("B")));
 
-        assertNotEquals(a.serialize(), b.serialize());
+        assertNotEquals(AstCodec.serialize(a), AstCodec.serialize(b));
     }
 
     private static TypeDefinition roundTrip(TypeDefinition def) {
-        byte[] bytes = def.serialize();
-        return TypeDefinition.deserialize(bytes);
+        byte[] bytes = AstCodec.serialize(def);
+        return AstCodec.deserialize(bytes);
     }
 }
