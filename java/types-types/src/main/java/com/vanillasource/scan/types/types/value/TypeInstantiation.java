@@ -28,18 +28,22 @@ import java.util.Set;
  * bindings into a runtime {@link Type} that the {@code types-codec} module
  * can drive.
  *
- * <p>Iteration 4 — accepts struct-shaped TypeDefinitions (any number of
- * fields, including zero) and union-shaped TypeDefinitions (multiple
- * constructors, each with any number of fields). Single-constructor
- * single-field TypeDefinitions retain their alias semantics: the wrapping
- * struct is stripped and the field's resolved {@link Type} is returned
- * directly. Aggregates supported: {@code Array(elementType, size?)} and
- * {@code Stream(elementType)}; {@code Set} still defers to iteration 5
- * because its element type meaningfully requires a cross-TypeDefinition
- * reference. Constraint evaluation for {@code Array}'s size argument
- * supports {@code All}, {@code MinInclusive}, {@code MaxInclusive},
- * {@code Range} and integer-literal shorthand. Parameter defaults are
- * honoured for missing bindings when the default expression is a literal.
+ * <p>Iteration 5 — adds a registry-aware overload that resolves
+ * cross-{@link TypeDefinition} references. Names appearing in field-position
+ * {@link Expression.Invocation}s that are neither parameter references nor
+ * built-in library types (e.g. {@code Array}, {@code Option}) are looked up
+ * in the supplied {@code Map<String, TypeDefinition>}; the looked-up
+ * definition is recursively instantiated, with the invocation's arguments
+ * lowered into {@link Value} bindings according to each parameter's declared
+ * type. {@code Set(enumType)} now lowers to the codec's
+ * {@link com.vanillasource.scan.types.codec.type.Set} given an enum-shaped
+ * registry entry: no parameters, every constructor field-free; the codec's
+ * {@code memberCount} is the constructor count.
+ *
+ * <p>Recursive {@link TypeDefinition} references (a type's body that names
+ * the type itself, directly or via another registry entry) are not
+ * supported and would loop here — they need lazy materialization that is
+ * out of scope for this iteration.
  */
 public final class TypeInstantiation {
     private static final Set<Integer> FIXED_INT_BYTE_SIZES = Set.of(1, 2, 4, 8);
@@ -50,6 +54,13 @@ public final class TypeInstantiation {
     }
 
     public static Type instantiate(TypeDefinition definition, Map<String, Value> bindings) {
+        return instantiate(definition, bindings, Map.of());
+    }
+
+    public static Type instantiate(
+            TypeDefinition definition,
+            Map<String, Value> bindings,
+            Map<String, TypeDefinition> registry) {
         Map<String, ParameterDefinition> parametersByName = new LinkedHashMap<>();
         for (ParameterDefinition parameter : definition.parameters()) {
             parametersByName.put(parameter.name(), parameter);
@@ -81,7 +92,7 @@ public final class TypeInstantiation {
                                     : ""));
         }
 
-        Context ctx = new Context(parametersByName.keySet(), effectiveBindings);
+        Context ctx = new Context(parametersByName.keySet(), effectiveBindings, registry);
         return resolveDefinition(definition, ctx);
     }
 
@@ -154,12 +165,108 @@ public final class TypeInstantiation {
             case "Stream":
                 return resolveStream(invocation, ctx);
             case "Set":
-                throw new UnsupportedOperationException(
-                        "Set lowering needs the element TypeDefinition's constructor list — "
-                                + "lands in iteration 5 with cross-TypeDefinition references");
+                return resolveSet(invocation, ctx);
             default:
-                throw new IllegalArgumentException("unknown type '" + name + "'");
+                return resolveRegistered(invocation, ctx);
         }
+    }
+
+    private static Type resolveRegistered(Expression.Invocation invocation, Context ctx) {
+        TypeDefinition referenced = ctx.registry().get(invocation.name());
+        if (referenced == null) {
+            throw new IllegalArgumentException("unknown type '" + invocation.name() + "'");
+        }
+        if (invocation.arguments().size() > referenced.parameters().size()) {
+            throw new IllegalArgumentException(
+                    "type '" + referenced.name() + "' expects at most "
+                            + referenced.parameters().size() + " argument(s), got "
+                            + invocation.arguments().size());
+        }
+        Map<String, Value> subBindings = new LinkedHashMap<>();
+        for (int i = 0; i < invocation.arguments().size(); i++) {
+            ParameterDefinition param = referenced.parameters().get(i);
+            Value value = resolveArgumentValue(param, invocation.arguments().get(i), ctx);
+            subBindings.put(param.name(), value);
+        }
+        return instantiate(referenced, subBindings, ctx.registry());
+    }
+
+    private static Value resolveArgumentValue(ParameterDefinition param, Expression arg, Context ctx) {
+        Expression paramType = param.type();
+        if (!(paramType instanceof Expression.Invocation pti)) {
+            throw new IllegalArgumentException(
+                    "parameter '" + param.name() + "' has non-Invocation type expression");
+        }
+        switch (pti.name()) {
+            case "Type":
+                return new Value.OfType(resolveType(arg, ctx));
+            case "UnsignedInteger":
+            case "SignedInteger":
+            case "VariableLengthInteger":
+                return new Value.OfInteger(resolveIntegerArgument(arg, param.name(), ctx));
+            default:
+                throw new UnsupportedOperationException(
+                        "parameter type '" + pti.name() + "' for argument binding "
+                                + "lands in a later iteration");
+        }
+    }
+
+    private static long resolveIntegerArgument(Expression arg, String paramName, Context ctx) {
+        if (arg instanceof Expression.IntegerLiteral lit) {
+            return lit.value();
+        }
+        if (arg instanceof Expression.Invocation inv && ctx.parameterNames().contains(inv.name())) {
+            if (!inv.arguments().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "parameter reference '" + inv.name() + "' must take no arguments");
+            }
+            Value bound = ctx.binding(inv.name());
+            if (!(bound instanceof Value.OfInteger oi)) {
+                throw new IllegalArgumentException(
+                        "parameter '" + inv.name() + "' used as integer argument for '"
+                                + paramName + "' must be bound to OfInteger, got "
+                                + bound.getClass().getSimpleName());
+            }
+            return oi.value();
+        }
+        throw new IllegalArgumentException(
+                "argument for '" + paramName + "' must be an integer literal or parameter reference, got "
+                        + arg.getClass().getSimpleName());
+    }
+
+    private static Type resolveSet(Expression.Invocation invocation, Context ctx) {
+        if (invocation.arguments().size() != 1) {
+            throw new IllegalArgumentException(
+                    "Set expects exactly 1 argument, got " + invocation.arguments().size());
+        }
+        Expression arg = invocation.arguments().get(0);
+        if (!(arg instanceof Expression.Invocation argInv)) {
+            throw new IllegalArgumentException(
+                    "Set element must be a type reference, got " + arg.getClass().getSimpleName());
+        }
+        if (!argInv.arguments().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Set element must reference an enum-shaped TypeDefinition with no parameters; got '"
+                            + argInv.name() + "' applied with " + argInv.arguments().size() + " argument(s)");
+        }
+        TypeDefinition referenced = ctx.registry().get(argInv.name());
+        if (referenced == null) {
+            throw new IllegalArgumentException(
+                    "Set element '" + argInv.name() + "' not found in type registry");
+        }
+        if (!referenced.parameters().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Set element '" + argInv.name() + "' must have no parameters, has "
+                            + referenced.parameters().size());
+        }
+        for (ConstructorDefinition ctor : referenced.constructors()) {
+            if (!ctor.fields().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Set element '" + argInv.name() + "' must be a no-field union; constructor '"
+                                + ctor.name() + "' has " + ctor.fields().size() + " field(s)");
+            }
+        }
+        return new com.vanillasource.scan.types.codec.type.Set(referenced.constructors().size());
     }
 
     private static Type resolveArray(Expression.Invocation invocation, Context ctx) {
@@ -322,7 +429,10 @@ public final class TypeInstantiation {
         static final Bounds ALL = new Bounds(0, Integer.MAX_VALUE);
     }
 
-    private record Context(Set<String> parameterNames, Map<String, Value> bindings) {
+    private record Context(
+            Set<String> parameterNames,
+            Map<String, Value> bindings,
+            Map<String, TypeDefinition> registry) {
         Value binding(String name) {
             return bindings.get(name);
         }

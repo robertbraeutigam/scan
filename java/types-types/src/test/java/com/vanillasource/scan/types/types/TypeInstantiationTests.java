@@ -347,12 +347,173 @@ public final class TypeInstantiationTests {
     }
 
     @Test
-    public void rejectsSetForNow() {
-        UnsupportedOperationException ex = expectThrows(UnsupportedOperationException.class,
+    public void instantiatesSetOverRegistryEnum() {
+        TypeDefinition color = new TypeDefinition("Color", List.of(),
+                List.of(new ConstructorDefinition("Red"),
+                        new ConstructorDefinition("Green"),
+                        new ConstructorDefinition("Blue")));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Set", invocation("Color"))),
+                Map.of(),
+                Map.of("Color", color));
+
+        assertTrue(result instanceof com.vanillasource.scan.types.codec.type.Set);
+        assertEquals(((com.vanillasource.scan.types.codec.type.Set) result).memberCount(), 3);
+    }
+
+    @Test
+    public void rejectsSetWhenElementMissingFromRegistry() {
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
                 () -> TypeInstantiation.instantiate(
-                        alias("X", invocation("Set", invocation("Unit"))),
+                        alias("X", invocation("Set", invocation("Color"))),
                         Map.of()));
-        assertTrue(ex.getMessage().contains("iteration 5"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("Color"), ex.getMessage());
+    }
+
+    @Test
+    public void rejectsSetOverParametricElement() {
+        TypeDefinition pColor = new TypeDefinition("PColor",
+                List.of(new ParameterDefinition("t", invocation("Type"))),
+                List.of(new ConstructorDefinition("Only")));
+
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Set", invocation("PColor"))),
+                        Map.of(),
+                        Map.of("PColor", pColor)));
+        assertTrue(ex.getMessage().contains("parameters"), ex.getMessage());
+    }
+
+    @Test
+    public void rejectsSetOverElementWithFieldedConstructor() {
+        TypeDefinition fielded = new TypeDefinition("Mixed", List.of(),
+                List.of(new ConstructorDefinition("Empty"),
+                        new ConstructorDefinition("WithValue",
+                                new FieldDefinition("v", invocation("Unit")))));
+
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Set", invocation("Mixed"))),
+                        Map.of(),
+                        Map.of("Mixed", fielded)));
+        assertTrue(ex.getMessage().contains("WithValue"), ex.getMessage());
+    }
+
+    @Test
+    public void rejectsSetWithMultipleArguments() {
+        expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Set",
+                                invocation("Color"),
+                                invocation("Color"))),
+                        Map.of()));
+    }
+
+    @Test
+    public void rejectsSetArgumentThatIsLiteral() {
+        expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Set", new Expression.IntegerLiteral(3))),
+                        Map.of()));
+    }
+
+    @Test
+    public void rejectsSetArgumentApplyingArguments() {
+        TypeDefinition color = new TypeDefinition("Color", List.of(),
+                List.of(new ConstructorDefinition("Red"),
+                        new ConstructorDefinition("Green")));
+
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Set",
+                                invocation("Color", invocation("Unit")))),
+                        Map.of(),
+                        Map.of("Color", color)));
+        assertTrue(ex.getMessage().contains("Color"), ex.getMessage());
+    }
+
+    @Test
+    public void resolvesUserTypeReferenceFromRegistry() {
+        TypeDefinition pair = new TypeDefinition("Pair", List.of(),
+                List.of(new ConstructorDefinition("Pair",
+                        new FieldDefinition("a", invocation("Unit")),
+                        new FieldDefinition("b", invocation("Unit")))));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Pair"),
+                        new Expression.IntegerLiteral(5))),
+                Map.of(),
+                Map.of("Pair", pair));
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void resolvesParametricUserTypeWithTypeArgument() {
+        TypeDefinition myOption = new TypeDefinition("MyOption",
+                List.of(new ParameterDefinition("inner", invocation("Type"))),
+                List.of(new ConstructorDefinition("None"),
+                        new ConstructorDefinition("Some",
+                                new FieldDefinition("value", invocation("inner")))));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("MyOption",
+                        invocation("UnsignedInteger", new Expression.IntegerLiteral(1)))),
+                Map.of(),
+                Map.of("MyOption", myOption));
+
+        assertTrue(result instanceof Union);
+    }
+
+    @Test
+    public void forwardsOuterParameterIntoUserTypeArgument() {
+        TypeDefinition myOption = new TypeDefinition("MyOption",
+                List.of(new ParameterDefinition("inner", invocation("Type"))),
+                List.of(new ConstructorDefinition("None"),
+                        new ConstructorDefinition("Some",
+                                new FieldDefinition("value", invocation("inner")))));
+        TypeDefinition outer = new TypeDefinition("Outer",
+                List.of(new ParameterDefinition("t", invocation("Type"))),
+                List.of(new ConstructorDefinition("Outer",
+                        new FieldDefinition("opt",
+                                invocation("MyOption", invocation("t"))))));
+
+        Type result = TypeInstantiation.instantiate(
+                outer,
+                Map.of("t", new Value.OfType(new Unit())),
+                Map.of("MyOption", myOption));
+
+        assertTrue(result instanceof Union);
+    }
+
+    @Test
+    public void resolvesUserTypeWithIntegerArgument() {
+        TypeDefinition myWord = new TypeDefinition("MyWord",
+                List.of(new ParameterDefinition("size", invocation("UnsignedInteger"))),
+                List.of(new ConstructorDefinition("MyWord",
+                        new FieldDefinition("value",
+                                invocation("UnsignedInteger", invocation("size"))))));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("MyWord", new Expression.IntegerLiteral(2))),
+                Map.of(),
+                Map.of("MyWord", myWord));
+
+        assertTrue(result instanceof UnsignedInteger);
+    }
+
+    @Test
+    public void rejectsTooManyArgumentsToUserType() {
+        TypeDefinition empty = new TypeDefinition("Empty", List.of(),
+                List.of(new ConstructorDefinition("Empty")));
+
+        expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Empty", invocation("Unit"))),
+                        Map.of(),
+                        Map.of("Empty", empty)));
     }
 
     @Test
