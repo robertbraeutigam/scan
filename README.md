@@ -1210,7 +1210,10 @@ ResponderMessage = Modalities | State | Busy | Ready
 Responders send this message as soon as a connection is established, unsolicited.
 
 ```
-Modalities = Array(Modality)
+Modalities {
+   modalities:  Array(Modality),
+   typeCatalog: Array(TypeDefinition)        // User-defined types referenced from any modality
+}
 
 Modality {
    id:                 String,                // Identifier of this modality on this device
@@ -1223,6 +1226,8 @@ Modality {
    inputType:          Type                   // The type of the changeable part of the state
 }
 ```
+
+The `keyType`, `outputType`, and `inputType` fields are `Type` values (per `TYPES.md` §*Library Types > Type*, a `Type` value is an `Invocation`). Names appearing in those invocations resolve in two namespaces: built-in library types (`Array`, `Option`, `Stream`, `Set`, `UnsignedInteger`, `String`, `Boolean`, …) are known to every device, and any other name must resolve to a `TypeDefinition` in `typeCatalog`. The catalog is the transitive closure of all user-defined names reachable from any modality's three type fields, so a single `Modalities` message is self-contained — a peer reading it can fully reconstruct the structural type of every modality without further round-trips. The catalog is consumed by admin tooling (type-compatibility checks, transformation compilation, UI display); a device decoding values it itself produces or consumes does not need to walk the catalog at runtime, since its own modality types are baked into firmware.
 
 The `priority` field declares the default traffic priority for this modality. It indicates the importance
 of the data for network-level quality of service. See the Priority type definition and the Deterministic
@@ -2188,7 +2193,7 @@ this locator function may switch itself off after a given time period.
 ```
 // A reference to a modality's index in the Modalities message.
 IndexedModalityReference(keyType: Type) {
-   modalityIndex:       VariableLengthInteger(8), // The index in Modalities modality array
+   modalityIndex:       VariableLengthInteger(8), // The index in Modalities.modalities
    modalityInstanceKey: keyType                   // The key of the modality instance
 }
 

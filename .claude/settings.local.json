@@ -73,7 +73,8 @@
       "Bash(mvn -pl types-types test -q)",
       "Bash(mvn install *)",
       "Bash(mvn -pl types-types clean test)",
-      "Bash(mvn -pl types-types -am test -q)"
+      "Bash(mvn -pl types-types -am test -q)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
