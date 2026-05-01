@@ -302,14 +302,62 @@ public final class TypeInstantiationTests {
     }
 
     @Test
-    public void rejectsConstraintArgumentForNumericPrimitive() {
+    public void acceptsAndDiscardsConstraintArgumentForUnsignedInteger() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("UnsignedInteger",
+                        new Expression.IntegerLiteral(1),
+                        invocation("MaxInclusive", new Expression.IntegerLiteral(100)))),
+                Map.of());
+
+        assertTrue(result instanceof UnsignedInteger);
+        assertTrue(result.isPrimitiveByte());
+    }
+
+    @Test
+    public void acceptsAndDiscardsConstraintArgumentForSignedInteger() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("SignedInteger",
+                        new Expression.IntegerLiteral(2),
+                        invocation("Range",
+                                new Expression.IntegerLiteral(-50),
+                                new Expression.IntegerLiteral(50)))),
+                Map.of());
+
+        assertTrue(result instanceof SignedInteger);
+    }
+
+    @Test
+    public void acceptsAndDiscardsConstraintArgumentForVariableLengthInteger() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("VariableLengthInteger",
+                        new Expression.IntegerLiteral(4),
+                        invocation("All"))),
+                Map.of());
+
+        assertTrue(result instanceof VariableLengthInteger);
+    }
+
+    @Test
+    public void acceptsAndDiscardsConstraintArgumentForFloatingPoint() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("FloatingPoint",
+                        new Expression.IntegerLiteral(8),
+                        invocation("MinInclusive", new Expression.IntegerLiteral(0)))),
+                Map.of());
+
+        assertTrue(result instanceof FloatingPoint);
+    }
+
+    @Test
+    public void rejectsTooManyArgumentsForNumericPrimitive() {
         IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
                 () -> TypeInstantiation.instantiate(
                         alias("X", invocation("UnsignedInteger",
                                 new Expression.IntegerLiteral(1),
+                                invocation("All"),
                                 invocation("All"))),
                         Map.of()));
-        assertTrue(ex.getMessage().contains("1 argument"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("1 or 2"), ex.getMessage());
     }
 
     @Test
@@ -566,14 +614,210 @@ public final class TypeInstantiationTests {
     }
 
     @Test
-    public void rejectsUnsupportedConstraintForm() {
-        UnsupportedOperationException ex = expectThrows(UnsupportedOperationException.class,
+    public void instantiatesArrayWithMinExclusive() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("MinExclusive", new Expression.IntegerLiteral(4)))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void instantiatesArrayWithMaxExclusive() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("MaxExclusive", new Expression.IntegerLiteral(10)))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void instantiatesArrayWithValuesEnvelope() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("Values",
+                                new Expression.IntegerLiteral(3),
+                                new Expression.IntegerLiteral(7),
+                                new Expression.IntegerLiteral(5)))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void instantiatesArrayWithMultipleOfAsAll() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("MultipleOf", new Expression.IntegerLiteral(3)))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void instantiatesArrayWithUnionEnvelope() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("Union",
+                                invocation("Range",
+                                        new Expression.IntegerLiteral(0),
+                                        new Expression.IntegerLiteral(5)),
+                                invocation("Range",
+                                        new Expression.IntegerLiteral(10),
+                                        new Expression.IntegerLiteral(15))))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void instantiatesArrayWithIntersectionEnvelope() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("Intersection",
+                                invocation("MinInclusive", new Expression.IntegerLiteral(2)),
+                                invocation("MaxInclusive", new Expression.IntegerLiteral(8))))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void rejectsArrayWithEmptyIntersection() {
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
                 () -> TypeInstantiation.instantiate(
                         alias("X", invocation("Array",
                                 invocation("Unit"),
-                                invocation("MultipleOf", new Expression.IntegerLiteral(3)))),
+                                invocation("Intersection",
+                                        invocation("MinInclusive", new Expression.IntegerLiteral(10)),
+                                        invocation("MaxInclusive", new Expression.IntegerLiteral(5))))),
                         Map.of()));
-        assertTrue(ex.getMessage().contains("MultipleOf"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("empty"), ex.getMessage());
+    }
+
+    @Test
+    public void instantiatesArrayWithNotAsAll() {
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        invocation("Not",
+                                invocation("MaxInclusive", new Expression.IntegerLiteral(5))))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void rejectsUnknownConstraintForm() {
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(
+                        alias("X", invocation("Array",
+                                invocation("Unit"),
+                                invocation("BogusForm", new Expression.IntegerLiteral(3)))),
+                        Map.of()));
+        assertTrue(ex.getMessage().contains("BogusForm"), ex.getMessage());
+    }
+
+    @Test
+    public void usesOuterCallerSuppliedConstraintBinding() {
+        TypeDefinition def = new TypeDefinition(
+                "Bag",
+                List.of(new ParameterDefinition("size", invocation("Constraint"))),
+                List.of(new ConstructorDefinition("Bag",
+                        new FieldDefinition("value",
+                                invocation("Array", invocation("Unit"), invocation("size"))))));
+
+        Type result = TypeInstantiation.instantiate(def,
+                Map.of("size", new Value.OfUnion("MaxInclusive",
+                        new Value.OfStruct(Map.of("bound", new Value.OfInteger(64))))));
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void rejectsConstraintParameterBoundToWrongValueKind() {
+        TypeDefinition def = new TypeDefinition(
+                "Bag",
+                List.of(new ParameterDefinition("size", invocation("Constraint"))),
+                List.of(new ConstructorDefinition("Bag",
+                        new FieldDefinition("value",
+                                invocation("Array", invocation("Unit"), invocation("size"))))));
+
+        IllegalArgumentException ex = expectThrows(IllegalArgumentException.class,
+                () -> TypeInstantiation.instantiate(def,
+                        Map.of("size", new Value.OfInteger(10))));
+        assertTrue(ex.getMessage().contains("OfUnion"), ex.getMessage());
+    }
+
+    @Test
+    public void forwardsConstraintArgumentToUserType() {
+        TypeDefinition myArray = new TypeDefinition(
+                "MyArray",
+                List.of(
+                        new ParameterDefinition("inner", invocation("Type")),
+                        new ParameterDefinition("size", invocation("Constraint"))),
+                List.of(new ConstructorDefinition("MyArray",
+                        new FieldDefinition("value",
+                                invocation("Array", invocation("inner"), invocation("size"))))));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("Outer", invocation("MyArray",
+                        invocation("Unit"),
+                        invocation("MaxInclusive", new Expression.IntegerLiteral(32)))),
+                Map.of(),
+                Map.of("MyArray", myArray));
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void forwardsOuterConstraintParameterIntoUserTypeArgument() {
+        TypeDefinition myArray = new TypeDefinition(
+                "MyArray",
+                List.of(
+                        new ParameterDefinition("inner", invocation("Type")),
+                        new ParameterDefinition("size", invocation("Constraint"))),
+                List.of(new ConstructorDefinition("MyArray",
+                        new FieldDefinition("value",
+                                invocation("Array", invocation("inner"), invocation("size"))))));
+        TypeDefinition outer = new TypeDefinition(
+                "Outer",
+                List.of(new ParameterDefinition("c", invocation("Constraint"))),
+                List.of(new ConstructorDefinition("Outer",
+                        new FieldDefinition("value",
+                                invocation("MyArray", invocation("Unit"), invocation("c"))))));
+
+        Type result = TypeInstantiation.instantiate(
+                outer,
+                Map.of("c", new Value.OfUnion("Range",
+                        new Value.OfStruct(Map.of(
+                                "min", new Value.OfInteger(1),
+                                "max", new Value.OfInteger(8))))),
+                Map.of("MyArray", myArray));
+
+        assertTrue(result instanceof Array);
+    }
+
+    @Test
+    public void integerLiteralAtArraySizeStillWorks() {
+        // Per spec, an integer literal `n` at Array's size slot is sugar for
+        // Values({n}) — exactly n elements. This test guards that the new
+        // materialization path preserves the legacy behavior.
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("Array",
+                        invocation("Unit"),
+                        new Expression.IntegerLiteral(5))),
+                Map.of());
+
+        assertTrue(result instanceof Array);
     }
 
     private static Expression.Invocation invocation(String name, Expression... args) {

@@ -75,7 +75,8 @@
       "Bash(mvn -pl types-types clean test)",
       "Bash(mvn -pl types-types -am test -q)",
       "Bash(echo \"exit=$?\")",
-      "Bash(mvn -f /home/robert/personal/scan/java/pom.xml test)"
+      "Bash(mvn -f /home/robert/personal/scan/java/pom.xml test)",
+      "Bash(mvn -pl types-codec,types-types test)"
     ]
   }
 }
