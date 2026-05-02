@@ -15,8 +15,10 @@ import com.vanillasource.scan.types.types.ast.Expression;
 import com.vanillasource.scan.types.types.ast.FieldDefinition;
 import com.vanillasource.scan.types.types.ast.ParameterDefinition;
 import com.vanillasource.scan.types.types.ast.TypeDefinition;
+import com.vanillasource.scan.types.types.codec.LazyType;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,10 +56,17 @@ import java.util.Set;
  * ({@code Constraint}-typed parameter binding) are materialized to
  * {@code Value.OfUnion} during argument resolution.
  *
- * <p>Recursive {@link TypeDefinition} references (a type's body that names
- * the type itself, directly or via another registry entry) are not
- * supported and would loop here — they need lazy materialization that is
- * out of scope for this iteration.
+ * <p>Iteration 7 — recursive {@link TypeDefinition} references via
+ * {@link LazyType} forward-reference. Cycles are detected by an in-flight
+ * map keyed on {@code (definition.name(), effectiveBindings)}; on
+ * re-encounter the in-flight {@link LazyType} placeholder is returned and
+ * later set when the outer instantiation completes. Direct self-recursion
+ * ({@code List = Cons head tail | Nil}), recursion through {@code Array} /
+ * {@code Stream}, mutual recursion across multiple registry entries, and
+ * parametric recursion ({@code List(t) = Cons(t, List(t)) | Nil}) all work.
+ * Recursions whose bindings differ at each level (genuine infinite
+ * polymorphic recursion) still don't terminate — there's no value-level
+ * fixpoint detection.
  */
 public final class TypeInstantiation {
     private static final Set<Integer> FIXED_INT_BYTE_SIZES = Set.of(1, 2, 4, 8);
@@ -75,6 +84,14 @@ public final class TypeInstantiation {
             TypeDefinition definition,
             Map<String, Value> bindings,
             Map<String, TypeDefinition> registry) {
+        return instantiateInternal(definition, bindings, registry, new HashMap<>());
+    }
+
+    private static Type instantiateInternal(
+            TypeDefinition definition,
+            Map<String, Value> bindings,
+            Map<String, TypeDefinition> registry,
+            Map<InstantiationKey, LazyType> inFlight) {
         Map<String, ParameterDefinition> parametersByName = new LinkedHashMap<>();
         for (ParameterDefinition parameter : definition.parameters()) {
             parametersByName.put(parameter.name(), parameter);
@@ -106,8 +123,23 @@ public final class TypeInstantiation {
                                     : ""));
         }
 
-        Context ctx = new Context(parametersByName.keySet(), effectiveBindings, registry);
-        return resolveDefinition(definition, ctx);
+        InstantiationKey key = new InstantiationKey(definition.name(), Map.copyOf(effectiveBindings));
+        LazyType existing = inFlight.get(key);
+        if (existing != null) {
+            return existing;
+        }
+
+        LazyType placeholder = new LazyType();
+        inFlight.put(key, placeholder);
+        Type result;
+        try {
+            Context ctx = new Context(parametersByName.keySet(), effectiveBindings, registry, inFlight);
+            result = resolveDefinition(definition, ctx);
+        } finally {
+            inFlight.remove(key);
+        }
+        placeholder.set(result);
+        return result;
     }
 
     private static Type resolveDefinition(TypeDefinition definition, Context ctx) {
@@ -202,7 +234,7 @@ public final class TypeInstantiation {
             Value value = resolveArgumentValue(param, invocation.arguments().get(i), ctx);
             subBindings.put(param.name(), value);
         }
-        return instantiate(referenced, subBindings, ctx.registry());
+        return instantiateInternal(referenced, subBindings, ctx.registry(), ctx.inFlight());
     }
 
     private static Value resolveArgumentValue(ParameterDefinition param, Expression arg, Context ctx) {
@@ -646,9 +678,12 @@ public final class TypeInstantiation {
     private record Context(
             Set<String> parameterNames,
             Map<String, Value> bindings,
-            Map<String, TypeDefinition> registry) {
+            Map<String, TypeDefinition> registry,
+            Map<InstantiationKey, LazyType> inFlight) {
         Value binding(String name) {
             return bindings.get(name);
         }
     }
+
+    private record InstantiationKey(String name, Map<String, Value> bindings) {}
 }

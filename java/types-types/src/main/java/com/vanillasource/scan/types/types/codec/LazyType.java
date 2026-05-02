@@ -10,10 +10,10 @@ import com.vanillasource.scan.types.codec.ValueEncoder;
  * in the recursive position, then call {@link #set(Type)} once before any
  * decode or encode happens.
  */
-final class LazyType implements Type {
+public final class LazyType implements Type {
     private Type target;
 
-    void set(Type target) {
+    public void set(Type target) {
         if (target == null) {
             throw new NullPointerException("target");
         }

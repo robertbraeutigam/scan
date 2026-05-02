@@ -807,6 +807,104 @@ public final class TypeInstantiationTests {
     }
 
     @Test
+    public void instantiatesDirectSelfRecursion() {
+        TypeDefinition linked = new TypeDefinition("Linked", List.of(),
+                List.of(
+                        new ConstructorDefinition("Nil"),
+                        new ConstructorDefinition("Cons",
+                                new FieldDefinition("head",
+                                        invocation("UnsignedInteger", new Expression.IntegerLiteral(1))),
+                                new FieldDefinition("tail", invocation("Linked")))));
+
+        Type result = TypeInstantiation.instantiate(linked, Map.of(), Map.of("Linked", linked));
+
+        assertTrue(result instanceof Union, "expected Union, got " + result.getClass());
+    }
+
+    @Test
+    public void instantiatesRecursionThroughArray() {
+        TypeDefinition tree = new TypeDefinition("Tree", List.of(),
+                List.of(new ConstructorDefinition("Node",
+                        new FieldDefinition("value",
+                                invocation("UnsignedInteger", new Expression.IntegerLiteral(1))),
+                        new FieldDefinition("children",
+                                invocation("Array", invocation("Tree"))))));
+
+        Type result = TypeInstantiation.instantiate(tree, Map.of(), Map.of("Tree", tree));
+
+        assertTrue(result instanceof Struct, "expected Struct, got " + result.getClass());
+    }
+
+    @Test
+    public void instantiatesMutualRecursion() {
+        // Multi-field structs (not single-field aliases) so resolveDefinition
+        // doesn't collapse to alias-dereference — that collapse chained
+        // through mutual aliases would produce a self-pointing LazyType.
+        TypeDefinition a = new TypeDefinition("A", List.of(),
+                List.of(new ConstructorDefinition("AA",
+                        new FieldDefinition("tag",
+                                invocation("UnsignedInteger", new Expression.IntegerLiteral(1))),
+                        new FieldDefinition("b", invocation("B")))));
+        TypeDefinition b = new TypeDefinition("B", List.of(),
+                List.of(new ConstructorDefinition("BB",
+                        new FieldDefinition("tag",
+                                invocation("UnsignedInteger", new Expression.IntegerLiteral(1))),
+                        new FieldDefinition("a", invocation("A")))));
+
+        Type result = TypeInstantiation.instantiate(a, Map.of(), Map.of("A", a, "B", b));
+
+        assertTrue(result instanceof Struct, "expected Struct, got " + result.getClass());
+    }
+
+    @Test
+    public void instantiatesParametricSelfRecursion() {
+        TypeDefinition list = new TypeDefinition("List",
+                List.of(new ParameterDefinition("t", invocation("Type"))),
+                List.of(
+                        new ConstructorDefinition("Nil"),
+                        new ConstructorDefinition("Cons",
+                                new FieldDefinition("head", invocation("t")),
+                                new FieldDefinition("tail",
+                                        invocation("List", invocation("t"))))));
+
+        Type result = TypeInstantiation.instantiate(
+                alias("X", invocation("List",
+                        invocation("UnsignedInteger", new Expression.IntegerLiteral(1)))),
+                Map.of(),
+                Map.of("List", list));
+
+        assertTrue(result instanceof Union, "expected Union, got " + result.getClass());
+    }
+
+    @Test
+    public void parametricRecursionDistinguishesArguments() {
+        // List(Byte) and List(Int) are distinct types — same definition, different
+        // bindings; cycle detection keys on both name and bindings, so a
+        // recursive List(t) instantiated at two different t's must not collide.
+        TypeDefinition list = new TypeDefinition("List",
+                List.of(new ParameterDefinition("t", invocation("Type"))),
+                List.of(
+                        new ConstructorDefinition("Nil"),
+                        new ConstructorDefinition("Cons",
+                                new FieldDefinition("head", invocation("t")),
+                                new FieldDefinition("tail",
+                                        invocation("List", invocation("t"))))));
+        TypeDefinition pair = new TypeDefinition("Pair", List.of(),
+                List.of(new ConstructorDefinition("Pair",
+                        new FieldDefinition("bytes",
+                                invocation("List",
+                                        invocation("UnsignedInteger", new Expression.IntegerLiteral(1)))),
+                        new FieldDefinition("ints",
+                                invocation("List",
+                                        invocation("UnsignedInteger", new Expression.IntegerLiteral(4)))))));
+
+        Type result = TypeInstantiation.instantiate(pair, Map.of(),
+                Map.of("List", list, "Pair", pair));
+
+        assertTrue(result instanceof Struct);
+    }
+
+    @Test
     public void integerLiteralAtArraySizeStillWorks() {
         // Per spec, an integer literal `n` at Array's size slot is sugar for
         // Values({n}) — exactly n elements. This test guards that the new
