@@ -618,15 +618,15 @@ The compiler in the admin tool, given a cluster declaration and a member's trans
   under bounded captures only.
 * Computes `frame(T_in, E)` recursively, lays out each frame, and emits the total stack budget and per-frame
   layout in the bytecode preamble.
-* Lowers the expression tree into per-position dispatch bytecode driven by the decoder's traversal of the input
-  value; push and pop instructions correspond exactly to entry into and exit from input aggregates (see
-  *Transformation Language Binary Representation*).
+* Lowers the expression tree into a single sequential bytecode program that walks the input by issuing `Read*`
+  instructions in declaration order and constructs the output by issuing `Emit*` instructions; `PushFrame` and
+  `PopFrame` correspond to entry into and exit from input aggregates that need captures or fold accumulators
+  (see *Transformation Language Binary Representation*).
 * Rejects programs that fail any of the above: not type-correct, an excluded operation, structurally unalignable,
   total stack budget exceeds what the target device advertises, or attempting effects outside the permitted set.
 
-The device-side VM has no notion of the source language. It executes a flat bytecode program against the
-accumulator slot, the run stack, and an input-event stream, producing per-member output events as it goes —
-nothing more.
+The device-side VM has no notion of the source language. It executes a flat bytecode program that pulls events
+from the decoder, manipulates the accumulator and frame stack, and pushes events to the encoder — nothing more.
 
 ## Transformation Language Binary Representation
 
@@ -643,22 +643,32 @@ program is just a value.
 
 ### Virtual Machine Model
 
-The VM observes the input value's structural traversal as a sequence of **events**: entry into and exit from each
-structural sub-element, each scalar, each chunk of bulk bytes. The full vocabulary is enumerated as `EventKind`
-in *Handlers and Triggers* below; it is internal to the bytecode VM and not part of the on-the-wire protocol.
+The VM runs a single straight-line bytecode program against a decoder feeding input events and an encoder
+draining output events. It exposes four regions of state, all stack-discipline (no heap, no allocation at
+runtime):
 
-The VM exposes three regions of state, all stack-discipline (no heap, no allocation at runtime):
+* A **frame stack** of typed slots that mirrors the depth at which the program is currently working in the input.
+  A frame is pushed by `PushFrame` when entering an input aggregate that needs captures or fold accumulators, and
+  popped by `PopFrame` on exit. Frames hold values that must outlive a single instruction — captures, fold
+  accumulators, union discriminators.
+* An **operand stack** of 64-bit slots used for expression evaluation. The operand stack persists across
+  suspension points, so its peak depth is computed across the whole program (not per handler, as in earlier
+  drafts).
+* An **input event source** the decoder feeds. Each `Read*` instruction consumes one decoder event; if the input
+  frame is exhausted but the value has not ended, the VM suspends until more input arrives.
+* An **output event sink** the encoder drains. Each `Emit*` instruction produces one output event; if the output
+  buffer cannot hold the event, the VM suspends until the encoder makes room.
 
-* A **frame stack** of typed slots that mirrors the input decoder's depth: a frame is pushed on entry to an input aggregate and
-  popped on exit. Frames hold values that must outlive a single event — captures, fold accumulators, union discriminators.
-* An **operand stack** of 64-bit slots used within a single handler for expression evaluation. It empties between events.
-* An **output emitter** the device's encoder drains. The bytecode produces output events drawn from the same
-  vocabulary (see *Instructions* below — the `Emit*` family); the encoder serializes them per *Values Binary
-  Representation*. The bytecode never sees wire bytes.
+Execution is sequential. The runtime loads the program, pushes the top-level frame (`frameDescriptors[0]`),
+populates its leading slots from the persisted accumulator (see *Accumulator Loading*), and runs the bytecode
+from instruction 0. Control-flow instructions (`Jmp`, `JmpIfZero`, `JmpTable`) advance the cursor; `Read*` and
+`Emit*` may suspend the VM to wait for input or output capacity. The program terminates when the cursor walks
+off the end of `code`: the runtime pops any remaining frames, flushes the encoder, and persists the new
+accumulator for the next invocation.
 
-Execution is event-driven. The runtime fetches the next event, looks up a handler for the `(input position, event)`
-pair, and runs it to completion. Handlers do not suspend. Total RAM is `frameStackBytes + operandStackSlots × 8` plus a small
-output buffer; all three are statically known per program.
+The VM never observes wire bytes — the decoder and encoder handle bit-packing, VLI encoding, big-endian, etc.,
+per *Values Binary Representation*. Total RAM is `frameStackBytes + operandStackSlots × 8 + outputBufferBytes`,
+all statically known per program.
 
 ### Top-Level Structure
 
@@ -667,7 +677,7 @@ CompiledTransformation {
     memory:           MemoryRequirements,
     frameDescriptors: Array(FrameDescriptor),
     jumpTables:       Array(JumpTable),
-    handlers:         Array(Handler)
+    code:             Array(Instruction)
 }
 ```
 
@@ -680,15 +690,22 @@ the rest. The four sections are independent — none cross-references the others
 MemoryRequirements {
     frameStackBytes:   VariableLengthInteger(2),
     operandStackSlots: VariableLengthInteger(1),
-    maxFrameDepth:     VariableLengthInteger(1)
+    maxFrameDepth:     VariableLengthInteger(1),
+    outputBufferBytes: VariableLengthInteger(2)
 }
 ```
 
-* `frameStackBytes` — peak total bytes of the frame stack across all reachable input traversals. Computed by the compiler as
-  the maximum over all reachable input traversals of the sum of `FrameDescriptor` sizes simultaneously on the stack.
-* `operandStackSlots` — peak operand stack depth in 64-bit slots, taken as the maximum across all handlers.
-* `maxFrameDepth` — peak number of frames simultaneously on the stack, equal to the maximum nesting of input aggregates the
-  program touches.
+* `frameStackBytes` — peak total bytes of the frame stack across all reachable program points. Computed by the
+  compiler as the maximum over all reachable program points of the sum of `FrameDescriptor` sizes simultaneously
+  on the stack.
+* `operandStackSlots` — peak operand stack depth in 64-bit slots, taken across all reachable program points
+  (including suspension points: when a `Read*` or `Emit*` suspends with *d* slots on the operand stack, those
+  *d* slots persist across the suspend).
+* `maxFrameDepth` — peak number of frames simultaneously on the stack, equal to the maximum nesting of input
+  aggregates the program touches.
+* `outputBufferBytes` — peak bytes the encoder must absorb between drain opportunities. The encoder is given the
+  chance to drain at every `Emit*` boundary, so this is the worst-case wire footprint of one output event plus
+  the encoder's bit-packing buffer (≤ 32 bytes from the bit-byte cap).
 
 A device that cannot satisfy these requirements rejects the program at load time and reports the shortfall through
 `scan.health`. No instruction has been executed at that point.
@@ -715,8 +732,8 @@ integer slots, zero-extending for unsigned, no-op for `SlotI64` / `SlotU64` / `S
 (truncating). Float slots permit only float instructions; integer slots permit only integer instructions. Type mismatch is a
 compile-time error; devices need not check at runtime.
 
-`frameDescriptors[0]` is the top-level frame. It is pushed automatically by the runtime before any handler runs, with its
-leading slots populated from the prior cluster accumulator value (see *Accumulator Loading* below). All other frames are
+`frameDescriptors[0]` is the top-level frame. It is pushed automatically by the runtime before instruction 0 executes, with
+its leading slots populated from the prior cluster accumulator value (see *Accumulator Loading* below). All other frames are
 pushed and popped explicitly by `PushFrame` and `PopFrame` instructions.
 
 ### Jump Tables
@@ -727,53 +744,28 @@ JumpTable {
 }
 ```
 
-A jump table is a small array of instruction-relative offsets within the handler that consults it. The `JmpTable` instruction
-pops an integer index off the operand stack and branches to `targets[index]`. The index must be in range; out-of-range indices
-are a compile-time error. Tables are referenced by their zero-based index in the program's `jumpTables` array. Multiple
-handlers may share the same table when the compiler detects identical dispatch patterns.
+A jump table is a small array of instruction-relative offsets within `code`. The `JmpTable` instruction pops an integer
+index off the operand stack and branches to `targets[index]`. The index must be in range; out-of-range indices are a
+compile-time error. Tables are referenced by their zero-based index in the program's `jumpTables` array. Multiple
+`JmpTable` sites may share the same table when the compiler detects identical dispatch patterns.
 
-### Handlers and Triggers
+### Program Execution
 
-```
-Handler {
-    trigger: HandlerTrigger,
-    code:    Array(Instruction)
-}
+The bytecode is a single sequential program. Execution begins at instruction 0 with the top-level frame
+(`frameDescriptors[0]`) already pushed and its leading slots populated from the persisted accumulator
+(*Accumulator Loading* below). The cursor advances instruction by instruction; control-flow instructions
+(`Jmp`, `JmpIfZero`, `JmpTable`) alter it, and `Read*` / `Emit*` instructions may suspend the VM to wait for
+input or output capacity.
 
-HandlerTrigger = ProgramStart
-              |  TransportEnd
-              |  AtNode { node: VariableLengthInteger(2), event: EventKind }
+The program terminates when the cursor walks off the end of `code`. At termination the runtime pops any
+remaining frames, flushes the encoder's buffer, and persists the new accumulator (whose bytes were emitted as
+the leading field of the output value).
 
-EventKind = OnStartField | OnEndField
-         |  OnConstructor
-         |  OnStartContainer | OnEndContainer
-         |  OnStartStream
-         |  OnStartItem | OnEndItem
-         |  OnScalar | OnChunk
-```
-
-`OnStartContainer` / `OnEndContainer` fire on entry to and exit from finite containers (`Array`, `Set`).
-`OnStartStream` fires on entry to a `Stream`; there is no end event because a stream has no terminator on the
-wire (see *Stream(T)* in *Per-Type Encoding*). `OnStartItem` / `OnEndItem` wrap each item of an itemized
-container or stream; `OnChunk` carries one batch of bulk bytes and never co-occurs with item events for the same
-sub-element.
-
-A handler runs in response to one specific event at one specific input position. The trigger identifies that position:
-
-* `ProgramStart` — fires once, before any input event, after the runtime has pushed the top-level frame and loaded the prior
-  accumulator into it.
-* `TransportEnd` — fires once, after the last input event, while every frame is still on the stack.
-* `AtNode { node, event }` — fires when the input traversal reaches `event` at input-tree node `node`. Node IDs are assigned by
-  the compiler in a canonical pre-order walk of the input type; the runtime maintains the current node as it advances and uses
-  it to look up handlers.
-
-The handler list is unordered; the runtime builds whatever dispatch index it needs at load time. Multiple handlers for the
-same trigger are not allowed — the compiler fuses overlapping work. A program with no handler for some `(node, event)` does
-nothing at that event, which is the normal case for events the program does not observe.
-
-A handler runs to completion before the runtime fetches the next event. There is no in-handler suspension. The handler
-terminates with `EndHandler`, which returns to the dispatch loop. Falling off the end of `code` without `EndHandler` is a
-compile-time error.
+There is no handler dispatch table, no event-position lookup, and no `ProgramStart` / `TransportEnd` triggers.
+The bytecode reads input by issuing `Read*` instructions in an order consistent with the input type; the
+decoder advances structurally between them and surfaces only the data the bytecode requests. Symmetrically,
+the bytecode constructs the output by issuing `Emit*` instructions in declaration order against the output
+type; the encoder serializes them per *Values Binary Representation*.
 
 ### Instructions
 
@@ -799,11 +791,18 @@ Instruction = ConstI    { value: SignedInteger(8) }
            |  Jmp        { offset: SignedInteger(2) }
            |  JmpIfZero  { offset: SignedInteger(2) }
            |  JmpTable   { table:  VariableLengthInteger(1) }
-           |  EndHandler
 
-           |  ReadScalar { kind: ScalarType }
-           |  ReadChunk  { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
-                           count: VariableLengthInteger(2) }
+           |  ReadStartField     { index: VariableLengthInteger(2) }
+           |  ReadEndField       { index: VariableLengthInteger(2) }
+           |  ReadConstructor
+           |  ReadStartContainer { kind:  ContainerKind }
+           |  ReadEndContainer   { kind:  ContainerKind }
+           |  ReadStartStream
+           |  ReadStartItem | ReadEndItem
+           |  TryReadItem
+           |  ReadScalar         { kind:  ScalarType }
+           |  ReadChunk          { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
+                                   count: VariableLengthInteger(2) }
 
            |  EmitStartField     { index: VariableLengthInteger(2) }
            |  EmitEndField       { index: VariableLengthInteger(2) }
@@ -824,9 +823,9 @@ ScalarType = U8 | U16 | U32 | U64
 ContainerKind = ArrayKind | SetKind
 ```
 
-The instruction set has 55 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with the
-discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 0, 3` is roughly three bytes
-after VLI encoding.
+The instruction set has roughly 60 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with
+the discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 0, 3` is roughly three
+bytes after VLI encoding.
 
 Behaviour by group:
 
@@ -848,22 +847,41 @@ Behaviour by group:
   type of operands the bytecode placed on the stack. Comparisons push 0 or 1 as integer. Bitwise shifts (`Shl`, `Shr`, `Sar`)
   take a 64-bit shift amount masked to its low 6 bits before shifting.
 
-* **Control flow.** `Jmp { offset }` advances the current handler's instruction cursor by `offset` (positive forward, negative
-  backward; 0 is invalid). `JmpIfZero { offset }` pops one integer and jumps if it is zero. `JmpTable { table }` pops one
-  integer index and branches by `jumpTables[table].targets[index]`. `EndHandler` returns to the dispatch loop.
+* **Control flow.** `Jmp { offset }` advances the instruction cursor by `offset` (positive forward, negative backward;
+  0 is invalid). `JmpIfZero { offset }` pops one integer and jumps if it is zero. `JmpTable { table }` pops one integer
+  index and branches by `jumpTables[table].targets[index]`. The program terminates by the cursor walking off the end of
+  `code`; there is no explicit terminator instruction.
 
-* **Event input.** `ReadScalar { kind }` consumes the active `Scalar` event from the decoder and pushes its value at the width
-  given by `kind`. `ReadChunk { depth, slot, count }` consumes `count` bytes from a `Chunk` event and writes them into the
-  frame slot at `(depth, slot)`; the slot must be a `SlotBytes` of size at least `count`.
+* **Event input.** Each `Read*` instruction consumes the next decoder event of the matching kind. If the input frame is
+  exhausted but the value has not ended, the VM suspends and resumes when more input arrives. The compiler emits `Read*`
+  instructions in a sequence that matches the declaration order of the input type, so the decoder and bytecode walk the
+  type tree in lockstep.
 
-* **Event output.** Each `Emit*` instruction produces one output event. Structural events (`EmitStartField`, `EmitEndField`,
-  `EmitConstructor`, `EmitStartContainer`, `EmitEndContainer`, `EmitStartStream`, `EmitStartItem`, `EmitEndItem`) carry their
-  own descriptor. `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits raw
-  bytes from a frame slot region.
+  Structural reads (`ReadStartField`, `ReadEndField`, `ReadStartContainer`, `ReadEndContainer`, `ReadStartStream`,
+  `ReadStartItem`, `ReadEndItem`) consume the corresponding boundary event. The indexed forms (`ReadStartField`,
+  `ReadEndField`) carry the field index for compile-time alignment with the input type; mismatch is a compile-time error.
+
+  `ReadConstructor` consumes the discriminator event of a multi-constructor type and pushes the discriminator value (a
+  zero-based integer index) onto the operand stack — typically followed by `JmpTable` to dispatch on the variant.
+
+  `TryReadItem` is the iteration primitive for arrays, sets, and streams. It peeks at the next event: if it is
+  `OnStartItem`, the event is consumed and 1 is pushed; if it is `OnEndContainer` (for finite containers) or
+  end-of-input within a stream, the event/condition is consumed and 0 is pushed. The bytecode uses `JmpIfZero` to
+  exit the loop.
+
+  `ReadScalar { kind }` consumes a `Scalar` event, widens to 64 bits per `kind`, and pushes. `ReadChunk { depth, slot, count }`
+  consumes a `Chunk` event of `count` bytes into the frame slot at `(depth, slot)`; the slot must be a `SlotBytes` of size at
+  least `count`.
+
+* **Event output.** Each `Emit*` instruction produces one output event. If the output buffer cannot hold the event, the VM
+  suspends and resumes when the encoder has drained enough room. Structural events (`EmitStartField`, `EmitEndField`,
+  `EmitConstructor`, `EmitStartContainer`, `EmitEndContainer`, `EmitStartStream`, `EmitStartItem`, `EmitEndItem`) carry
+  their own descriptor. `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits
+  raw bytes from a frame slot region.
 
 ### Accumulator Loading
 
-The prior cluster accumulator is loaded into the leading slots of the top-level frame before `ProgramStart` runs. The compiler
+The prior cluster accumulator is loaded into the leading slots of the top-level frame before instruction 0 runs. The compiler
 reserves slots in `frameDescriptors[0]` whose layout matches the wire form of `accType`; the runtime decodes the persisted
 accumulator into those slots in lock-step with their declared widths. From the bytecode's perspective, `acc` is data already
 sitting in known slots when the first instruction runs.
@@ -883,43 +901,58 @@ compiles to:
 memory:
     frameStackBytes:   16
     operandStackSlots: 2
-    maxFrameDepth:     2
+    maxFrameDepth:     1
+    outputBufferBytes: 16
 
 frameDescriptors:
-    [0]: { SlotF64 }              -- top-level: prior acc
-    [1]: { SlotF64 }              -- stream:    running total
+    [0]: { SlotF64,                    -- slot 0: prior acc (loaded by runtime)
+           SlotF64 }                   -- slot 1: running total
 
 jumpTables: []
 
-handlers:
-    trigger = ProgramStart
-    code    = [ EndHandler ]
+code:
+    -- Skip the tag field.
+    ReadStartField 0
+    ReadScalar U8
+    Drop
+    ReadEndField 0
 
-    trigger = AtNode { node = <values stream>, event = OnStartContainer }
-    code    = [ PushFrame 1
-              , ConstF 0.0
-              , StoreSlot 0, 0      -- frame[0].total = 0
-              , EndHandler ]
+    -- Enter the values stream; init total = 0.
+    ReadStartField 1
+    ReadStartStream
+    ConstF 0.0
+    StoreSlot 0, 1
 
-    trigger = AtNode { node = <stream item>, event = OnScalar }
-    code    = [ ReadScalar F64
-              , AddToSlotF 0, 0     -- total += incoming
-              , EndHandler ]
+    -- Accumulate items until the stream ends.
+loop:
+    TryReadItem                        -- 1 if next item, 0 if stream ended
+    JmpIfZero done
+    ReadScalar F64
+    AddToSlotF 0, 1                    -- total += value
+    ReadEndItem
+    Jmp loop
 
-    trigger = TransportEnd
-    code    = [ LoadSlot 1, 0       -- acc (one frame down)
-              , LoadSlot 0, 0       -- total (current frame)
-              , AddF                 -- acc + total
-              , Dup
-              , EmitStartField 0
-              , EmitScalar F64       -- new acc
-              , EmitEndField 0
-              , EmitStartField 1
-              , EmitStartField 0
-              , EmitConstructor 1    -- Some
-              , EmitScalar F64
-              , EmitEndField 0
-              , EmitEndField 1
-              , EndHandler ]
+done:
+    -- Build new acc; emit { acc, outputs: { sum: Some(acc) } }.
+    LoadSlot 0, 0                      -- prior acc
+    LoadSlot 0, 1                      -- total
+    AddF                               -- new acc on top
+    Dup                                -- one copy for acc field, one for Some(...)
+
+    EmitStartField 0
+    EmitScalar F64                     -- emit acc field
+    EmitEndField 0
+
+    EmitStartField 1                   -- outputs
+    EmitStartField 0                   -- sum (member 0 of outputs)
+    EmitConstructor 1                  -- Some
+    EmitScalar F64                     -- emit value
+    EmitEndField 0
+    EmitEndField 1
+    -- Falls off end → program terminates.
 ```
+
+The reader-side and writer-side asymmetry of `ReadStartField` / `EmitStartField` (and friends) is intentional: even though
+the encoder and decoder both walk their respective types structurally, the bytecode declares its position explicitly so a
+mismatch is caught at compile time rather than producing silent wire corruption.
 

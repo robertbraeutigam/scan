@@ -76,7 +76,9 @@
       "Bash(mvn -pl types-types -am test -q)",
       "Bash(echo \"exit=$?\")",
       "Bash(mvn -f /home/robert/personal/scan/java/pom.xml test)",
-      "Bash(mvn -pl types-codec,types-types test)"
+      "Bash(mvn -pl types-codec,types-types test)",
+      "Bash(awk '/^## Transformation Language Binary Representation/,/^## /' /home/robert/personal/scan/TYPES.md)",
+      "Bash(awk '/^## Transformation Language Binary Representation/{p=1} p; /^## /{if\\(NR>1 && !/Transformation Language Binary Representation/\\) exit}' /home/robert/personal/scan/TYPES.md)"
     ]
   }
 }
