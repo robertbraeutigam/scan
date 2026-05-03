@@ -24,6 +24,10 @@ public final class Struct implements Type {
         this.fieldTypes = List.of(fieldTypes);
     }
 
+    public List<Type> fieldTypes() {
+        return fieldTypes;
+    }
+
     @Override
     public ValueDecoder createDecoder() {
         return new StructDecoder(fieldTypes);

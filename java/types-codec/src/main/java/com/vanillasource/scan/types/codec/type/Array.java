@@ -31,6 +31,7 @@ import com.vanillasource.scan.types.codec.encoder.ItemArrayEncoder;
  */
 public final class Array implements Type {
     private final int min;
+    private final int max;
     private final int countVarintBytes;
     private final Type itemType;
 
@@ -42,8 +43,21 @@ public final class Array implements Type {
             throw new IllegalArgumentException("max " + max + " is less than min " + min);
         }
         this.min = min;
+        this.max = max;
         this.countVarintBytes = computeCountVarintBytes(min, max);
         this.itemType = itemType;
+    }
+
+    public int min() {
+        return min;
+    }
+
+    public int max() {
+        return max;
+    }
+
+    public Type itemType() {
+        return itemType;
     }
 
     @Override

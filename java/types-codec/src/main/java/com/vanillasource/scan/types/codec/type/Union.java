@@ -29,6 +29,10 @@ public final class Union implements Type {
         this.constructorFields = List.copyOf(copy);
     }
 
+    public List<List<Type>> constructorFields() {
+        return constructorFields;
+    }
+
     /** Number of bits used for the discriminator on the wire. */
     public int discriminatorBits() {
         return discriminatorBits(constructorFields.size());

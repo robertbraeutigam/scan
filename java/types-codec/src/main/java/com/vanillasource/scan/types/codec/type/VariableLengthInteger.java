@@ -14,6 +14,10 @@ public final class VariableLengthInteger implements Type {
         this.maxBytes = maxBytes;
     }
 
+    public int maxBytes() {
+        return maxBytes;
+    }
+
     @Override
     public ValueDecoder createDecoder() {
         return new VariableLengthIntegerDecoder(maxBytes);

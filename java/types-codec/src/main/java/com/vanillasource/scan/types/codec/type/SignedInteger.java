@@ -14,6 +14,10 @@ public final class SignedInteger implements Type {
         this.byteSize = byteSize;
     }
 
+    public int byteSize() {
+        return byteSize;
+    }
+
     @Override
     public ValueDecoder createDecoder() {
         return new IntegerDecoder(byteSize, true);

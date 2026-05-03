@@ -14,6 +14,10 @@ public final class FloatingPoint implements Type {
         this.byteSize = byteSize;
     }
 
+    public int byteSize() {
+        return byteSize;
+    }
+
     @Override
     public ValueDecoder createDecoder() {
         return new FloatingPointDecoder(byteSize);

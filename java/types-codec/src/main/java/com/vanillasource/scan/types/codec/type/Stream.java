@@ -32,6 +32,10 @@ public final class Stream implements Type {
         this.itemType = itemType;
     }
 
+    public Type itemType() {
+        return itemType;
+    }
+
     @Override
     public ValueDecoder createDecoder() {
         if (itemType.isPrimitiveByte()) {

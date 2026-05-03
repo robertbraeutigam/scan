@@ -301,44 +301,35 @@ Note, that strings are not bound by characters but by the overall bytes needed. 
 
 ## Types Binary Representation
 
-A type is serialized as a value (using the *Values Binary Representation* below) of the following AST:
+A `Type` value carries the structural shape needed to encode and decode values of that type — nothing more. Decoding a `Type` yields, directly, the codec for the type it describes; there is no intermediate AST, no name-based dispatch, and no parameter binding. The wire union mirrors the built-ins one-for-one:
 
 ```
-TypeDefinition {
-    name: String,
-    parameters: Array(ParameterDefinition),
-    union: Array(ConstructorDefinition, size = MinInclusive(1))
-}
-
-ParameterDefinition {
-    name: String,
-    type: Expression,
-    default: Option(Expression)
-}
-
-ConstructorDefinition {
-    name: String,
-    fields: Array(FieldDefinition)
-}
-
-FieldDefinition {
-    name: String,
-    type: Expression
-}
-
-Expression = Invocation { name: String, arguments: Array(Expression) }
-           | Integer    { value: SignedInteger(8) }
-           | Float      { value: FloatingPoint(8) }
-           | String     { value: String }
+Type = Unit
+     | UnsignedInteger        { byteSize: UnsignedInteger(1) }
+     | SignedInteger          { byteSize: UnsignedInteger(1) }
+     | VariableLengthInteger  { maxBytes: UnsignedInteger(1) }
+     | FloatingPoint          { byteSize: UnsignedInteger(1) }
+     | Struct                 { fieldTypes:   Array(Type) }
+     | Union                  { constructors: Array(Array(Type)) }
+     | Array                  { min: VariableLengthInteger(8),
+                                max: VariableLengthInteger(8),
+                                itemType: Type }
+     | Set                    { memberCount:  VariableLengthInteger(8) }
+     | Stream                 { itemType: Type }
 ```
 
-An `Expression` is a self-describing term. `Invocation` covers every name-based form — type references, generic type applications, value-constructor calls, and bare-identifier constructors (`None`, `All`, `True`, `False` — zero-argument invocations). The three literal variants are the only non-invocation leaves that appear in the surface language.
+Each constructor takes exactly the parameters the codec needs for that case. Numeric primitives carry only their byte size. `Struct` carries its field types in declaration order; `Union` carries one inner array per constructor, also in declaration order, with that constructor's field types. `Array` carries the minimum and maximum element count (already projected from whatever surface-level `Constraint` produced them); `Set` carries the cardinality of its element type's value space; `Stream` carries the item type.
 
-`Invocation.arguments` are positional. The textual language allows named arguments and default values for ergonomics; the compiler resolves both into a canonical positional list before emission, so the wire AST needs no per-argument name wrapper.
+Surface-level conveniences — type names, field names, constructor names, parametric type parameters, type aliases, parameter defaults, `Constraint` expressions on numeric primitives — are resolved by the compiler before a `Type` value exists. They do not appear on the wire because the codec does not consume them: the wire form of a value is purely positional, and the compiler has already evaluated everything that affects the wire form into the structural shape above.
 
-Integer literals are bounded to the `SignedInteger(8)` range. A literal outside that range (e.g. a `MaxInclusive` bound at `UnsignedInteger(8)`'s maximum of 2⁶⁴−1) cannot be expressed in the AST and must be rewritten by the author.
+Concretely:
 
-A `Type` value (as declared in *Library Types*) is an `Expression` — specifically, an `Invocation`. Aliases are resolved during compilation and do not appear in the AST.
+* A surface type like `Option(Double)` materialises as `Union { constructors = [[], [FloatingPoint { byteSize = 8 }]] }`. The constructor names `None` and `Some` are not on the wire, only their position and the field types each carries.
+* `Array(Byte, size = MaxInclusive(128))` materialises as `Array { min = 0, max = 128, itemType = UnsignedInteger { byteSize = 1 } }`. The compiler projects the `Constraint` to `(min, max)`; numeric `Constraint` parameters on `UnsignedInteger`/`SignedInteger`/`VariableLengthInteger`/`FloatingPoint` are checked at compile time and erased.
+* `Set(T)` materialises as `Set { memberCount = K }` where `K` is the number of bare-identifier constructors of `T`; the element type itself does not appear, since the wire form of a `Set` value is just a `K`-bit run.
+* Type aliases (`Byte = UnsignedInteger(1)`, `String = Array(Byte, ...)`, etc.) are dereferenced; the alias name does not appear.
+
+The textual surface still distinguishes named types and named constructors for human readability and for *Type Membership* (which matches union variants by name and field signature). Membership therefore operates on a value paired with the surface-level type description, not on a value paired with a `Type` *value* — the latter is purely a codec, not a membership oracle.
 
 ## Values Binary Representation
 
