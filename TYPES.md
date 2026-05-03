@@ -619,14 +619,17 @@ The compiler in the admin tool, given a cluster declaration and a member's trans
 * Computes `frame(T_in, E)` recursively, lays out each frame, and emits the total stack budget and per-frame
   layout in the bytecode preamble.
 * Lowers the expression tree into a single sequential bytecode program that walks the input by issuing `Read*`
-  instructions in declaration order and constructs the output by issuing `Emit*` instructions; `PushFrame` and
-  `PopFrame` correspond to entry into and exit from input aggregates that need captures or fold accumulators
-  (see *Transformation Language Binary Representation*).
+  instructions in declaration order and constructs the output by issuing `Emit*` instructions.
+* Performs liveness analysis on the source program's variables (let-bindings, fold accumulators, captures, union
+  discriminators) and lays them out in a flat memory region, sharing slots between variables with disjoint live
+  ranges. The accumulator's variables are placed in the leading slots so the runtime can persist them as a raw
+  byte snapshot (`accBytes`), without needing to re-encode (see *Transformation Language Binary Representation*).
 * Rejects programs that fail any of the above: not type-correct, an excluded operation, structurally unalignable,
   total stack budget exceeds what the target device advertises, or attempting effects outside the permitted set.
 
 The device-side VM has no notion of the source language. It executes a flat bytecode program that pulls events
-from the decoder, manipulates the accumulator and frame stack, and pushes events to the encoder — nothing more.
+from the decoder, manipulates a flat memory region and an operand stack, and pushes events to the encoder —
+nothing more.
 
 ## Transformation Language Binary Representation
 
@@ -644,65 +647,63 @@ program is just a value.
 ### Virtual Machine Model
 
 The VM runs a single straight-line bytecode program against a decoder feeding input events and an encoder
-draining output events. It exposes four regions of state, all stack-discipline (no heap, no allocation at
+draining output events. It exposes three regions of state, all statically sized (no heap, no allocation at
 runtime):
 
-* A **frame stack** of typed slots that mirrors the depth at which the program is currently working in the input.
-  A frame is pushed by `PushFrame` when entering an input aggregate that needs captures or fold accumulators, and
-  popped by `PopFrame` on exit. Frames hold values that must outlive a single instruction — captures, fold
-  accumulators, union discriminators.
+* A **memory** region of typed slots, addressed by a single zero-based slot index. The compiler lays it out by
+  liveness analysis on the source program: each source variable, fold accumulator, capture, and discriminator
+  becomes a slot, and slots with disjoint live ranges share storage. The leading bytes of memory hold the
+  persisted accumulator (see *Memory Layout* below).
 * An **operand stack** of 64-bit slots used for expression evaluation. The operand stack persists across
-  suspension points, so its peak depth is computed across the whole program (not per handler, as in earlier
-  drafts).
+  suspension points, so its peak depth is computed across the whole program.
 * An **input event source** the decoder feeds. Each `Read*` instruction consumes one decoder event; if the input
   frame is exhausted but the value has not ended, the VM suspends until more input arrives.
 * An **output event sink** the encoder drains. Each `Emit*` instruction produces one output event; if the output
   buffer cannot hold the event, the VM suspends until the encoder makes room.
 
-Execution is sequential. The runtime loads the program, pushes the top-level frame (`frameDescriptors[0]`),
-populates its leading slots from the persisted accumulator (see *Accumulator Loading*), and runs the bytecode
-from instruction 0. Control-flow instructions (`Jmp`, `JmpIfZero`, `JmpTable`) advance the cursor; `Read*` and
-`Emit*` may suspend the VM to wait for input or output capacity. The program terminates when the cursor walks
-off the end of `code`: the runtime pops any remaining frames, flushes the encoder, and persists the new
-accumulator for the next invocation.
+Execution is sequential. Before the first invocation the runtime allocates `memoryBytes` of memory and zeroes
+it; on every subsequent invocation it restores the leading `accBytes` from persisted storage and zeroes the
+rest. The VM then runs the bytecode from instruction 0. Control-flow instructions (`Jmp`, `JmpIfZero`,
+`JmpTable`) advance the cursor; `Read*` and `Emit*` may suspend the VM to wait for input or output capacity.
+The program terminates when the cursor walks off the end of `code`: the runtime flushes the encoder and
+persists the leading `accBytes` of memory for the next invocation.
 
 The VM never observes wire bytes — the decoder and encoder handle bit-packing, VLI encoding, big-endian, etc.,
-per *Values Binary Representation*. Total RAM is `frameStackBytes + operandStackSlots × 8 + outputBufferBytes`,
+per *Values Binary Representation*. Total RAM is `memoryBytes + operandStackSlots × 8 + outputBufferBytes`,
 all statically known per program.
 
 ### Top-Level Structure
 
 ```
 CompiledTransformation {
-    memory:           MemoryRequirements,
-    frameDescriptors: Array(FrameDescriptor),
-    jumpTables:       Array(JumpTable),
-    code:             Array(Instruction)
+    memory:     MemoryRequirements,
+    layout:     Array(SlotType),
+    accBytes:   VariableLengthInteger(2),
+    jumpTables: Array(JumpTable),
+    code:       Array(Instruction)
 }
 ```
 
 A device parses `memory` first and decides whether it can accept the program before allocating buffers; only then does it load
-the rest. The four sections are independent — none cross-references the others except by zero-based index.
+the rest. `layout` declares the typed layout of memory; `accBytes` is the number of leading bytes of memory that persist
+across invocations (the accumulator region). The remaining sections are independent — none cross-references the others
+except by zero-based index.
 
 ### Memory Requirements
 
 ```
 MemoryRequirements {
-    frameStackBytes:   VariableLengthInteger(2),
+    memoryBytes:       VariableLengthInteger(2),
     operandStackSlots: VariableLengthInteger(1),
-    maxFrameDepth:     VariableLengthInteger(1),
     outputBufferBytes: VariableLengthInteger(2)
 }
 ```
 
-* `frameStackBytes` — peak total bytes of the frame stack across all reachable program points. Computed by the
-  compiler as the maximum over all reachable program points of the sum of `FrameDescriptor` sizes simultaneously
-  on the stack.
+* `memoryBytes` — total bytes of the memory region. Equal to the sum of slot sizes declared in `layout`.
+  Restated here so the device can decide acceptance from `memory` alone, without parsing the layout.
 * `operandStackSlots` — peak operand stack depth in 64-bit slots, taken across all reachable program points
   (including suspension points: when a `Read*` or `Emit*` suspends with *d* slots on the operand stack, those
   *d* slots persist across the suspend).
-* `maxFrameDepth` — peak number of frames simultaneously on the stack, equal to the maximum nesting of input
-  aggregates the program touches.
 * `outputBufferBytes` — peak bytes the encoder must absorb between drain opportunities. The encoder is given the
   chance to drain at every `Emit*` boundary, so this is the worst-case wire footprint of one output event plus
   the encoder's bit-packing buffer (≤ 32 bytes from the bit-byte cap).
@@ -710,31 +711,28 @@ MemoryRequirements {
 A device that cannot satisfy these requirements rejects the program at load time and reports the shortfall through
 `scan.health`. No instruction has been executed at that point.
 
-### Frame Descriptors
+### Memory Layout
 
 ```
-FrameDescriptor {
-    slots: Array(SlotType)
-}
-
 SlotType = SlotI8  | SlotI16 | SlotI32 | SlotI64
         |  SlotU8  | SlotU16 | SlotU32 | SlotU64
         |  SlotF32 | SlotF64
         |  SlotBytes { size: VariableLengthInteger(2) }
 ```
 
-A frame descriptor declares the layout of one kind of frame. Slots are laid out in declaration order, byte-packed (no inserted
-padding); their sizes follow the slot type — 1, 2, 4, or 8 bytes for the integer / float widths and `size` bytes for
-`SlotBytes`. The total frame size is the sum of slot sizes.
+`layout` is a flat array of slot types in declaration order, byte-packed (no inserted padding). A slot's size follows
+its type — 1, 2, 4, or 8 bytes for the integer / float widths and `size` bytes for `SlotBytes`. The sum of slot sizes
+is `memoryBytes`.
 
-Slots are addressed by their zero-based index. The slot's declared type fixes how `LoadSlot` widens (sign-extending for signed
-integer slots, zero-extending for unsigned, no-op for `SlotI64` / `SlotU64` / `SlotF64`) and how `StoreSlot` narrows
-(truncating). Float slots permit only float instructions; integer slots permit only integer instructions. Type mismatch is a
-compile-time error; devices need not check at runtime.
+Slots are addressed by their zero-based index in `layout`. The slot's declared type fixes how `LoadSlot` widens
+(sign-extending for signed integer slots, zero-extending for unsigned, no-op for `SlotI64` / `SlotU64` / `SlotF64`)
+and how `StoreSlot` narrows (truncating). Float slots permit only float instructions; integer slots permit only
+integer instructions. Type mismatch is a compile-time error; devices need not check at runtime.
 
-`frameDescriptors[0]` is the top-level frame. It is pushed automatically by the runtime before instruction 0 executes, with
-its leading slots populated from the prior cluster accumulator value (see *Accumulator Loading* below). All other frames are
-pushed and popped explicitly by `PushFrame` and `PopFrame` instructions.
+The leading `accBytes` of memory hold the persisted accumulator. The compiler arranges for the accumulator's source
+variables to land in slots that occupy exactly the leading `accBytes`; the boundary always falls between two slots
+(never inside one). The runtime restores those bytes from persisted storage at the start of each invocation and
+snapshots them back at termination. All other slots are zero-initialised on every invocation.
 
 ### Jump Tables
 
@@ -751,21 +749,23 @@ compile-time error. Tables are referenced by their zero-based index in the progr
 
 ### Program Execution
 
-The bytecode is a single sequential program. Execution begins at instruction 0 with the top-level frame
-(`frameDescriptors[0]`) already pushed and its leading slots populated from the persisted accumulator
-(*Accumulator Loading* below). The cursor advances instruction by instruction; control-flow instructions
-(`Jmp`, `JmpIfZero`, `JmpTable`) alter it, and `Read*` / `Emit*` instructions may suspend the VM to wait for
-input or output capacity.
+The bytecode is a single sequential program. Execution begins at instruction 0 with `memory` allocated, the
+leading `accBytes` restored from persisted storage (or zero on the first invocation), and the rest zeroed. The
+cursor advances instruction by instruction; control-flow instructions (`Jmp`, `JmpIfZero`, `JmpTable`) alter it,
+and `Read*` / `Emit*` instructions may suspend the VM to wait for input or output capacity.
 
-The program terminates when the cursor walks off the end of `code`. At termination the runtime pops any
-remaining frames, flushes the encoder's buffer, and persists the new accumulator (whose bytes were emitted as
-the leading field of the output value).
+The program terminates when the cursor walks off the end of `code`. At termination the runtime flushes the
+encoder's buffer and snapshots the leading `accBytes` of memory back to persisted storage for the next
+invocation.
 
 There is no handler dispatch table, no event-position lookup, and no `ProgramStart` / `TransportEnd` triggers.
 The bytecode reads input by issuing `Read*` instructions in an order consistent with the input type; the
 decoder advances structurally between them and surfaces only the data the bytecode requests. Symmetrically,
 the bytecode constructs the output by issuing `Emit*` instructions in declaration order against the output
 type; the encoder serializes them per *Values Binary Representation*.
+
+Note that the wire output is the cluster's `outputs` value alone — the accumulator is not part of it. Persistence
+happens at the memory boundary, not the wire boundary.
 
 ### Instructions
 
@@ -774,13 +774,10 @@ Instruction = ConstI    { value: SignedInteger(8) }
            |  ConstF    { value: FloatingPoint(8) }
            |  Dup | Drop | Swap
 
-           |  LoadSlot   { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
-           |  StoreSlot  { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
-           |  AddToSlotI { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
-           |  AddToSlotF { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1) }
-
-           |  PushFrame  { descriptor: VariableLengthInteger(1) }
-           |  PopFrame
+           |  LoadSlot   { slot: VariableLengthInteger(2) }
+           |  StoreSlot  { slot: VariableLengthInteger(2) }
+           |  AddToSlotI { slot: VariableLengthInteger(2) }
+           |  AddToSlotF { slot: VariableLengthInteger(2) }
 
            |  AddI | SubI | MulI | DivI | ModI | NegI
            |  AddF | SubF | MulF | DivF | NegF
@@ -801,7 +798,7 @@ Instruction = ConstI    { value: SignedInteger(8) }
            |  ReadStartItem | ReadEndItem
            |  TryReadItem
            |  ReadScalar         { kind:  ScalarType }
-           |  ReadChunk          { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
+           |  ReadChunk          { slot:  VariableLengthInteger(2),
                                    count: VariableLengthInteger(2) }
 
            |  EmitStartField     { index: VariableLengthInteger(2) }
@@ -812,7 +809,7 @@ Instruction = ConstI    { value: SignedInteger(8) }
            |  EmitStartStream
            |  EmitStartItem | EmitEndItem
            |  EmitScalar         { kind:  ScalarType }
-           |  EmitChunk          { depth: VariableLengthInteger(1), slot: VariableLengthInteger(1),
+           |  EmitChunk          { slot:  VariableLengthInteger(2),
                                    count: VariableLengthInteger(2) }
 
 ScalarType = U8 | U16 | U32 | U64
@@ -823,9 +820,9 @@ ScalarType = U8 | U16 | U32 | U64
 ContainerKind = ArrayKind | SetKind
 ```
 
-The instruction set has roughly 60 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with
-the discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 0, 3` is roughly three
-bytes after VLI encoding.
+The instruction set has roughly 55 variants, a 6-bit discriminator that bit-packs with the next sub-byte operand and with
+the discriminator of the following instruction. A `Dup` occupies 6 bits on the wire; a `LoadSlot 3` is roughly two bytes
+after VLI encoding.
 
 Behaviour by group:
 
@@ -833,15 +830,10 @@ Behaviour by group:
   primitives. The operand stack is untyped 64-bit slots; the instruction's variant determines whether the value is treated as
   integer or float.
 
-* **Slot access.** `LoadSlot { depth, slot }` pushes the value of slot `slot` in the frame `depth` levels below the top of the
-  frame stack (depth 0 = current top), widened to 64 bits according to the slot's declared type. `StoreSlot` pops one operand
-  and narrows to the slot's declared type. `AddToSlotI` and `AddToSlotF` are read-modify-write shortcuts: pop one operand, add
-  to the slot in place. They exist because fold updates are the dominant pattern in compiled programs and would otherwise
-  cost three instructions each.
-
-* **Frame management.** `PushFrame { descriptor }` pushes a fresh frame whose layout is `frameDescriptors[descriptor]`. All
-  slots are zero-initialised. `PopFrame` removes the top frame. Pushing or popping mismatched against the input decoder's
-  structural state is a compile-time error.
+* **Slot access.** `LoadSlot { slot }` pushes the value of slot `slot` from memory, widened to 64 bits according to the
+  slot's declared type. `StoreSlot` pops one operand and narrows to the slot's declared type. `AddToSlotI` and `AddToSlotF`
+  are read-modify-write shortcuts: pop one operand, add to the slot in place. They exist because fold updates are the
+  dominant pattern in compiled programs and would otherwise cost three instructions each.
 
 * **Arithmetic, logic, comparison.** Each pops its operands and pushes the result. Integer / float variants must match the
   type of operands the bytecode placed on the stack. Comparisons push 0 or 1 as integer. Bitwise shifts (`Shl`, `Shr`, `Sar`)
@@ -869,9 +861,9 @@ Behaviour by group:
   end-of-input within a stream, the event/condition is consumed and 0 is pushed. The bytecode uses `JmpIfZero` to
   exit the loop.
 
-  `ReadScalar { kind }` consumes a `Scalar` event, widens to 64 bits per `kind`, and pushes. `ReadChunk { depth, slot, count }`
-  consumes a `Chunk` event of `count` bytes into the frame slot at `(depth, slot)`; the slot must be a `SlotBytes` of size at
-  least `count`.
+  `ReadScalar { kind }` consumes a `Scalar` event, widens to 64 bits per `kind`, and pushes. `ReadChunk { slot, count }`
+  consumes a `Chunk` event of `count` bytes into memory slot `slot`; the slot must be a `SlotBytes` of size at least
+  `count`.
 
 * **Event output.** Each `Emit*` instruction produces one output event. If the output buffer cannot hold the event, the VM
   suspends and resumes when the encoder has drained enough room. Structural events (`EmitStartField`, `EmitEndField`,
@@ -879,34 +871,19 @@ Behaviour by group:
   their own descriptor. `EmitScalar { kind }` pops one operand and emits a `Scalar` event of width `kind`. `EmitChunk` emits
   raw bytes from a frame slot region.
 
-### Accumulator Loading
-
-The prior cluster accumulator is loaded into the leading slots of the top-level frame before instruction 0 runs. The compiler
-reserves slots in `frameDescriptors[0]` whose layout matches the wire form of `accType`; the runtime decodes the persisted
-accumulator into those slots in lock-step with their declared widths. From the bytecode's perspective, `acc` is data already
-sitting in known slots when the first instruction runs.
-
-The new accumulator is emitted as part of the program's output: the compiled output type is structurally
-`{ acc, outputs }` (per *Accumulator and Outputs* in the surface language), so the bytecode emits a
-`StartField(0)` / `EmitScalar` / ... sequence for the `acc` field as it would for any other field. The runtime intercepts that
-sub-sequence and persists the bytes for the next invocation.
-
 ### Worked Example
 
 The transformation `acc + sum(input.values)` over `input: { tag: Byte, values: Stream(Double) }`, `accType: Double`, output
-`{ sum: Option(Double) }` (so the cluster's compiled output type is `{ acc: Double, outputs: { sum: Option(Double) } }`)
-compiles to:
+`{ sum: Option(Double) }` compiles to:
 
 ```
 memory:
-    frameStackBytes:   16
+    memoryBytes:       16
     operandStackSlots: 2
-    maxFrameDepth:     1
     outputBufferBytes: 16
 
-frameDescriptors:
-    [0]: { SlotF64,                    -- slot 0: prior acc (loaded by runtime)
-           SlotF64 }                   -- slot 1: running total
+layout:    [ SlotF64, SlotF64 ]    -- slot 0: acc (persisted), slot 1: running total
+accBytes:  8                        -- leading 8 bytes (slot 0) persist across invocations
 
 jumpTables: []
 
@@ -921,35 +898,31 @@ code:
     ReadStartField 1
     ReadStartStream
     ConstF 0.0
-    StoreSlot 0, 1
+    StoreSlot 1
 
     -- Accumulate items until the stream ends.
 loop:
     TryReadItem                        -- 1 if next item, 0 if stream ended
     JmpIfZero done
     ReadScalar F64
-    AddToSlotF 0, 1                    -- total += value
+    AddToSlotF 1                       -- total += value
     ReadEndItem
     Jmp loop
 
 done:
-    -- Build new acc; emit { acc, outputs: { sum: Some(acc) } }.
-    LoadSlot 0, 0                      -- prior acc
-    LoadSlot 0, 1                      -- total
+    -- New acc = prior acc + total. Store it back so it persists.
+    LoadSlot 0                         -- prior acc
+    LoadSlot 1                         -- total
     AddF                               -- new acc on top
-    Dup                                -- one copy for acc field, one for Some(...)
+    StoreSlot 0                        -- persist new acc
 
-    EmitStartField 0
-    EmitScalar F64                     -- emit acc field
-    EmitEndField 0
-
-    EmitStartField 1                   -- outputs
-    EmitStartField 0                   -- sum (member 0 of outputs)
+    -- Emit { sum: Some(<new acc>) }.
+    LoadSlot 0
+    EmitStartField 0                   -- sum
     EmitConstructor 1                  -- Some
     EmitScalar F64                     -- emit value
     EmitEndField 0
-    EmitEndField 1
-    -- Falls off end → program terminates.
+    -- Falls off end → program terminates; runtime snapshots leading 8 bytes.
 ```
 
 The reader-side and writer-side asymmetry of `ReadStartField` / `EmitStartField` (and friends) is intentional: even though
