@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types;
+package com.vanillasource.scan.types.codec.meta;
 
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.type.Array;
@@ -11,7 +11,6 @@ import com.vanillasource.scan.types.codec.type.Union;
 import com.vanillasource.scan.types.codec.type.Unit;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.type.VariableLengthInteger;
-import com.vanillasource.scan.types.types.codec.TypeCodec;
 import org.testng.annotations.Test;
 
 import java.util.List;

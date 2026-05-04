@@ -1,4 +1,4 @@
-package com.vanillasource.scan.types.types.codec;
+package com.vanillasource.scan.types.codec.meta;
 
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.ContainerKind;
