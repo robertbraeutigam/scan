@@ -34,6 +34,8 @@ import java.util.function.Supplier;
  * instance.
  */
 public final class TypeCodec {
+    private static final Type META_TYPE = buildMetaType();
+
     private TypeCodec() {
     }
 
@@ -43,7 +45,7 @@ public final class TypeCodec {
 
         ListEventSource src = new ListEventSource(events);
         BufferedBitSink sink = new BufferedBitSink();
-        ValueEncoder enc = TypeMetaType.META_TYPE.createEncoder();
+        ValueEncoder enc = META_TYPE.createEncoder();
         if (!enc.generate(src, sink)) {
             throw new IllegalStateException("META encoder did not complete with full event input");
         }
@@ -61,7 +63,7 @@ public final class TypeCodec {
         }
         List<Event> events = new ArrayList<>();
         ListEventSink sink = new ListEventSink(events);
-        ValueDecoder dec = TypeMetaType.META_TYPE.createDecoder();
+        ValueDecoder dec = META_TYPE.createDecoder();
         if (!dec.parse(src, sink)) {
             throw new IllegalArgumentException("incomplete Type encoding");
         }
@@ -265,5 +267,29 @@ public final class TypeCodec {
         public void write(Event event) {
             events.add(event);
         }
+    }
+
+    private static Type buildMetaType() {
+        com.vanillasource.scan.types.codec.type.LazyType typeT = new com.vanillasource.scan.types.codec.type.LazyType();
+        Type byteT = new UnsignedInteger(1);
+        Type vli8 = new VariableLengthInteger(8);
+        Type fieldArrayT = new Array(0, Integer.MAX_VALUE, typeT);
+        Type ctorArrayT = new Array(0, Integer.MAX_VALUE, fieldArrayT);
+
+        Type metaT = new Union(List.of(
+                List.of(),                          // 0: Unit
+                List.of(byteT),                     // 1: UnsignedInteger { byteSize }
+                List.of(byteT),                     // 2: SignedInteger   { byteSize }
+                List.of(byteT),                     // 3: VariableLengthInteger { maxBytes }
+                List.of(byteT),                     // 4: FloatingPoint   { byteSize }
+                List.of(fieldArrayT),               // 5: Struct          { fieldTypes }
+                List.of(ctorArrayT),                // 6: Union           { constructors }
+                List.of(vli8, vli8, (Type) typeT),  // 7: Array           { min, max, itemType }
+                List.of(vli8),                      // 8: Set             { memberCount }
+                List.of((Type) typeT)               // 9: Stream          { itemType }
+        ));
+
+        typeT.set(metaT);
+        return metaT;
     }
 }
