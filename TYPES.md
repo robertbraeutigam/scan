@@ -297,11 +297,9 @@ Note, that strings are not bound by characters but by the overall bytes needed. 
 
 ### Type
 
-`Type` is the type of types. It is the same `Type` already used to declare type parameters (e.g. `Option(contentType: Type)`), promoted to first-class status: a field declared `someField: Type` accepts any type as its value, and is instantiated by writing the type name directly (`someField = String`, `someField = DeviceInformation`). This lets a type be carried as data — for example, a SCAN modality declares `outputType: Type` and is instantiated with `outputType = DeviceInformation`. The binary representation of a `Type` value is defined in the *Types Binary Representation* section.
+`Type` is the type of types. It is the same `Type` already used to declare type parameters (e.g. `Option(contentType: Type)`), promoted to first-class status: a field declared `someField: Type` accepts any type as its value. This lets a type travel as data — for example, a SCAN modality declares `outputType: Type` and is instantiated with `outputType = DeviceInformation`.
 
-## Types Binary Representation
-
-A `Type` value carries the structural shape needed to encode and decode values of that type — nothing more. Decoding a `Type` yields, directly, the codec for the type it describes; there is no intermediate AST, no name-based dispatch, and no parameter binding. The wire union mirrors the built-ins one-for-one:
+`Type` is an ordinary recursive type definition; its wire form falls out of the textual definition by *Values Binary Representation* like every other type:
 
 ```
 Type = Unit
@@ -318,13 +316,11 @@ Type = Unit
      | Stream                 { itemType: Type }
 ```
 
-Each constructor takes exactly the parameters the codec needs for that case. Numeric primitives carry only their byte size. `Struct` carries its field types in declaration order; `Union` carries one inner array per constructor, also in declaration order, with that constructor's field types. `Array` carries the minimum and maximum element count (already projected from whatever surface-level `Constraint` produced them); `Set` carries the cardinality of its element type's value space; `Stream` carries the item type.
+A `Type` value carries the structural shape needed to encode and decode values of that type — nothing more. Decoding a `Type` yields, directly, the codec for the type it describes; there is no separate AST and no name-based dispatch.
 
-Surface-level conveniences — type names, field names, constructor names, parametric type parameters, type aliases, parameter defaults, `Constraint` expressions on numeric primitives — are resolved by the compiler before a `Type` value exists. They do not appear on the wire because the codec does not consume them: the wire form of a value is purely positional, and the compiler has already evaluated everything that affects the wire form into the structural shape above.
+Surface-level conveniences — type names, field names, constructor names, parametric type parameters, type aliases, parameter defaults, `Constraint` expressions on numeric primitives — are resolved by the compiler before a `Type` value exists. They do not appear because the codec does not consume them: the wire form of a value is purely positional, and the compiler has already evaluated everything that affects the wire form into the structural shape above. Concretely:
 
-Concretely:
-
-* A surface type like `Option(Double)` materialises as `Union { constructors = [[], [FloatingPoint { byteSize = 8 }]] }`. The constructor names `None` and `Some` are not on the wire, only their position and the field types each carries.
+* A surface type like `Option(Double)` materialises as `Union { constructors = [[], [FloatingPoint { byteSize = 8 }]] }`. The constructor names `None` and `Some` are not present, only their position and the field types each carries.
 * `Array(Byte, size = MaxInclusive(128))` materialises as `Array { min = 0, max = 128, itemType = UnsignedInteger { byteSize = 1 } }`. The compiler projects the `Constraint` to `(min, max)`; numeric `Constraint` parameters on `UnsignedInteger`/`SignedInteger`/`VariableLengthInteger`/`FloatingPoint` are checked at compile time and erased.
 * `Set(T)` materialises as `Set { memberCount = K }` where `K` is the number of bare-identifier constructors of `T`; the element type itself does not appear, since the wire form of a `Set` value is just a `K`-bit run.
 * Type aliases (`Byte = UnsignedInteger(1)`, `String = Array(Byte, ...)`, etc.) are dereferenced; the alias name does not appear.

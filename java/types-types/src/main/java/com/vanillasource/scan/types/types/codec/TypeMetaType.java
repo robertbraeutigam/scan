@@ -2,7 +2,6 @@ package com.vanillasource.scan.types.types.codec;
 
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.type.Array;
-import com.vanillasource.scan.types.codec.type.Struct;
 import com.vanillasource.scan.types.codec.type.Union;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.type.VariableLengthInteger;
@@ -17,7 +16,7 @@ import java.util.List;
  *
  * <p>The meta-type is recursive (a {@code Type} value can carry nested
  * {@code Type} values inside {@code Struct}, {@code Union}, {@code Array} and
- * {@code Stream}). The cycle is broken by a {@link LazyType} forward-reference
+ * {@code Stream}). The cycle is broken by a {@link com.vanillasource.scan.types.codec.type.LazyType} forward-reference
  * set after the union is built.
  */
 public final class TypeMetaType {
@@ -27,7 +26,7 @@ public final class TypeMetaType {
     }
 
     private static Type buildMetaType() {
-        LazyType typeT = new LazyType();
+        com.vanillasource.scan.types.codec.type.LazyType typeT = new com.vanillasource.scan.types.codec.type.LazyType();
         Type byteT = new UnsignedInteger(1);
         Type vli8 = new VariableLengthInteger(8);
         Type fieldArrayT = new Array(0, Integer.MAX_VALUE, typeT);
