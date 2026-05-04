@@ -5,11 +5,12 @@ import com.vanillasource.scan.types.codec.Event.Chunk;
 import com.vanillasource.scan.types.codec.Event.StartStream;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
+import com.vanillasource.scan.types.codec.bit.OutputStreamBitSink;
 import com.vanillasource.scan.types.codec.type.Stream;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
@@ -30,10 +31,11 @@ public final class StreamOfBytesEncoderTests {
       ValueEncoder enc = new Stream(BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartStream()));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.toBytes().length, 0);
+      assertEquals(out.toByteArray().length, 0);
    }
 
    @Test
@@ -42,10 +44,11 @@ public final class StreamOfBytesEncoderTests {
       ListEventSource events = new ListEventSource(List.of(
             new StartStream(),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x10, 0x20, 0x30 });
+      assertEquals(out.toByteArray(), new byte[] { 0x10, 0x20, 0x30 });
    }
 
    @Test
@@ -56,10 +59,11 @@ public final class StreamOfBytesEncoderTests {
             new Chunk(new byte[] { 0x10, 0x20 }),
             new Chunk(new byte[] { 0x30 }),
             new Chunk(new byte[] { 0x40, 0x50 })));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50 });
+      assertEquals(out.toByteArray(), new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50 });
    }
 
    @Test
@@ -68,7 +72,8 @@ public final class StreamOfBytesEncoderTests {
       ListEventSource events = new ListEventSource(List.of(
             new StartStream(),
             new Chunk(new byte[] { 0x10 })));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertFalse(enc.generate(events, sink));
       assertFalse(enc.generate(events, sink));

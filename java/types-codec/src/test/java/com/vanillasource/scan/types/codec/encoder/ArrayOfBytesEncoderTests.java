@@ -7,11 +7,12 @@ import com.vanillasource.scan.types.codec.Event.EndContainer;
 import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
+import com.vanillasource.scan.types.codec.bit.OutputStreamBitSink;
 import com.vanillasource.scan.types.codec.type.Array;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
@@ -35,10 +36,11 @@ public final class ArrayOfBytesEncoderTests {
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 0L),
             new EndContainer(ContainerKind.ARRAY)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x00 });
+      assertEquals(out.toByteArray(), new byte[] { 0x00 });
    }
 
    @Test
@@ -48,10 +50,11 @@ public final class ArrayOfBytesEncoderTests {
             new StartContainer(ContainerKind.ARRAY, 3L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 }),
             new EndContainer(ContainerKind.ARRAY)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x03, 0x10, 0x20, 0x30 });
+      assertEquals(out.toByteArray(), new byte[] { 0x03, 0x10, 0x20, 0x30 });
    }
 
    @Test
@@ -63,10 +66,11 @@ public final class ArrayOfBytesEncoderTests {
             new Chunk(new byte[] { 0x30 }),
             new Chunk(new byte[] { 0x40, 0x50 }),
             new EndContainer(ContainerKind.ARRAY)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x05, 0x10, 0x20, 0x30, 0x40, 0x50 });
+      assertEquals(out.toByteArray(), new byte[] { 0x05, 0x10, 0x20, 0x30, 0x40, 0x50 });
    }
 
    @Test
@@ -76,10 +80,11 @@ public final class ArrayOfBytesEncoderTests {
             new StartContainer(ContainerKind.ARRAY, 4L),
             new Chunk(new byte[] { 0x01, 0x02, 0x03, 0x04 }),
             new EndContainer(ContainerKind.ARRAY)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] { 0x01, 0x02, 0x03, 0x04 });
+      assertEquals(out.toByteArray(), new byte[] { 0x01, 0x02, 0x03, 0x04 });
    }
 
    @Test
@@ -90,10 +95,11 @@ public final class ArrayOfBytesEncoderTests {
             new StartContainer(ContainerKind.ARRAY, 7L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70 }),
             new EndContainer(ContainerKind.ARRAY)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertTrue(enc.generate(events, sink));
-      assertEquals(sink.toBytes(), new byte[] {
+      assertEquals(out.toByteArray(), new byte[] {
             0x02, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70 });
    }
 
@@ -102,7 +108,8 @@ public final class ArrayOfBytesEncoderTests {
       ValueEncoder enc = new Array(2, 10, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 1L)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       expectThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
    }
@@ -113,7 +120,8 @@ public final class ArrayOfBytesEncoderTests {
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 2L),
             new Chunk(new byte[] { 0x10, 0x20, 0x30 })));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       expectThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
    }
@@ -123,7 +131,8 @@ public final class ArrayOfBytesEncoderTests {
       ValueEncoder enc = new Array(4, 4, BYTE).createEncoder();
       ListEventSource events = new ListEventSource(List.of(
             new StartContainer(ContainerKind.ARRAY, 5L)));
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       expectThrows(IllegalArgumentException.class, () -> enc.generate(events, sink));
    }

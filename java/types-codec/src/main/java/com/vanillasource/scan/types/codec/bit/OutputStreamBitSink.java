@@ -2,32 +2,39 @@ package com.vanillasource.scan.types.codec.bit;
 
 import com.vanillasource.scan.types.codec.BitSink;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+
 /**
  * A {@link BitSink} that implements the spec rule from TYPES.md "Writing
  * Byte-Aligned Data": when an active bit byte is open, byte-aligned writes are
  * buffered behind it on the wire, so subsequent {@code writeBits} calls can
- * still pack into the same bit byte. The buffered suffix is flushed when the
- * bit byte fills up, when {@link #closeBits()} is called, or when the buffer
- * cap from TYPES.md "Bit-byte buffer cap" is reached.
+ * still pack into the same bit byte. The buffered suffix is flushed to the
+ * underlying {@link OutputStream} when the bit byte fills up, when
+ * {@link #closeBits()} is called, or when the buffer cap from TYPES.md
+ * "Bit-byte buffer cap" is reached.
  *
- * <p>The sink stores its output in an internal byte buffer that grows on
- * demand; {@link #toBytes()} returns a copy of all bytes flushed so far.
- * Bytes still trapped behind an open bit byte are <em>not</em> visible until
- * the bit byte closes.
+ * <p>{@link IOException}s from the underlying stream are wrapped in
+ * {@link UncheckedIOException} since {@link BitSink}'s methods do not declare
+ * checked exceptions.
  */
-public final class BufferedBitSink implements BitSink {
+public final class OutputStreamBitSink implements BitSink {
     /** Buffer cap from TYPES.md §"Bit-byte buffer cap": at most this many byte-aligned bytes may be buffered behind an open bit byte before it is force-closed. */
     static final int BUFFER_CAP = 32;
 
-    private byte[] output = new byte[64];
-    private int outputLen = 0;
+    private final OutputStream output;
 
     private boolean active = false;
     private int activeByte = 0;
     private int bitsUsed = 0;
 
-    private byte[] suffix = new byte[BUFFER_CAP];
+    private final byte[] suffix = new byte[BUFFER_CAP];
     private int suffixLen = 0;
+
+    public OutputStreamBitSink(OutputStream output) {
+        this.output = output;
+    }
 
     @Override
     public int writableBytes() {
@@ -53,14 +60,10 @@ public final class BufferedBitSink implements BitSink {
             }
             int remaining = len - toSuffix;
             if (remaining > 0) {
-                ensureOutputCapacity(outputLen + remaining);
-                System.arraycopy(buf, off + toSuffix, output, outputLen, remaining);
-                outputLen += remaining;
+                writeOut(buf, off + toSuffix, remaining);
             }
         } else {
-            ensureOutputCapacity(outputLen + len);
-            System.arraycopy(buf, off, output, outputLen, len);
-            outputLen += len;
+            writeOut(buf, off, len);
         }
         return len;
     }
@@ -74,8 +77,7 @@ public final class BufferedBitSink implements BitSink {
                 emitActive();
             }
         } else {
-            ensureOutputCapacity(outputLen + 1);
-            output[outputLen++] = (byte) b;
+            writeOut(b);
         }
         return 1;
     }
@@ -121,28 +123,10 @@ public final class BufferedBitSink implements BitSink {
         }
     }
 
-    /**
-     * @return A copy of the bytes flushed to the underlying output. Bytes
-     *         buffered behind an open bit byte are not visible until that bit
-     *         byte is emitted.
-     */
-    public byte[] toBytes() {
-        byte[] copy = new byte[outputLen];
-        System.arraycopy(output, 0, copy, 0, outputLen);
-        return copy;
-    }
-
-    /** @return The current size of the flushed output in bytes. */
-    public int size() {
-        return outputLen;
-    }
-
     private void emitActive() {
-        ensureOutputCapacity(outputLen + 1 + suffixLen);
-        output[outputLen++] = (byte) (activeByte & 0xFF);
+        writeOut(activeByte & 0xFF);
         if (suffixLen > 0) {
-            System.arraycopy(suffix, 0, output, outputLen, suffixLen);
-            outputLen += suffixLen;
+            writeOut(suffix, 0, suffixLen);
             suffixLen = 0;
         }
         active = false;
@@ -150,15 +134,19 @@ public final class BufferedBitSink implements BitSink {
         bitsUsed = 0;
     }
 
-    private void ensureOutputCapacity(int needed) {
-        if (needed > output.length) {
-            int newLen = output.length;
-            while (newLen < needed) {
-                newLen <<= 1;
-            }
-            byte[] grown = new byte[newLen];
-            System.arraycopy(output, 0, grown, 0, outputLen);
-            output = grown;
+    private void writeOut(int b) {
+        try {
+            output.write(b);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private void writeOut(byte[] buf, int off, int len) {
+        try {
+            output.write(buf, off, len);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }

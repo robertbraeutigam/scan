@@ -5,8 +5,8 @@ import com.vanillasource.scan.types.codec.Event.ContainerKind;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
+import com.vanillasource.scan.types.codec.bit.OutputStreamBitSink;
 import com.vanillasource.scan.types.codec.event.ListEventSink;
 import com.vanillasource.scan.types.codec.event.ListEventSource;
 import com.vanillasource.scan.types.codec.type.Array;
@@ -20,6 +20,7 @@ import com.vanillasource.scan.types.codec.type.Unit;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import com.vanillasource.scan.types.codec.type.VariableLengthInteger;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -44,7 +45,8 @@ public final class TypeCodec {
         new EventWriter(events).writeType(type);
 
         ListEventSource src = new ListEventSource(events);
-        BufferedBitSink sink = new BufferedBitSink();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        OutputStreamBitSink sink = new OutputStreamBitSink(out);
         ValueEncoder enc = META_TYPE.createEncoder();
         if (!enc.generate(src, sink)) {
             throw new IllegalStateException("META encoder did not complete with full event input");
@@ -53,7 +55,7 @@ public final class TypeCodec {
         if (src.availableEvents() != 0) {
             throw new IllegalStateException("META encoder left " + src.availableEvents() + " unconsumed events");
         }
-        return sink.toBytes();
+        return out.toByteArray();
     }
 
     public static Type deserialize(byte[] bytes) {

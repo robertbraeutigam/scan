@@ -13,13 +13,14 @@ import com.vanillasource.scan.types.codec.Event.UnitScalar;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
+import com.vanillasource.scan.types.codec.bit.OutputStreamBitSink;
 import com.vanillasource.scan.types.codec.type.Array;
 import com.vanillasource.scan.types.codec.type.Unit;
 import com.vanillasource.scan.types.codec.type.Union;
 import com.vanillasource.scan.types.codec.type.UnsignedInteger;
 import org.testng.annotations.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -287,7 +288,8 @@ public final class ArrayEncoderTests {
       Type bool = new Union(List.of(List.of(), List.of()));
       ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       // Alternating True (ctor 0 → bit 0) and False (ctor 1 → bit 1).
       // Bits MSB-first: 0,1,0,1,0,1,0,1 | 0,1,0,1,0,1,0,1 → 0x55 0x55.
@@ -302,7 +304,7 @@ public final class ArrayEncoderTests {
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
       // count VLI(1) = 0x10, then 16 bits of payload = 2 bytes.
-      assertEquals(sink.toBytes(), new byte[] { 0x10, 0x55, 0x55 });
+      assertEquals(out.toByteArray(), new byte[] { 0x10, 0x55, 0x55 });
    }
 
    @Test
@@ -312,7 +314,8 @@ public final class ArrayEncoderTests {
       Type bool = new Union(List.of(List.of(), List.of()));
       ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.ARRAY, 13L));
       for (int i = 0; i < 13; i++) {
@@ -325,7 +328,7 @@ public final class ArrayEncoderTests {
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
       // 0x0D = 13, 0xFF = 8 ones, 0xF8 = 11111000 (5 ones + 3 zero pad).
-      assertEquals(sink.toBytes(), new byte[] { 0x0D, (byte) 0xFF, (byte) 0xF8 });
+      assertEquals(out.toByteArray(), new byte[] { 0x0D, (byte) 0xFF, (byte) 0xF8 });
    }
 
    @Test
@@ -336,7 +339,8 @@ public final class ArrayEncoderTests {
       Type bool = new Union(List.of(List.of(), List.of()));
       ValueEncoder enc = new Array(0, 0xFF, bool).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.ARRAY, 100L));
       for (int i = 0; i < 100; i++) {
@@ -354,7 +358,7 @@ public final class ArrayEncoderTests {
          expected[i] = (byte) 0xFF;
       }
       expected[13] = (byte) 0xF0;
-      assertEquals(sink.toBytes(), expected);
+      assertEquals(out.toByteArray(), expected);
    }
 
    private static final class EventQueue implements EventSource {

@@ -9,9 +9,11 @@ import com.vanillasource.scan.types.codec.Event.StartContainer;
 import com.vanillasource.scan.types.codec.Event.StartItem;
 import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.ValueEncoder;
-import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
+import com.vanillasource.scan.types.codec.bit.OutputStreamBitSink;
 import com.vanillasource.scan.types.codec.type.Set;
 import org.testng.annotations.Test;
+
+import java.io.ByteArrayOutputStream;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -24,21 +26,23 @@ public final class SetEncoderTests {
    public void emptyBitmaskFourMembers() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 0L));
       events.put(new EndContainer(ContainerKind.SET));
 
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
-      assertEquals(sink.toBytes(), new byte[] { 0x00 });
+      assertEquals(out.toByteArray(), new byte[] { 0x00 });
    }
 
    @Test
    public void firstTwoOfFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
@@ -51,14 +55,15 @@ public final class SetEncoderTests {
 
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
-      assertEquals(sink.toBytes(), new byte[] { (byte) 0xC0 });
+      assertEquals(out.toByteArray(), new byte[] { (byte) 0xC0 });
    }
 
    @Test
    public void lastTwoOfFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 2L));
       events.put(new StartItem());
@@ -71,14 +76,15 @@ public final class SetEncoderTests {
 
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
-      assertEquals(sink.toBytes(), new byte[] { 0x30 });
+      assertEquals(out.toByteArray(), new byte[] { 0x30 });
    }
 
    @Test
    public void allFourMembersSet() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 4L));
       for (int i = 0; i < 4; i++) {
@@ -90,14 +96,15 @@ public final class SetEncoderTests {
 
       assertTrue(enc.generate(events, sink));
       sink.closeBits();
-      assertEquals(sink.toBytes(), new byte[] { (byte) 0xF0 });
+      assertEquals(out.toByteArray(), new byte[] { (byte) 0xF0 });
    }
 
    @Test
    public void multiByteBitmaskTenMembers() {
       ValueEncoder enc = new Set(10).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 4L));
       for (int i : new int[] { 0, 7, 8, 9 }) {
@@ -113,24 +120,26 @@ public final class SetEncoderTests {
       // → byte 0 = 1000_0001 = 0x81
       // bit 8 = ctor 8 = 1, bit 9 = ctor 9 = 1, rest = 0
       // → byte 1 = 1100_0000 = 0xC0
-      assertEquals(sink.toBytes(), new byte[] { (byte) 0x81, (byte) 0xC0 });
+      assertEquals(out.toByteArray(), new byte[] { (byte) 0x81, (byte) 0xC0 });
    }
 
    @Test
    public void writesNothingUntilStartContainerArrives() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       assertFalse(enc.generate(events, sink));
-      assertEquals(sink.size(), 0);
+      assertEquals(out.size(), 0);
    }
 
    @Test
    public void invalidConstructorIndexThrows() {
       ValueEncoder enc = new Set(4).createEncoder();
       EventQueue events = new EventQueue();
-      BufferedBitSink sink = new BufferedBitSink();
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      OutputStreamBitSink sink = new OutputStreamBitSink(out);
 
       events.put(new StartContainer(ContainerKind.SET, 1L));
       events.put(new StartItem());
