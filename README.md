@@ -1202,50 +1202,8 @@ discussion.
 ### Responder Messages
 
 ```
-ResponderMessage = Modalities | State | Busy | Ready
+ResponderMessage = State | Busy | Ready
 ```
-
-#### Modalities
-
-Responders send this message as soon as a connection is established, unsolicited.
-
-```
-Modalities {
-   modalities:  Array(Modality),
-   typeCatalog: Array(TypeDefinition)        // User-defined types referenced from any modality
-}
-
-Modality {
-   id:                 String,                // Identifier of this modality on this device
-   name:               LocalizedText,
-   description:        LocalizedMarkdownText,
-   minimumIntentWait:  Duration,              // Minimum time to wait between inputs
-   priority:           Priority,              // Default traffic priority for this modality
-   keyType:            Type,                  // The type identifying modality instances
-   outputType:         Type,                  // The type of the visible state of this modality
-   inputType:          Type                   // The type of the changeable part of the state
-}
-```
-
-The `keyType`, `outputType`, and `inputType` fields are `Type` values (per `TYPES.md` §*Library Types > Type*, a `Type` value is an `Invocation`). Names appearing in those invocations resolve in two namespaces: built-in library types (`Array`, `Option`, `Stream`, `Set`, `UnsignedInteger`, `String`, `Boolean`, …) are known to every device, and any other name must resolve to a `TypeDefinition` in `typeCatalog`. The catalog is the transitive closure of all user-defined names reachable from any modality's three type fields, so a single `Modalities` message is self-contained — a peer reading it can fully reconstruct the structural type of every modality without further round-trips. The catalog is consumed by admin tooling (type-compatibility checks, transformation compilation, UI display); a device decoding values it itself produces or consumes does not need to walk the catalog at runtime, since its own modality types are baked into firmware.
-
-The `priority` field declares the default traffic priority for this modality. It indicates the importance
-of the data for network-level quality of service. See the Priority type definition and the Deterministic
-Delivery discussion for details. Initiators may override this priority when subscribing.
-
-The input and output types may be `Nothing` to indicate that there is no input or output respectively.
-There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
-needs to be physically toggled to change state.
-There can also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
-may be no corresponding reading of the firmware image.
-
-Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
-capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
-stream, while a simple switch may set this type to `Unit`, to indicate that there is only one instance of this modality
-available.
-
-The returned structure must take the caller's rights into account. It must only list modalities to which the caller
-has at least some rights, but then it must list the modality in its entirety.
 
 #### State
 
@@ -2017,7 +1975,7 @@ MessageEvent = Sent     { localModality:  LocalModalityReference(Array(Byte)),
                           writer:         Option(PeerAddress) }
 ```
 
-The trace logs only the metadata of each `State` exchange — modality identity, the modality instance key as opaque bytes, sequencing, and the writer — never the value itself. Carrying the value would force this modality to fan out an arbitrarily-large stream (when `outputType` is itself a `Stream`), blocking other traffic on the same connection. Instance keys are carried as `Array(Byte)` because their type varies per event; consumers look up the referenced modality in the device's `Modalities` to recover the modality's `keyType` and decode the bytes.
+The trace logs only the metadata of each `State` exchange — modality identity, the modality instance key as opaque bytes, sequencing, and the writer — never the value itself. Carrying the value would force this modality to fan out an arbitrarily-large stream (when `outputType` is itself a `Stream`), blocking other traffic on the same connection. Instance keys are carried as `Array(Byte)` because their type varies per event; consumers look up the referenced modality in the device's `scan.modalities` listing to recover the modality's `keyType` and decode the bytes.
 
 If the consumer cannot drain the trace stream as fast as events are produced, the resulting back-pressure can block the device's processing of further state messages on the node. A subscriber to `scan.messages` must drain promptly, or accept the impact on the device under load.
 
@@ -2033,6 +1991,68 @@ with any other device in a similar domain at the usage site.
 In other words, instead of statically fixing formats, this specification enables dynamic transformations to achieve compatibility.
 
 All devices must implement these modalities.
+
+#### Modality Listing
+
+Expose the modality interface of this device — the structural types and metadata an admin tool needs in order to wire this device to others.
+
+```
+Modality(
+   id          = "scan.modalities",
+   priority    = Management,
+   keyType     = Unit,
+   outputType  = Modalities,
+   inputType   = Unit
+)
+
+Modalities {
+   modalities:  Array(Modality),
+   typeCatalog: Array(TypeDefinition)        // User-defined types referenced from any modality
+}
+
+Modality {
+   id:                 String,                // Identifier of this modality on this device
+   name:               LocalizedText,
+   description:        LocalizedMarkdownText,
+   minimumIntentWait:  Duration,              // Minimum time to wait between inputs
+   priority:           Priority,              // Default traffic priority for this modality
+   keyType:            Type,                  // The type identifying modality instances
+   outputType:         Type,                  // The type of the visible state of this modality
+   inputType:          Type                   // The type of the changeable part of the state
+}
+```
+
+The `keyType`, `outputType`, and `inputType` fields are `Type` values (per `TYPES.md` §*Library Types > Type*, a `Type` value is an `Invocation`). Names appearing in those invocations resolve in two namespaces: built-in library types (`Array`, `Option`, `Stream`, `Set`, `UnsignedInteger`, `String`, `Boolean`, …) are known to every device, and any other name must resolve to a `TypeDefinition` in `typeCatalog`. The catalog is the transitive closure of all user-defined names reachable from any modality's three type fields, so a single `Modalities` value is self-contained — a peer reading it can fully reconstruct the structural type of every modality without further round-trips. The catalog is consumed by admin tooling (type-compatibility checks, transformation compilation, UI display); a device decoding values it itself produces or consumes does not need to walk the catalog at runtime, since its own modality types are baked into firmware.
+
+The `priority` field declares the default traffic priority for this modality. It indicates the importance
+of the data for network-level quality of service. See the Priority type definition and the Deterministic
+Delivery discussion for details. Initiators may override this priority when subscribing.
+
+The input and output types may be `Nothing` to indicate that there is no input or output respectively.
+There are modalities which may be read-only by nature, such as a time source, gps position, or a toggle switch which
+needs to be physically toggled to change state.
+There can also be modalities which are write-only, such as a firmware update where the firmware needs to be submitted, but there
+may be no corresponding reading of the firmware image.
+
+Modalities may have multiple instances, described by the values allowed by the `keyType`. For example a security panel,
+capable of displaying any number of video inputs may define a video modality keyed by a simple String identifying the video
+stream, while a simple switch may set this type to `Unit`, to indicate that there is only one instance of this modality
+available.
+
+The returned listing must take the caller's rights into account. It must only list modalities to which the caller
+has at least some rights, but then it must list the modality in its entirety.
+
+The order of `modalities` in the returned listing is fixed for the lifetime of a firmware image: the position of a
+modality in this array is its `modalityIndex`, used by `IndexedModalityReference` in `Subscribe`, `Unsubscribe`, and
+`State` frames. Both peers of a wired connection acquire matching indexes by reading `scan.modalities` (typically
+through the admin tool at wiring time), so subscriptions reference modalities compactly by index rather than by string
+id. A firmware update may renumber modalities; admin tooling re-reads `scan.modalities` and updates `scan.wiring`
+accordingly.
+
+This modality is itself the bootstrapping point for discovery: every device implements it at the fixed `id`
+`scan.modalities`, so an admin tool that has just connected can subscribe to it without prior knowledge of the
+device's interface. Two pre-wired peers in normal operation typically do not subscribe to it at all — their
+`scan.wiring` already encodes the indexes they need.
 
 #### Virtual Modalities
 
@@ -2062,7 +2082,7 @@ ClusterMember {
 ```
 
 A cluster defines a set of local modalities (its *members*) on the device. Each member is a fully ordinary modality:
-it appears in the device's `Modalities` advertisement, can be subscribed to, can receive intents, and is wired to
+it appears in the device's `scan.modalities` listing, can be subscribed to, can receive intents, and is wired to
 remote modalities through `scan.wiring` like any other modality. Other peers see no difference between a cluster
 member and a native modality. The cluster itself is a host-internal arrangement and does not appear on the wire.
 
@@ -2191,9 +2211,9 @@ this locator function may switch itself off after a given time period.
 ### Common Type Definitions
 
 ```
-// A reference to a modality's index in the Modalities message.
+// A reference to a modality by its position in the responder's scan.modalities listing.
 IndexedModalityReference(keyType: Type) {
-   modalityIndex:       VariableLengthInteger(8), // The index in Modalities.modalities
+   modalityIndex:       VariableLengthInteger(8), // The index in scan.modalities.modalities
    modalityInstanceKey: keyType                   // The key of the modality instance
 }
 

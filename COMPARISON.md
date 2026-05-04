@@ -99,7 +99,7 @@ The message mixing capability (interjecting urgent messages during a long stream
 
 | Protocol | Model | Self-Describing? | Type System | Dynamic Adaptation |
 |----------|-------|------------------|-------------|--------------------|
-| **SCAN** | Modalities (input/output typed) | **Yes** (on connect) | Custom (structs, unions, arrays, streams, constraints, transforms) | **Virtual modalities + transformation language** |
+| **SCAN** | Modalities (input/output typed) | **Yes** (via `scan.modalities`) | Custom (structs, unions, arrays, streams, constraints, transforms) | **Virtual modalities + transformation language** |
 | MQTT | None (opaque bytes) | No | None | No |
 | CoAP | REST resources | Partial (CoRE Link Format) | None (media types only) | No |
 | LwM2M | Object/Instance/Resource tree | Yes (numeric IDs) | Fixed (8 primitive types) | No |
