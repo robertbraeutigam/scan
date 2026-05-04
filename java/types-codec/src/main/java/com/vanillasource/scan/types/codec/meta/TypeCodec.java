@@ -2,13 +2,13 @@ package com.vanillasource.scan.types.codec.meta;
 
 import com.vanillasource.scan.types.codec.Event;
 import com.vanillasource.scan.types.codec.Event.ContainerKind;
-import com.vanillasource.scan.types.codec.EventSink;
-import com.vanillasource.scan.types.codec.EventSource;
 import com.vanillasource.scan.types.codec.Type;
 import com.vanillasource.scan.types.codec.ValueDecoder;
 import com.vanillasource.scan.types.codec.ValueEncoder;
 import com.vanillasource.scan.types.codec.bit.BufferedBitSink;
 import com.vanillasource.scan.types.codec.bit.FedBitSource;
+import com.vanillasource.scan.types.codec.event.ListEventSink;
+import com.vanillasource.scan.types.codec.event.ListEventSource;
 import com.vanillasource.scan.types.codec.type.Array;
 import com.vanillasource.scan.types.codec.type.FloatingPoint;
 import com.vanillasource.scan.types.codec.type.Set;
@@ -229,43 +229,6 @@ public final class TypeCodec {
             if (!cls.isInstance(e)) {
                 throw new IllegalStateException("expected " + cls.getSimpleName() + " got " + e);
             }
-        }
-    }
-
-    private static final class ListEventSource implements EventSource {
-        private final List<Event> events;
-        private int pos = 0;
-
-        ListEventSource(List<Event> events) {
-            this.events = events;
-        }
-
-        @Override
-        public int availableEvents() {
-            return events.size() - pos;
-        }
-
-        @Override
-        public Event read() {
-            return events.get(pos++);
-        }
-    }
-
-    private static final class ListEventSink implements EventSink {
-        private final List<Event> events;
-
-        ListEventSink(List<Event> events) {
-            this.events = events;
-        }
-
-        @Override
-        public int writableEvents() {
-            return Integer.MAX_VALUE;
-        }
-
-        @Override
-        public void write(Event event) {
-            events.add(event);
         }
     }
 
