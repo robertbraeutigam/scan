@@ -249,9 +249,9 @@ public final class TypeCodec {
                 List.of(byteT),                     // 4: FloatingPoint   { byteSize }
                 List.of(fieldArrayT),               // 5: Struct          { fieldTypes }
                 List.of(ctorArrayT),                // 6: Union           { constructors }
-                List.of(vli8, vli8, typeT),  // 7: Array           { min, max, itemType }
+                List.of(vli8, vli8, typeT),         // 7: Array           { min, max, itemType }
                 List.of(vli8),                      // 8: Set             { memberCount }
-                List.of(typeT)               // 9: Stream          { itemType }
+                List.of(typeT)                      // 9: Stream          { itemType }
         ));
 
         typeT.set(metaT);
