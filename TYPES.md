@@ -10,7 +10,6 @@ it is a generic system, independent of the SCAN protocol itself.
 
 This type system consist of following parts:
 * A human-readable textual representation
-* A binary representation of types
 * A binary representation of values
 * An algorithm to determine if a value is a member of a type
 * A human-readable transformation language to transform values to other values
@@ -104,6 +103,116 @@ Bulk byte content — file content, firmware images, UTF-8 strings, live media �
 Firmware = Array(Byte, size = MaxInclusive(1048576))
 ```
 
+### Parameter-Only Types
+
+Some types in this system exist only to type *type-language parameters*. They classify what may be passed to a parametric type at definition time, are consumed and erased by the compiler before any value is encoded, and have **no value encoding format** — they cannot appear as a field type in a runtime value, and there is no entry for them in *Values Binary Representation*. Two such types are defined: `Constraint` and `Type`.
+
+#### Constraint
+
+A `Constraint` narrows the set of legal values admitted by a type. It is a built-in ADT over numeric literals:
+
+```
+Constraint = All
+           | MinInclusive  { bound: Number }
+           | MinExclusive  { bound: Number }
+           | MaxInclusive  { bound: Number }
+           | MaxExclusive  { bound: Number }
+           | Range         { min: Number,   max: Number   }
+           | Values        { allowed: Array(Number)       }
+           | MultipleOf    { divisor: Number              }
+           | Union         { a: Constraint, b: Constraint }
+           | Intersection  { a: Constraint, b: Constraint }
+           | Not           { inner: Constraint            }
+```
+
+`Number` stands for any numeric literal. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
+
+`Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate evaluation rule.
+
+**Constraints are just parameter values.** A `Constraint` is passed to a type parameter like any other argument; nothing in the surface syntax marks it as special. The only thing that makes constraints useful is that certain **built-in** types accept `Constraint`-typed parameters and hardcode their effect on the value set. The compiler evaluates these parameters at compile time and erases them — no `Constraint` value exists at runtime. User-defined types do not interpret constraints themselves; if a user type wants its values constrainable, it declares a `Constraint`-typed parameter and threads it into a built-in that does.
+
+Consequently there is no way to "constrain an arbitrary user type" from outside. If you want a narrower version of a user-defined sum type, define a narrower sum type — *Type Membership* recognises a value as belonging to any sum type whose constructors cover its shape, so no type-to-type relation is consulted.
+
+##### Where constraints are interpreted
+
+Each built-in below declares the `Constraint`-typed parameters it accepts and fixes what they mean:
+
+* `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
+* `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
+* `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
+* `Set(elementType)` — declares no `Constraint` parameters. The element type is itself the constraint: it must be a sum of bare-identifier constructors, and every value of that type either is or is not in the set.
+* `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
+
+##### Worked examples
+
+A percentage and a table leg index, using the `Range` sugar:
+
+```
+Percentage     = UnsignedInteger(1, constraint = Range(min = 0, max = 100))
+TableLegNumber = UnsignedInteger(1, constraint = Range(min = 1, max = 4))
+```
+
+"1 to 100, excluding 50" — composition with `Not`:
+
+```
+OddPercent = UnsignedInteger(1, constraint =
+    Intersection(Range(min = 1, max = 100), Not(Values(50))))
+```
+
+A thermostat setpoint in 0.5° increments, between 15° and 30° inclusive — combining a range with `MultipleOf`, where the target type must be integer since `MultipleOf` is not accepted on `FloatingPoint`. One way is to represent the setpoint as tenths of a degree:
+
+```
+Setpoint = UnsignedInteger(2, constraint =
+    Intersection(Range(min = 150, max = 300), MultipleOf(5)))
+```
+
+A `Measurement` that wants its value constrainable declares a `Constraint` parameter and threads it into its value field. Exclusive upper bound here:
+
+```
+Measurement(unit: String, valueConstraint: Constraint = All) {
+    value: FloatingPoint(8, constraint = valueConstraint)
+}
+
+Voltage = Measurement("V", Intersection(MinInclusive(0.0), MaxExclusive(48.0)))
+```
+
+Note that `Measurement` does not interpret `valueConstraint` — it only forwards the value to `FloatingPoint`, which does.
+
+A length-bounded byte string:
+
+```
+Handshake = Array(UnsignedInteger(1), size = Range(min = 0, max = 128))
+```
+
+Narrowing a sum type is done by defining a smaller sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
+
+```
+Severity          = Error | Warning | Info | Debug
+DisplaySeverity   = Error | Warning                  // DisplaySeverity ⊆ Severity structurally
+DisplaySeverities = Set(DisplaySeverity)
+```
+
+#### Type
+
+`Type` is the kind of all types — every built-in (`UnsignedInteger`, `Struct`, `Stream`, `Array`, …) and every user-defined type is an inhabitant. It exists so that parametric types can abstract over a type argument:
+
+```
+Option(contentType: Type) = None | Some { value: contentType }
+
+Array(elementType: Type, size: Constraint = All)
+```
+
+A field declared `someField: Type` is the same idea promoted to first-class status: it accepts any type as its argument. This lets a type travel as data through the type-language — a SCAN modality, for example, declares `outputType: Type` and is instantiated with `outputType = DeviceInformation`.
+
+`Type` has no wire form. The compiler resolves every use of `Type` while assembling a concrete type definition: parametric type arguments are substituted, type aliases are dereferenced, surface-level conveniences (type names, field names, constructor names, parameter defaults, `Constraint` expressions on numeric primitives) are evaluated and erased, and the resulting structural shape is what *Values Binary Representation* walks. Concretely:
+
+* A surface type like `Option(Double)` materialises to a single-discriminator union with two constructors (an empty one and one carrying an 8-byte float). The constructor names `None` and `Some` are erased; only their position and field types remain.
+* `Array(Byte, size = MaxInclusive(128))` materialises to an array whose count is encoded as a `VariableLengthInteger` sized to fit `0..128`. The numeric `Constraint` parameters on `UnsignedInteger`/`SignedInteger`/`VariableLengthInteger`/`FloatingPoint` are checked at compile time and erased.
+* `Set(T)` materialises to a fixed-width bit run whose length is the number of bare-identifier constructors of `T`; the element type itself does not appear on the wire.
+* Type aliases (`Byte = UnsignedInteger(1)`, `String = Array(Byte, ...)`, etc.) are dereferenced.
+
+The textual surface still distinguishes named types and named constructors for human readability and for *Type Membership* (which matches union variants by name and field signature). Membership therefore operates on a value paired with the surface-level type description, not on a value paired with a `Type` value.
+
 ### Type Parameters
 
 Types can take parameters, which may be values or other types. Parameters are declared by name with a type, and may have defaults:
@@ -172,91 +281,6 @@ LogLine(severity = Error, time = now, line = "disk full")
 
 Bare-identifier constructors carry no fields and are written without parentheses (`None`, `All`, `Error`).
 
-### Constraints
-
-A `Constraint` narrows the set of legal values admitted by a type. The type system defines it as a built-in ADT over numeric literals:
-
-```
-Constraint = All
-           | MinInclusive  { bound: Number }
-           | MinExclusive  { bound: Number }
-           | MaxInclusive  { bound: Number }
-           | MaxExclusive  { bound: Number }
-           | Range         { min: Number,   max: Number   }
-           | Values        { allowed: Array(Number)       }
-           | MultipleOf    { divisor: Number              }
-           | Union         { a: Constraint, b: Constraint }
-           | Intersection  { a: Constraint, b: Constraint }
-           | Not           { inner: Constraint            }
-```
-
-`Number` stands for any numeric literal. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
-
-`Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate evaluation rule and does not appear distinctly on the wire.
-
-**Constraints are just parameter values.** A `Constraint` is passed to a type parameter like any other argument; nothing in the surface syntax marks it as special. The only thing that makes constraints useful is that certain **built-in** types accept `Constraint`-typed parameters and hardcode their effect on the value set. User-defined types do not interpret constraints themselves; if a user type wants its values constrainable, it declares a `Constraint`-typed parameter and threads it into a built-in that does.
-
-Consequently there is no way to "constrain an arbitrary user type" from outside. If you want a narrower version of a user-defined sum type, define a narrower sum type — *Type Membership* recognises a value as belonging to any sum type whose constructors cover its shape, so no type-to-type relation is consulted.
-
-#### Where constraints are interpreted
-
-Each built-in below declares the `Constraint`-typed parameters it accepts and fixes what they mean:
-
-* `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
-* `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
-* `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
-* `Set(elementType)` — declares no `Constraint` parameters. The element type is itself the constraint: it must be a sum of bare-identifier constructors, and every value of that type either is or is not in the set.
-* `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
-
-#### Worked examples
-
-A percentage and a table leg index, using the `Range` sugar:
-
-```
-Percentage     = UnsignedInteger(1, constraint = Range(min = 0, max = 100))
-TableLegNumber = UnsignedInteger(1, constraint = Range(min = 1, max = 4))
-```
-
-"1 to 100, excluding 50" — composition with `Not`:
-
-```
-OddPercent = UnsignedInteger(1, constraint =
-    Intersection(Range(min = 1, max = 100), Not(Values(50))))
-```
-
-A thermostat setpoint in 0.5° increments, between 15° and 30° inclusive — combining a range with `MultipleOf`, where the target type must be integer since `MultipleOf` is not accepted on `FloatingPoint`. One way is to represent the setpoint as tenths of a degree:
-
-```
-Setpoint = UnsignedInteger(2, constraint =
-    Intersection(Range(min = 150, max = 300), MultipleOf(5)))
-```
-
-A `Measurement` that wants its value constrainable declares a `Constraint` parameter and threads it into its value field. Exclusive upper bound here:
-
-```
-Measurement(unit: String, valueConstraint: Constraint = All) {
-    value: FloatingPoint(8, constraint = valueConstraint)
-}
-
-Voltage = Measurement("V", Intersection(MinInclusive(0.0), MaxExclusive(48.0)))
-```
-
-Note that `Measurement` does not interpret `valueConstraint` — it only forwards the value to `FloatingPoint`, which does.
-
-A length-bounded byte string:
-
-```
-Handshake = Array(UnsignedInteger(1), size = Range(min = 0, max = 128))
-```
-
-Narrowing a sum type is done by defining a smaller sum type; no constraint is involved. This also handles cases like "a set of only some Severity constructors" — use the narrower type as the element type:
-
-```
-Severity          = Error | Warning | Info | Debug
-DisplaySeverity   = Error | Warning                  // DisplaySeverity ⊆ Severity structurally
-DisplaySeverities = Set(DisplaySeverity)
-```
-
 ## Library Types
 
 The following types are defined by the type system itself and are available without import in every program that uses TYPES. They are not built-ins in the language sense — they are ordinary user-level types — but every implementation ships them so the rest of the system can rely on them.
@@ -294,38 +318,6 @@ String(size: Constraint = All) = Array(Byte, size)
 A length-bounded byte string. The `size` parameter forwards to the underlying `Array`, so the same `Constraint` forms are accepted (e.g. `String(MaxInclusive(128))` for an "at most 128 bytes" string, `String(Range(min = 1, max = 64))` for "between 1 and 64 bytes inclusive"). Unconstrained `String` is unbounded.
 
 Note, that strings are not bound by characters but by the overall bytes needed. This is specifically for protocol clarity.
-
-### Type
-
-`Type` is the type of types. It is the same `Type` already used to declare type parameters (e.g. `Option(contentType: Type)`), promoted to first-class status: a field declared `someField: Type` accepts any type as its value. This lets a type travel as data — for example, a SCAN modality declares `outputType: Type` and is instantiated with `outputType = DeviceInformation`.
-
-`Type` is an ordinary recursive type definition; its wire form falls out of the textual definition by *Values Binary Representation* like every other type:
-
-```
-Type = Unit
-     | UnsignedInteger        { byteSize: UnsignedInteger(1) }
-     | SignedInteger          { byteSize: UnsignedInteger(1) }
-     | VariableLengthInteger  { maxBytes: UnsignedInteger(1) }
-     | FloatingPoint          { byteSize: UnsignedInteger(1) }
-     | Struct                 { fieldTypes:   Array(Type) }
-     | Union                  { constructors: Array(Array(Type)) }
-     | Array                  { min: VariableLengthInteger(8),
-                                max: VariableLengthInteger(8),
-                                itemType: Type }
-     | Set                    { memberCount:  VariableLengthInteger(8) }
-     | Stream                 { itemType: Type }
-```
-
-A `Type` value carries the structural shape needed to encode and decode values of that type — nothing more. Decoding a `Type` yields, directly, the codec for the type it describes; there is no separate AST and no name-based dispatch.
-
-Surface-level conveniences — type names, field names, constructor names, parametric type parameters, type aliases, parameter defaults, `Constraint` expressions on numeric primitives — are resolved by the compiler before a `Type` value exists. They do not appear because the codec does not consume them: the wire form of a value is purely positional, and the compiler has already evaluated everything that affects the wire form into the structural shape above. Concretely:
-
-* A surface type like `Option(Double)` materialises as `Union { constructors = [[], [FloatingPoint { byteSize = 8 }]] }`. The constructor names `None` and `Some` are not present, only their position and the field types each carries.
-* `Array(Byte, size = MaxInclusive(128))` materialises as `Array { min = 0, max = 128, itemType = UnsignedInteger { byteSize = 1 } }`. The compiler projects the `Constraint` to `(min, max)`; numeric `Constraint` parameters on `UnsignedInteger`/`SignedInteger`/`VariableLengthInteger`/`FloatingPoint` are checked at compile time and erased.
-* `Set(T)` materialises as `Set { memberCount = K }` where `K` is the number of bare-identifier constructors of `T`; the element type itself does not appear, since the wire form of a `Set` value is just a `K`-bit run.
-* Type aliases (`Byte = UnsignedInteger(1)`, `String = Array(Byte, ...)`, etc.) are dereferenced; the alias name does not appear.
-
-The textual surface still distinguishes named types and named constructors for human readability and for *Type Membership* (which matches union variants by name and field signature). Membership therefore operates on a value paired with the surface-level type description, not on a value paired with a `Type` *value* — the latter is purely a codec, not a membership oracle.
 
 ## Values Binary Representation
 
@@ -385,6 +377,8 @@ The cap costs at most 7 wasted bits per 32 bytes (≈ 2.7 %) and only applies in
 
 **Stream(T)** — a concatenation of *T*-encodings, running until the enclosing transport frames end. No count, no terminator. Bit state carries across items as it does in an `Array`.
 
+**Constraint**, **Type** — no encoding. These are parameter-only types (see *Parameter-Only Types*); they are evaluated and erased by the compiler before any value is encoded, and they cannot appear as a field type in a runtime value.
+
 ### Incremental Consumption
 
 The encoding above is sequential — byte by byte for byte-aligned data, bit by bit within an active bit byte — and the decoder advances through the input cursor by cursor without ever needing to look ahead beyond the bounded primitive currently being read. Memory consumed by the decoder while traversing a value of type *T* is therefore bounded by `max(largest declared primitive in T, transport frame budget)`, independent of the value's size. A value containing a `Stream`, a long `Array`, or a long `String` can be processed end-to-end by a consumer with only that bounded working memory, by handling each piece of the value as the decoder produces it.
@@ -416,6 +410,8 @@ Membership is a purely value-level decision: given a value *v* and a type *T*, a
 **Stream(T)** — each element produced or consumed through the stream is a member iff it is a member of *T*. A stream has no terminal state, so there is no membership decision over the stream as a whole.
 
 ### Constraint Evaluation
+
+These rules describe membership semantics; an implementation's job is to enforce them, not necessarily to interpret a `Constraint` value at runtime. Since `Constraint` is parameter-only (see *Parameter-Only Types*), the admin compiler typically lowers any required check into bytecode emitted by the transformation compiler — devices do not receive `Constraint` values and do not interpret them at runtime.
 
 A `Constraint` is evaluated against a candidate value by structural recursion:
 
