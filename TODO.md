@@ -19,6 +19,22 @@
 - **Metrics.** We want to enable generic displays of data. So a data element would need to carry some meta-data, similar to TS DBs.
   - Things whether a piece of data is a Gauge, Counter, Histogram, etc. 
 
+- **Late-bound type parameters.** `Subscribe(keyType)`, `State(keyType, valueType)`, `Busy(keyType)`, `Ready(keyType)` and `IndexedModalityReference(keyType)` all need the decoder to read `modalityIndex` first, look up `modalities[index].keyType`, and only then decode the key. `TYPES.md` says the opposite — a parameter bound at definition time is a compile-time constant, never on the wire — and there is no dependent/late-binding mechanism. `scan.messages` already works around it by erasing keys to `Array(Byte)`, which encodes instance keys differently there than in real frames. The last genuinely open question in the type language; everything else in `docs/SPEC-REVIEW.md` §1 is settled.
+
+- **Rewrite `README.md`'s sums to the transparent-constructor form.** `TYPES.md` now has the syntax (`FrameContent = Control(Control) | Payload(Payload) | Presence(Presence)`), but `FrameContent`, `Control`, `Payload`, `Presence`, `InitiatorMessage` and `ResponderMessage` in `README.md` are still written in the bare-identifier form, which now unambiguously means a payload-free enum. Mechanical, but touches the load-bearing framing types.
+
+- **Make the bytecode VM implementable, then build it.** Two holes block any implementation of the *Transformation Language Binary Representation*:
+  - **Jump offsets have no defined unit.** Instructions are bit-packed and variable-width, so "advance the cursor by `offset` instructions" cannot be executed without decoding from the start of `code`. Pick one: an instruction-index → bit-offset table in the preamble, byte-aligned branch targets, or offsets denominated in bits.
+  - **`ReadChunk { slot, count }` has a compile-time `count`**, but §Incremental Consumption leaves chunk sizes to the decoder as "an implementation choice, not pinned by the protocol". A static count cannot match a runtime-variable event; either pin the batching or make the instruction consume up to `count`.
+
+  Once settled, `types-vm` is the natural next Java module: express `CompiledTransformation` as a `Type` over `types-codec`, round-trip the worked example, then write the interpreter against the same `EventSource` / `EventSink` the codec already speaks, so it plugs in with no adapter. It doubles as the hardest available test of the codec — a 55-variant union with bit-packed discriminators, nested arrays and VLI operands.
+
+- **Property-based round-trip tests for the bit-packing invariants.** The 352 tests in `types-codec` are per-type and hand-written, but the riskiest property in the spec is the one with no recovery story: a bit-state desynchronisation "corrupts the rest of the value unrecoverably". Bit state carrying across arbitrary structural boundaries, plus a counting-only 32-byte force-close with no wire marker, is exactly what hand-written cases under-sample. Generate random type trees and random conforming values, assert `decode(encode(v)) == v`, and vary the feed pattern — a byte at a time, at every capacity boundary, with sinks that accept zero events — so encoder and decoder suspend at different points on each run. `PartialFeedRobustnessTests` is the right shape already; this generalises it. Target the cap boundary specifically: a sub-byte write followed by runs of exactly 31, 32 and 33 byte-aligned bytes.
+
+- **`Constraint` and membership are unimplemented in Java** — `Array` carries bare `min`/`max` ints, there is no `Constraint` ADT and no membership checker. Deliberately deferred: the spec is explicit that devices never receive `Constraint` values, so there is no device-side consumer until an admin-side compiler exists. Revisit with that compiler, not before.
+
+- **`java/types-types` is a dangling module.** All sources were deleted by `Rewrote types-types to be just about the codec` and the follow-up removals, but an empty `pom.xml` is still listed as a module in `java/pom.xml`. Either restore it with a purpose or drop the module.
+
 ---
 
 ## Wiring
