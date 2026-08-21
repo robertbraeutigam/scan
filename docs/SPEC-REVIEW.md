@@ -1,16 +1,10 @@
 # Specification Review — Open Inconsistencies and Faults
 
 A review pass over `README.md`, `TYPES.md`, `COMPARISON.md` and `TODO.md` as of commit
-`4b88fb7`. Each item is an actionable checkbox. Line references are to that commit and are not
-updated as items are resolved — find the text, not the line.
+`4b88fb7`. Each item is an actionable checkbox. Line references are to that commit.
 
 This is a *findings* list, not a design backlog — genuinely open design questions live in
 `TODO.md`. Where an item overlaps a known TODO entry, that is noted.
-
-A ticked item carries a note saying how it was settled: **Fixed** (the spec was corrected) or
-**Moot** (the text it referred to has since been rewritten or removed, so the finding no longer
-applies). The type-system items in §1 and the two stale VM items in §6 were settled in the
-`TYPES.md` correction pass; everything unticked is still open.
 
 ---
 
@@ -19,7 +13,7 @@ applies). The type-system items in §1 and the two stale VM items in §6 were se
 The type language as specified in `TYPES.md` cannot express several shapes that `README.md`
 depends on. These are the most load-bearing items in this document.
 
-- [x] **Union-of-named-types has no syntax.** `TYPES.md:24-30` defines a constructor as either a
+- [ ] **Union-of-named-types has no syntax.** `TYPES.md:24-30` defines a constructor as either a
   bare identifier carrying no data, or an inline named structure (`Some { value: T }`). There is
   no form meaning "this arm *is* the existing type `X`". Read strictly, every definition below is
   a payload-free enum rather than a carrier of the named message types:
@@ -33,11 +27,6 @@ depends on. These are the most load-bearing items in this document.
   Corollary: since `TYPES.md:82` requires a `Set` element type to be "a sum of bare-identifier
   constructors only", `Set(Presence)` would be legal under the current grammar.
 
-  **Fixed.** `TYPES.md` §Type System Textual Language now defines a third constructor form, the
-  *transparent constructor* `<name>(<type reference>)`, and states that a bare identifier never
-  carries data even when a type of the same name is in scope. `README.md`'s sums still need
-  rewriting to the explicit form (`FrameContent = Control(Control) | ...`) — tracked in `TODO.md`.
-
 - [ ] **Type parameters bound by a preceding field's value are not in the language.**
   `Subscribe(keyType)`, `State(keyType, valueType)`, `Busy(keyType)`, `Ready(keyType)` and
   `IndexedModalityReference(keyType)` (`README.md:1113`, `1176`, `1299`, `1325`, `2195`) all
@@ -48,29 +37,19 @@ depends on. These are the most load-bearing items in this document.
   (`README.md:2010-2016`), which also means instance keys are encoded differently there than in
   real frames.
 
-- [x] **`Expression` has no list literal, so `Values` constraints cannot be serialized.**
+- [ ] **`Expression` has no list literal, so `Values` constraints cannot be serialized.**
   `TYPES.md:328-333` defines `Expression = Invocation | Integer | Float | String`, and
   `TYPES.md:340` makes a `Type` value an `Expression`. But `Constraint` includes
   `Values { allowed: Array(Number) }` (`TYPES.md:180`) — an array-valued argument that cannot be
   written in the AST. Any transmitted `Type` containing a `Values` constraint is unrepresentable.
 
-  **Moot.** The `Expression` / AST section it refers to was removed by `Remove TYPE` and
-  `Remove TypeCodec` — types are no longer encoded, so there is nothing to serialize. The
-  underlying surface-syntax gap is covered by the next item.
-
-- [x] **`Values(...)` is written two different, undefined ways in the examples.** `TYPES.md:207`
+- [ ] **`Values(...)` is written two different, undefined ways in the examples.** `TYPES.md:207`
   uses `Values({n})` (set-brace notation that appears nowhere in the surface grammar);
   `TYPES.md:224` uses `Values(50)` (a scalar where `Array(Number)` is declared). Neither matches
   the declared field type, and there is no array-literal syntax defined at all.
 
-  **Fixed.** `TYPES.md` §Value Instantiation now defines the bracketed list literal (`[1, 2, 3]`)
-  as the only array-literal form, and both examples use it (`Values([n])`, `Values([50])`).
-
-- [x] **`Number` is never defined.** `TYPES.md:180` says "`Number` stands for any numeric literal",
+- [ ] **`Number` is never defined.** `TYPES.md:180` says "`Number` stands for any numeric literal",
   but it appears as a field type inside a concrete, encodable ADT.
-
-  **Fixed.** `Number` is now defined as a parameter-only type — the type of a numeric literal in
-  the type language, with no wire form — alongside `Constraint` and `Type`.
 
 - [ ] **Aliases erase, so `LocalizedMarkdownText` carries no information.** `README.md:2259` defines
   `LocalizedMarkdownText = LocalizedText` and comments that "the marker exists so administrative
@@ -80,44 +59,29 @@ depends on. These are the most load-bearing items in this document.
   applies to `URI = String`, `Duration = TimeInterval` and `Icon = Media`, which undercuts the
   `typeCatalog` self-description claim at `README.md:1231`.
 
-- [x] **`Set` encoding is specified two contradictory ways.** `TYPES.md:82` says "a bitmask of
+- [ ] **`Set` encoding is specified two contradictory ways.** `TYPES.md:82` says "a bitmask of
   `⌈K/8⌉` bytes"; `TYPES.md:397` says "a *K*-bit run in the bit stream … no padding to a byte
   boundary is added". These differ for any `K` not a multiple of 8 — including
   `Set(BringUpCapability)` (K=3) in the QR payload.
 
-  **Fixed.** The `⌈K/8⌉`-bytes wording is gone; both sites now say an unpadded `K`-bit run
-  participating in the surrounding bit state, which is what `SetEncoder` / `SetDecoder`
-  already implement.
-
-- [x] **Constructor names are not scoped, but collide.** `TYPES.md:42` puts types and constructors
+- [ ] **Constructor names are not scoped, but collide.** `TYPES.md:42` puts types and constructors
   in separate namespaces and `TYPES.md:190` selects a variant by bare constructor name. But
   `Error` is a constructor of both `Severity` and `HealthStatus`; `Disabled` of `Wifi`, `Ipv4Mode`
   and `Ipv6Mode`; `Union` is both a `Constraint` constructor and the `TypeDefinition.union` field.
   The wire is unambiguous (membership is decided against a known target type), but the surface
   language cannot disambiguate a bare `Error`.
 
-  **Fixed.** §Value Instantiation now allows a constructor to be qualified by its type
-  (`Severity.Error`) where the bare name is ambiguous; the qualification is erased like every
-  other name.
-
-- [x] **`VariableLengthInteger(8)` holds 57 bits, not 64.** Seven continuation bytes of 7 bits plus
+- [ ] **`VariableLengthInteger(8)` holds 57 bits, not 64.** Seven continuation bytes of 7 bits plus
   a final 8-bit byte. `TYPES.md:74` bounds the wire size without stating the resulting value
   range. Separately, nothing requires *minimal* encoding, so the format is non-canonical — the
   same value has several valid encodings, which matters for anything hashed or byte-compared.
 
-  **Fixed.** §Built-in "Primitive" Types now carries the `7 × (n − 1) + 8` capacity table, states
-  the `0 .. 2⁵⁷ − 1` range for `VariableLengthInteger(8)`, and requires minimal (canonical)
-  encoding so a value has exactly one byte representation.
-
-- [x] **`Array` count-width rule is order-ambiguous.** "*v* is the smallest size in `1..8` such that
+- [ ] **`Array` count-width rule is order-ambiguous.** "*v* is the smallest size in `1..8` such that
   `VariableLengthInteger(v)` can represent every length admitted by *C*" combined with "when *C*'s
   lower bound is a positive number *m*, the value written is `actualCount − m`". For
   `Range(min=1000, max=1010)`, is *v* chosen over `1000..1010` (→ 2) or over the offset range
   `0..10` (→ 1)? Both readings are supported.
 
-  **Fixed.** The rule now names the offset range explicitly — width covers `M − m`, not the
-  admitted lengths — with `Range(1000, 1010)` as the worked case. This matches
-  `Array.computeCountVarintBytes` in `types-codec`.
 ---
 
 ## 2. Structural Bugs in Concrete Type Definitions
@@ -350,26 +314,20 @@ depends on. These are the most load-bearing items in this document.
   §Incremental Consumption says bulk-byte batching is "an implementation choice, not pinned by the
   protocol". A compile-time constant cannot match a runtime-variable event size.
 
-- [x] **Node numbering is required of devices but never specified.** `AtNode { node }` — node IDs
+- [ ] **Node numbering is required of devices but never specified.** `AtNode { node }` — node IDs
   are "assigned by the compiler in a canonical pre-order walk of the input type", and the runtime
   "maintains the current node as it advances". The device must reproduce the compiler's numbering
   exactly, but the canonical walk is not defined anywhere (unlike the value encoding).
 
-  **Moot.** `AtNode` and the handler-dispatch model were removed by `Rework VM model`; the
-  bytecode is now a single straight-line program with no node numbering.
-
-- [x] **The worked example uses the wrong event.** §Worked Example fires
+- [ ] **The worked example uses the wrong event.** §Worked Example fires
   `AtNode { node = <values stream>, event = OnStartContainer }`, but §Handlers is explicit that
   `OnStartContainer` is for finite containers (`Array`, `Set`) and `OnStartStream` fires on entry
   to a `Stream`.
 
-  **Moot.** Superseded by the rewritten §Worked Example under the straight-line VM model.
-
-- [x] **The worked example frames fields inconsistently.** The `acc` field is emitted with
+- [ ] **The worked example frames fields inconsistently.** The `acc` field is emitted with
   `EmitStartField 0` / `EmitEndField 0` around it, while `Some`'s `value` field is emitted bare.
   One of the two is wrong.
 
-  **Moot.** Superseded by the rewritten §Worked Example under the straight-line VM model.
 ---
 
 ## 7. Cross-Document Drift
@@ -407,16 +365,10 @@ depends on. These are the most load-bearing items in this document.
 
 ## Suggested Starting Point
 
-Of the four items originally called out here, the first is now fixed in `TYPES.md`. What remains,
-in order:
+Four items are unambiguous bugs with a mechanical fix rather than open design questions, and
+everything else is easier to reason about once they are settled:
 
-1. **Late-bound type parameters** (§1) — the one genuinely open language question left, and the
-   most load-bearing: `Subscribe`, `State`, `Busy`, `Ready` and `IndexedModalityReference` all
-   need a parameter bound by a value read earlier in the same message.
-2. **`scan.info` stream ordering** (§2) — `Icon = Media` puts a `Stream` mid-struct, making every
-   field after it unreachable.
-3. **`Wire` field types** (§2) — missing type argument on both fields, and the second should be a
-   `LocalModalityReference`.
-4. **Rewrite `README.md`'s sums to the transparent-constructor form** now that `TYPES.md` has one
-   (`FrameContent = Control(Control) | ...`), which is what makes the §1 first item real rather
-   than only permitted.
+1. Union-of-named-types grammar (§1, first item)
+2. Late-bound type parameters (§1, second item)
+3. `scan.info` stream ordering (§2, first item)
+4. `Wire` field types (§2, second item)

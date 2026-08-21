@@ -25,19 +25,8 @@ A type definition has the form:
 
 A constructor is one of:
 
-* a **bare identifier** carrying no data (e.g. `None`),
-* a **named structure** — a sequence of name/type pairs (e.g. `Some { value: T }`), or
-* a **transparent constructor** — a single unnamed field of an existing type, written `<name>(<type reference>)` (e.g. `Leaf(Byte)`).
-
-The transparent form is what expresses "this arm *is* the existing type `X`". A sum over existing named types is written by naming each arm and the type it carries:
-
-```
-FrameContent = Control(Control) | Payload(Payload) | Presence(Presence)
-```
-
-Repeating the name is deliberate: a bare identifier **never** carries data, even when a type of the same name is in scope. Without the parentheses, `FrameContent = Control | Payload | Presence` is a payload-free enum of three tags. Making the carried type explicit keeps a type definition's meaning independent of what other names happen to be in scope, so introducing a type named `Error` cannot silently turn `Severity = Error | Warning` into a carrier.
-
-A transparent constructor carries exactly one field. The wrapped value is projected in the transformation language by union case selection (`v as Control`), which yields the value of the carried type directly, with no intermediate field name. Where an arm needs more than one field, or a named one, use the named-structure form.
+* a **bare identifier** carrying no data (e.g. `None`), or
+* a **named structure** — a sequence of name/type pairs (e.g. `Some { value: T }`).
 
 A type may list any number of constructors separated by `|`. If a type has exactly one constructor, the `<name> =` prefix may be omitted; the type then takes the constructor's name. For example:
 
@@ -72,16 +61,6 @@ byte, word, int, long.
 
 The `VariableLengthInteger` is a number stored as a variable number of bytes. On each byte except the last the highest bit indicates that a byte still follows, which means the last byte may use the high bit for representing the value itself — it does not have to be 0. This is useful when lower numbers are much more likely, resulting in more efficient packing. The `maxSizeInBytes` parameter bounds the wire size (1 to 8 inclusive); the actual number of bytes used varies by value. A VLI with `maxSizeInBytes=1` is just a normal unsigned byte.
 
-Each non-final byte therefore carries 7 value bits and the final byte carries 8, so `VariableLengthInteger(n)` holds `7 × (n − 1) + 8` bits — **not** `8 × n`:
-
-| `maxSizeInBytes` | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-|---|---|---|---|---|---|---|---|---|
-| value bits | 8 | 15 | 22 | 29 | 36 | 43 | 50 | 57 |
-
-In particular `VariableLengthInteger(8)` represents `0 .. 2⁵⁷ − 1`; a full unsigned 64-bit range needs `UnsignedInteger(8)`.
-
-The encoding is **canonical**: an encoder MUST use the fewest bytes that represent the value, so every value has exactly one valid encoding and two encodings of the same value are always byte-identical. This matters wherever encoded values are hashed or compared as bytes. A decoder's behaviour on a non-minimal encoding is undefined — it may reject the value or accept it — so nothing may rely on producing one.
-
 All values are stored in big-endian ordering.
 
 ### Built-In "Aggregate" Types
@@ -99,7 +78,7 @@ Events             = Array(Event)                        // unbounded (size = Al
 Handshake          = Array(Byte, size = MaxInclusive(128)) // 0..128, count on the wire
 ```
 
-A `Set` is an **unordered** collection of **distinct** flag values. Its element type must be a sum of **bare-identifier constructors only** — i.e. a fixed value space whose every member can be represented by a single bit. Neither named structures nor transparent constructors are admitted as arms of a `Set`'s element type. A `Set` is encoded as a run of `K` bits, where `K` is the number of constructors of the element type; the run is **not** padded to a byte boundary, and participates in the surrounding bit state like any other sub-byte write (see *Per-Type Encoding*). Collections whose elements carry data are expressed as `Array(T)` (with deduplication enforced at the application layer if needed); the type system intentionally provides only the bitmask form here.
+A `Set` is an **unordered** collection of **distinct** flag values. Its element type must be a sum of **bare-identifier constructors only** — i.e. a fixed value space whose every member can be represented by a single bit. A `Set` is encoded as a bitmask of `⌈K / 8⌉` bytes, where `K` is the number of constructors of the element type. Collections whose elements carry data are expressed as `Array(T)` (with deduplication enforced at the application layer if needed); the type system intentionally provides only the bitmask form here.
 
 ```
 Flags = IPv4 | IPv6
@@ -126,7 +105,7 @@ Firmware = Array(Byte, size = MaxInclusive(1048576))
 
 ### Parameter-Only Types
 
-Some types in this system exist only to type *type-language parameters*. They classify what may be passed to a parametric type at definition time, are consumed and erased by the compiler before any value is encoded, and have **no value encoding format** — they cannot appear as a field type in a runtime value, and there is no entry for them in *Values Binary Representation*. Three such types are defined: `Constraint`, `Number` (the type of a numeric literal, described with `Constraint` below) and `Type`.
+Some types in this system exist only to type *type-language parameters*. They classify what may be passed to a parametric type at definition time, are consumed and erased by the compiler before any value is encoded, and have **no value encoding format** — they cannot appear as a field type in a runtime value, and there is no entry for them in *Values Binary Representation*. Two such types are defined: `Constraint` and `Type`.
 
 #### Constraint
 
@@ -146,7 +125,7 @@ Constraint = All
            | Not           { inner: Constraint            }
 ```
 
-`Number` is, like `Constraint` itself, a **parameter-only** type (see below): it is the type of a numeric literal in the type language — an unbounded integer or decimal literal, of no particular width, that exists only at compile time and has no wire form. It cannot appear as a field type in a runtime value; it appears in the `Constraint` ADT above only because `Constraint` is itself never encoded. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
+`Number` stands for any numeric literal. `Constraint` is not generic: at each use site the compiler validates that the literals inside fit the target numeric type (e.g. `0.5` is rejected where an integer type is expected).
 
 `Range(min, max)` is equivalent to `Intersection(MinInclusive(min), MaxInclusive(max))`; the compiler treats it as sugar for that form, so it needs no separate evaluation rule.
 
@@ -160,7 +139,7 @@ Each built-in below declares the `Constraint`-typed parameters it accepts and fi
 
 * `UnsignedInteger(sizeInBytes, constraint: Constraint = All)`, `SignedInteger(sizeInBytes, constraint: Constraint = All)`, `VariableLengthInteger(maxSizeInBytes, constraint: Constraint = All)` — `constraint` narrows the integer value. All `Constraint` forms are accepted; literals must be integers fitting the declared size.
 * `FloatingPoint(sizeInBytes, constraint: Constraint = All)` — `constraint` narrows the float value. All forms accepted **except** `Values` and `MultipleOf`: both rest on value equality, which is unreliable for floating-point representations.
-* `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values([n])` (exactly `n` elements).
+* `Array(elementType, size: Constraint = All)` — `size` narrows the number of elements. All forms accepted; literals must be non-negative integers. An integer literal `n` is shorthand for `Values({n})` (exactly `n` elements).
 * `Set(elementType)` — declares no `Constraint` parameters. The element type is itself the constraint: it must be a sum of bare-identifier constructors, and every value of that type either is or is not in the set.
 * `Stream(elementType)`, `Unit` — declare no `Constraint` parameters. (`Stream` is unbounded by definition; `Unit` has exactly one value.)
 
@@ -177,7 +156,7 @@ TableLegNumber = UnsignedInteger(1, constraint = Range(min = 1, max = 4))
 
 ```
 OddPercent = UnsignedInteger(1, constraint =
-    Intersection(Range(min = 1, max = 100), Not(Values([50]))))
+    Intersection(Range(min = 1, max = 100), Not(Values(50))))
 ```
 
 A thermostat setpoint in 0.5° increments, between 15° and 30° inclusive — combining a range with `MultipleOf`, where the target type must be integer since `MultipleOf` is not accepted on `FloatingPoint`. One way is to represent the setpoint as tenths of a degree:
@@ -215,7 +194,7 @@ DisplaySeverities = Set(DisplaySeverity)
 
 #### Type
 
-`Type` is the kind of all types — every built-in (`UnsignedInteger`, `Unit`, `Stream`, `Array`, `Set`, …) and every user-defined type is an inhabitant. It exists so that parametric types can abstract over a type argument:
+`Type` is the kind of all types — every built-in (`UnsignedInteger`, `Struct`, `Stream`, `Array`, …) and every user-defined type is an inhabitant. It exists so that parametric types can abstract over a type argument:
 
 ```
 Option(contentType: Type) = None | Some { value: contentType }
@@ -300,22 +279,7 @@ Measurement(unit = "V", value = 12.5)
 LogLine(severity = Error, time = now, line = "disk full")
 ```
 
-Bare-identifier constructors carry no fields and are written without parentheses (`None`, `All`, `Error`). A transparent constructor takes its single field positionally, with no field name to bind:
-
-```
-Celsius(21.5)          // for Temperature = Celsius(Double) | Fahrenheit(Double)
-Leaf(42)
-```
-
-Values of `Array` and `Set` types are written as bracketed lists:
-
-```
-[1, 2, 3]
-[]
-[Error, Warning]
-```
-
-The elements are values of the aggregate's element type. This is the notation the `Constraint` ADT's `Values { allowed: Array(Number) }` expects — `Values([50])`, `Values([1, 2, 3])` — and the only array-literal form in the language. Where a constructor name is ambiguous because the same bare identifier names constructors of several types in scope, it is qualified by its type: `Severity.Error`. The qualification is a surface convenience for disambiguation only; it is erased with every other name.
+Bare-identifier constructors carry no fields and are written without parentheses (`None`, `All`, `Error`).
 
 ## Library Types
 
@@ -407,7 +371,7 @@ The cap costs at most 7 wasted bits per 32 bytes (≈ 2.7 %) and only applies in
 
 **Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — a `⌈log₂ n⌉`-bit discriminator is written (via the bit-packing rule) carrying the zero-based index of the selected constructor in declaration order, followed by that constructor's fields. Bit state carries across both. If *n* = 1 the discriminator occupies 0 bits and nothing is written for it.
 
-**Array(T, size = C)** — if *C* admits more than one length, the item count is written first as `VariableLengthInteger(v)`. Let *m* be the lowest and *M* the highest length admitted by *C* (*M* is unbounded if *C* has no upper bound). The value written is `actualCount − m` and the decoder adds *m* back, and *v* is the smallest size in `1..8` whose capacity covers the **offset** range `M − m` (*v* = 8 when *M* is unbounded). The width is chosen over the offset range, not over the admitted lengths themselves: `Range(min = 1000, max = 1010)` writes `actualCount − 1000` in the range `0..10`, so *v* = 1, not 2. If *C* admits exactly one length, no count is written — the decoder reads that fixed number of items straight from the type. Both *m* and *v* are compile-time properties of *C* alone; when *C* is non-contiguous (`Values`, `MultipleOf`, `Not`, or a `Union` of these) only its lowest and highest admitted lengths enter this computation — the gaps are a membership question, not an encoding one. The count (if any) is followed by that many encodings of *T*, with bit state carrying through the count and across items just as it carries across struct fields.
+**Array(T, size = C)** — if *C* admits more than one length, the item count is written first as `VariableLengthInteger(v)`, where *v* is the smallest size in `1..8` such that `VariableLengthInteger(v)` can represent every length admitted by *C* (and *v* = 8 if *C* is `All`); when *C*'s lower bound is a positive number *m*, the value written is `actualCount − m` and the decoder adds *m* back. If *C* admits exactly one length, no count is written — the decoder reads that fixed number of items straight from the type. The count (if any) is followed by that many encodings of *T*, with bit state carrying through the count and across items just as it carries across struct fields.
 
 **Set(T)** — *T*'s constructors are all bare identifiers, so *T* has a fixed value space of *K* members. The set is encoded as a *K*-bit run in the bit stream: bit *i* (counted MSB-first from the position at which the set begins) is 1 iff constructor *i*, in declaration order, is a member. No count is written and no padding to a byte boundary is added — the run of *K* bits participates in the surrounding bit state like any other sub-byte write.
 
@@ -437,7 +401,7 @@ Membership is a purely value-level decision: given a value *v* and a type *T*, a
 
 **Single-constructor type** `T { f₁: T₁, ..., fₖ: Tₖ }` — *v* is a member iff *v* is built with *T*'s constructor and every field *fᵢ* is a member of *Tᵢ*.
 
-**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — *v* is a member iff the constructor used to build *v* appears among *C₀ … Cₙ₋₁* (matched by name and field signature) and, for that constructor's fields, each field value is a member of its declared field type in *T*. A transparent constructor matches by name and by its single carried type; it never matches a bare identifier of the same name, and vice versa. This is the mechanism by which a value of a narrower sum type is admitted into a slot typed by a wider sum type: no cross-type relation is consulted, only the value's shape.
+**Multi-constructor type** `T = C₀ | ... | Cₙ₋₁` — *v* is a member iff the constructor used to build *v* appears among *C₀ … Cₙ₋₁* (matched by name and field signature) and, for that constructor's fields, each field value is a member of its declared field type in *T*. This is the mechanism by which a value of a narrower sum type is admitted into a slot typed by a wider sum type: no cross-type relation is consulted, only the value's shape.
 
 **Array(T, size)** — *v* is a member iff its length satisfies `size` (evaluated as a constraint over a non-negative integer) and every element is a member of *T*.
 
@@ -570,16 +534,15 @@ output schedule fed while the input is inside *T*:
 * **Fold accumulators** — slots for any fold operation consuming a stream or array under this frame.
 * **Discriminator** — for a union's variant frame, the constructor tag.
 
-The frame's size, written `frame(T, E)`, is computed structurally (`OneCtor` and `ManyCtor` stand for single- and multi-constructor types; a transparent constructor is a `OneCtor` case with a single unnamed field):
+The frame's size, written `frame(T, E)`, is computed structurally:
 
 ```
 frame(Primitive, E)     = bytes needed to capture this scalar at this position (0 if not captured)
-frame(OneCtor fs, E)    = sum of capture slots for fields whose value is read by structurally-later siblings
+frame(Struct fs, E)     = sum of capture slots for fields whose value is read by structurally-later siblings
                         + max(frame(f.T, E_f) for f ∈ fs)         -- one child active at a time
-                        + any fold-accumulator slot for this type, if folded
-frame(ManyCtor cs, E)   = 1 byte discriminator
+                        + any fold-accumulator slot for this struct, if folded
+frame(Union cs, E)      = 1 byte discriminator
                         + max(frame(c.T, E_c) for c ∈ cs)
-frame(Set, E)           = bytes needed to capture the bit run at this position (0 if not captured)
 frame(Array T', E)      = any fold-accumulator slot for the array, if folded
                         + frame(T', E')                            -- one item active at a time
 frame(Stream T', E)     = same as Array
