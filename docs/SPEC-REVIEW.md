@@ -13,29 +13,52 @@ This is a *findings* list, not a design backlog — genuinely open design questi
 The type language as specified in `TYPES.md` cannot express several shapes that `README.md`
 depends on. These are the most load-bearing items in this document.
 
-- [ ] **Union-of-named-types has no syntax.** `TYPES.md:24-30` defines a constructor as either a
-  bare identifier carrying no data, or an inline named structure (`Some { value: T }`). There is
-  no form meaning "this arm *is* the existing type `X`". Read strictly, every definition below is
-  a payload-free enum rather than a carrier of the named message types:
-  - `README.md:498` — `FrameContent = Control | Payload | Presence`
-  - `README.md:526` — `Control = InitiateHandshake | ContinueHandshake | CloseConnection`
-  - `README.md:637` — `Payload = IntermediatePayloadChunk | LastPayloadChunk | SingleChunkPayload`
-  - `README.md:709` — `Presence = Advertisement | AdvertisementRequest | Heartbeat`
-  - `README.md:1104` — `InitiatorMessage = Subscribe | Unsubscribe | State | Busy | Ready`
-  - `README.md:1205` — `ResponderMessage = Modalities | State | Busy | Ready`
+- [x] **Union-of-named-types has no syntax — fixed by flattening, no new construct.**
+  `TYPES.md:24-30` defines a constructor as either a bare identifier carrying no data, or an
+  inline named structure (`Some { value: T }`). There is no form meaning "this arm *is* the
+  existing type `X`", so read strictly, each of `FrameContent = Control | Payload | Presence`
+  (`README.md:498`), `Control` (`:526`), `Payload` (`:637`), `Presence` (`:709`),
+  `InitiatorMessage` (`:1104`) and `ResponderMessage` (`:1205`) was a payload-free enum rather
+  than a carrier of the named message types.
 
-  Corollary: since `TYPES.md:82` requires a `Set` element type to be "a sum of bare-identifier
-  constructors only", `Set(Presence)` would be legal under the current grammar.
+  Resolved by collapsing each of these into one flat union whose arms are inline named
+  structures. `Control`, `Payload` and `Presence` no longer exist as types; they survive as
+  section headings and as the grouping the prose rules quantify over ("Presence frames are not
+  encrypted"), which was never type-enforced anyway. Notes on the change:
+
+  - **The wire is unchanged or cheaper.** Per `TYPES.md:372` a union writes a `⌈log₂n⌉`-bit
+    discriminator, so nested `FrameContent`→`Control` cost 2 + 2 bits and the flat 9-constructor
+    union costs `⌈log₂9⌉` = 4. `InitiatorMessage` stays at 3 bits, `ResponderMessage` at 2.
+    Nesting only ever wastes bits when a sub-union's arm count is not a power of two.
+  - **Declaration order is now normative** for these types — it is what fixes each constructor's
+    discriminator value. `README.md` states this at the `FrameContent` definition.
+  - **`SingleChunkPayload = EncryptedPayload`** was an alias arm; it is now
+    `SingleChunkPayload { encryptedPayload: EncryptedPayload }`. A single-constructor type writes
+    a 0-bit discriminator and inlines its fields, so this is byte-identical and keeps
+    `EncryptedPayload` shared with the two chunk constructors.
+  - **`State`, `Busy` and `Ready` are written out in both `InitiatorMessage` and
+    `ResponderMessage`.** That is textual repetition, not two types: membership is structural
+    (`TYPES.md:404`, matched by constructor name and field signature), so one value is a member
+    of both unions. (`README.md` already carried the `State` block twice before this change.)
+  - The `Tag { field: X }` wrapper remains available for any future case that wants to keep a
+    grouping type, at the same zero wire cost. The language never lacked the expressive power —
+    only the notation the spec was using.
+
+  Corollary, now moot for these types but still live as a rule: `TYPES.md:82` requires a `Set`
+  element type to be "a sum of bare-identifier constructors only", so before the change
+  `Set(Presence)` would have been legal under the grammar.
 
 - [ ] **Type parameters bound by a preceding field's value are not in the language.**
-  `Subscribe(keyType)`, `State(keyType, valueType)`, `Busy(keyType)`, `Ready(keyType)` and
-  `IndexedModalityReference(keyType)` (`README.md:1113`, `1176`, `1299`, `1325`, `2195`) all
-  require the decoder to read `modalityIndex`, look up `modalities[index].keyType`, and only then
-  decode the key/value. `TYPES.md:139` states the opposite: a parameter bound at definition time
+  `InitiatorMessage(keyType, valueType)`, `ResponderMessage(keyType, valueType)` and
+  `IndexedModalityReference(keyType)` all require the decoder to read `modalityIndex`, look up
+  `modalities[index].keyType`, and only then decode the key/value. `TYPES.md:139` states the opposite: a parameter bound at definition time
   is a compile-time constant not encoded on the wire. There is no late-binding/dependent
-  mechanism. Note `scan.messages` already works around this by erasing keys to `Array(Byte)`
-  (`README.md:2010-2016`), which also means instance keys are encoded differently there than in
-  real frames.
+  mechanism. Flattening the message unions did not touch this: the parameters that used to sit on
+  `Subscribe`/`State`/`Busy`/`Ready` individually are now hoisted onto the two message unions,
+  which makes the problem more visible rather than less — a top-level frame type cannot be
+  parameterized by a value read from the wire. Note `scan.messages` already works around this by
+  erasing keys to `Array(Byte)` (`README.md:2010-2016`), which also means instance keys are
+  encoded differently there than in real frames.
 
 - [ ] **`Expression` has no list literal, so `Values` constraints cannot be serialized.**
   `TYPES.md:328-333` defines `Expression = Invocation | Integer | Float | String`, and
@@ -368,7 +391,7 @@ depends on. These are the most load-bearing items in this document.
 Four items are unambiguous bugs with a mechanical fix rather than open design questions, and
 everything else is easier to reason about once they are settled:
 
-1. Union-of-named-types grammar (§1, first item)
+1. ~~Union-of-named-types grammar (§1, first item)~~ — done: the unions are flat.
 2. Late-bound type parameters (§1, second item)
 3. `scan.info` stream ordering (§2, first item)
 4. `Wire` field types (§2, second item)

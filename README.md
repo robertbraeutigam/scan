@@ -495,7 +495,31 @@ Frame {
    content:         FrameContent
 }
 
-FrameContent = Control | Payload | Presence
+FrameContent =
+     // Control frames
+     InitiateHandshake        { noiseProtocolName: String(MaxInclusive(128)),
+                                protocolVersion:   Version,                                  // 1.0 for this specification
+                                handshake:         Array(Byte, size = MaxInclusive(128)) }
+   | ContinueHandshake        { handshake:         Array(Byte, size = MaxInclusive(128)) }
+   | CloseConnection          { reason:            String(MaxInclusive(128)) }
+     // Payload frames
+   | IntermediatePayloadChunk { messageId:         VariableLengthInteger(8),
+                                encryptedPayload:  EncryptedPayload }
+   | LastPayloadChunk         { messageId:         VariableLengthInteger(8),
+                                encryptedPayload:  EncryptedPayload }
+   | SingleChunkPayload       { encryptedPayload:  EncryptedPayload }
+     // Presence frames
+   | Advertisement            { port:              UnsignedInteger(2),
+                                generation:        VariableLengthInteger(8),
+                                peers:             Array(PeerAddress, size = MaxInclusive(16)) }
+   | AdvertisementRequest     { port:              UnsignedInteger(2),
+                                peers:             Array(PeerAddress, size = MaxInclusive(16)) }
+   | Heartbeat
+
+EncryptedPayload {
+   payload:   Array(Byte, size = MaxInclusive(1100)), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
+   mac:       Array(Byte, size = 16)
+}
 
 PeerAddress = Array(Byte, size = 32)
 ```
@@ -516,15 +540,20 @@ Since a single logical connection may traverse multiple physical connections, wh
 proxies or gateways, the presence of peer identifications may be added or removed as needed
 by intermediaries. These are explicitly not included in the end-to-end encryption scheme for this reason.
 
+`FrameContent` is a single flat union: every frame kind is one of its constructors, and the
+discriminator is the four bits that select among them. *Control*, *Payload* and *Presence* are
+names for groups of constructors used by the sections below and by the prose rules; they are not
+types. The declaration order above is normative — it fixes the discriminator value of each
+constructor.
+
 Content delimiting is provided by the types parser. All peers, as well as intermediaries (like gateways) must be able to parse
 all message types on this layer. If a message type is unknown (parsing fails), a device must close the connection, although
 this shouldn't happen given the version number included in the handshake.
 
 ### Control Messages
 
-```
-Control = InitiateHandshake | ContinueHandshake | CloseConnection
-```
+The control frames — `InitiateHandshake`, `ContinueHandshake` and `CloseConnection` — establish and
+tear down the logical connection.
 
 #### Initiate Handshake
 
@@ -532,14 +561,6 @@ Sent first from the initiator of the connection to establish a logical connectio
 If a physical connection does not exist yet, the initiator must try to open one first.
 The frame transmits the first handshake message together with the
 Noise Protocol Name and version of the logical layer.
-
-```
-InitiateHandshake {
-   noiseProtocolName: String(MaxInclusive(128)),
-   protocolVersion:   Version,                                    // 1.0 for this specification
-   handshake:         Array(Byte, size = MaxInclusive(128))
-}
-```
 
 The Noise Protocol Name is the exact protocol used for the following handshake
 and data exchange. 
@@ -612,36 +633,17 @@ The first continue handshake must come from the responder, then from the initiat
 and continue in turn until the connection is established based on the initially selected
 protocol variant.
 
-```
-ContinueHandshake {
-   handshake: Array(Byte, size = MaxInclusive(128))
-}
-```
-
 #### Close Connection
 
 Both parties may send this message to terminate the logical connection. After this message
 all keys and state information about the connection can be discarded.
 
-```
-CloseConnection {
-   reason: String(MaxInclusive(128))
-}
-```
-
-It contains a diagnostic message, a human readable reason for closing the connection.
+The `reason` field contains a diagnostic message, a human readable reason for closing the connection.
 
 ### Payload Messages
 
-```
-Payload = IntermediatePayloadChunk | LastPayloadChunk | SingleChunkPayload
-
-// Used later
-EncryptedPayload {
-   payload:   Array(Byte, size = MaxInclusive(1100)), // Sized so the enclosing frame fits in 1200 bytes under worst-case overhead
-   mac:       Array(Byte, size = 16)
-}
-```
+The payload frames — `IntermediatePayloadChunk`, `LastPayloadChunk` and `SingleChunkPayload` —
+carry application messages. All three embed the same `EncryptedPayload`.
 
 #### Intermediate Payload Chunk
 
@@ -650,15 +652,6 @@ that the message is not complete, additional chunks will follow for this message
 
 The actual payload of the application layer is described in the next chapters. This message
 may be sent by both the initiator and responder.
-
-Structure:
-
-```
-IntermediatePayloadChunk {
-   messageId:          VariableLengthInteger(8),
-   encryptedPayload:   EncryptedPayload
-}
-```
 
 If any decryption errors occur, meaning that for some reason the sender and receiver becomes
 out of sync, messages were omitted or repeated, or parsing failed, the connection must be closed.
@@ -678,36 +671,22 @@ The last chunk of an application message. This chunk may also be potentially the
 chunk the message has, although in this case the below frame should be preferred.
 It indicates that the application message identified by Message Id is complete with this payload.
 
-Payload structure:
-```
-LastPayloadChunk {
-   messageId:          VariableLengthInteger(8),
-   encryptedPayload:   EncryptedPayload
-}
-```
-
 Encryption and key management is the same as for intermediate frames.
 
 The Message Id used in this frame must be considered reusable after this frame is sent.
 
 #### Single Chunk Payload
 
-An application message that fits a single chunk.
-
-```
-SingleChunkPayload = EncryptedPayload
-```
+An application message that fits a single chunk. It carries no Message Id, only the
+`EncryptedPayload` itself.
 
 Encryption and key management is the same as for intermediate frames.
 
 ### Presence Messages
 
 Presence frames manage the discovery and liveness of peers on the network. They are not
-encrypted and do not advance the Noise cipher state of any connection.
-
-```
-Presence = Advertisement | AdvertisementRequest | Heartbeat
-```
+encrypted and do not advance the Noise cipher state of any connection. There are three of them:
+`Advertisement`, `AdvertisementRequest` and `Heartbeat`.
 
 #### Advertisement
 
@@ -715,14 +694,6 @@ Announces the identity or identities represented by a device. Announces that the
 static keys are reachable at the address the frame is sent from. A device such as a
 gateway may represent multiple logical identities on behalf of other devices, which is
 why multiple static keys may reside at the same IP address.
-
-```
-Advertisement {
-   port:       UnsignedInteger(2),
-   generation: VariableLengthInteger(8),
-   peers:      Array(PeerAddress, size = MaxInclusive(16))
-}
-```
 
 The `port` field is the TCP port on which the sender accepts SCAN connections for the
 logical identities listed in `peers`. Receivers combine it with the source IP of the
@@ -785,13 +756,6 @@ burst.
 Solicits `Advertisement` replies from one or more specific peers, or from everyone on
 the segment.
 
-```
-AdvertisementRequest {
-   port:      UnsignedInteger(2),
-   peers:     Array(PeerAddress, size = MaxInclusive(16))
-}
-```
-
 The `port` field is the TCP port at which the solicitor accepts SCAN connections, so
 the responder can reach the solicitor even though it may not yet have observed an
 `Advertisement` from it. If `peers` is empty the request is a broad solicitation:
@@ -828,12 +792,8 @@ the unicast replies back.
 An explicit liveness probe sent from the Responder to the Initiator over an open TCP
 connection.
 
-```
-Heartbeat = Unit
-```
-
-`Heartbeat` carries no payload, is not encrypted, and does not advance the Noise
-cipher state. Because it is unencrypted and role-agnostic at the wire level, Heartbeat
+`Heartbeat` is a constructor without fields, so it carries no payload. It is not encrypted, and
+does not advance the Noise cipher state. Because it is unencrypted and role-agnostic at the wire level, Heartbeat
 flows from TCP establishment onward and does not wait for the logical handshake to
 complete — a stalled handshake is therefore caught by the same liveness timer as any
 other silence.
@@ -848,7 +808,7 @@ matches the Initiator/Responder asymmetry of the protocol overall.
 From the moment the TCP connection is open, the Responder must send a `Heartbeat` if
 no other frame has gone out in `heartbeatInterval` (default 1 second). The Initiator
 considers the Responder offline if no frame has been received in `livenessTimeout`
-(default 3 seconds). Any received frame — `Heartbeat`, `Payload`, `Advertisement`, or
+(default 3 seconds). Any received frame — `Heartbeat`, a payload chunk, `Advertisement`, or
 otherwise — resets the Initiator's liveness timer. The effective `livenessTimeout`
 may be tightened by active subscriptions (see `Subscribe` in the Modalities Layer);
 `heartbeatInterval` is always `livenessTimeout / 3`.
@@ -1101,21 +1061,28 @@ external source of truth exists to contradict it.
 ### Initiator Messages
 
 ```
-InitiatorMessage = Subscribe | Unsubscribe | State | Busy | Ready
+InitiatorMessage(keyType: Type, valueType: Type) =
+     Subscribe   { modality:        IndexedModalityReference(keyType),
+                   minimumSendWait: Duration,
+                   priority:        Option(Priority),
+                   livenessTimeout: Option(Duration) }
+   | Unsubscribe { modality:        IndexedModalityReference(keyType) }
+   | State       { modality:        IndexedModalityReference(keyType),
+                   counter:         VariableLengthInteger(8),
+                   writer:          Option(PeerAddress),
+                   value:           valueType }
+   | Busy        { modality:        IndexedModalityReference(keyType) }
+   | Ready       { modality:        IndexedModalityReference(keyType) }
 ```
+
+Like `FrameContent` this is a single flat union; the sections below describe one constructor each.
+`State`, `Busy` and `Ready` are also constructors of `ResponderMessage` below. Writing them out in
+both places is not a duplicate definition of a shared type: membership is structural, so a value
+built with one of these constructors is a member of both unions.
 
 #### Subscribe
 
 Request the Responder to send state values indefinitely for the specified modality.
-
-```
-Subscribe(keyType: Type) {
-   modality:            IndexedModalityReference(keyType),
-   minimumSendWait:     Duration,
-   priority:            Option(Priority),
-   livenessTimeout:     Option(Duration)
-}
-```
 
 Minimum send wait specifies how much time the Responder should wait between sending data. Zero
 means as fast as possible, without any waiting. The Responder must honor this wait
@@ -1157,12 +1124,6 @@ output copy and transmitted after the current message completes.
 
 Request the Responder to stop sending state values.
 
-```
-Unsubscribe(keyType: Type) {
-   modality: IndexedModalityReference(keyType)
-}
-```
-
 The Responder must immediately stop sending state updates, and interrupt any outstanding streams.
 
 The Initiator may send this message, if it does not use the state updates anymore (for example the data is not on screen).
@@ -1170,15 +1131,6 @@ The Initiator may send this message, if it does not use the state updates anymor
 #### State 
 
 Signal a change of the visible state of a modality.
-
-```
-State(keyType: Type, valueType: Type) {
-   modality:      IndexedModalityReference(keyType),
-   counter:       VariableLengthInteger(8),
-   writer:        Option(PeerAddress),
-   value:         valueType
-}
-```
 
 The `modality` must reference the target modality on the Responder device.
 
@@ -1202,22 +1154,19 @@ discussion.
 ### Responder Messages
 
 ```
-ResponderMessage = State | Busy | Ready
+ResponderMessage(keyType: Type, valueType: Type) =
+     State { modality:        IndexedModalityReference(keyType),
+             counter:         VariableLengthInteger(8),
+             writer:          Option(PeerAddress),
+             value:           valueType }
+   | Busy  { modality:        IndexedModalityReference(keyType) }
+   | Ready { modality:        IndexedModalityReference(keyType) }
 ```
 
 #### State
 
-Send state values to a subscribed Initiator. This is the same `State` type the Initiator uses, but references the local
+Send state values to a subscribed Initiator. This is the same `State` message the Initiator sends, but references the local
 modality not the target modality.
-
-```
-State(keyType: Type, valueType: Type) {
-   modality:      IndexedModalityReference(keyType),
-   counter:       VariableLengthInteger(8),
-   writer:        Option(PeerAddress),
-   value:         valueType
-}
-```
 
 Note, that because of the Resolution Principle the Device must immediately
 send the newest data value upon receiving a Subscribe. Since full values are not
@@ -1244,19 +1193,14 @@ These messages may be sent by either party. They implement the *Message atomicit
 rule of the Modalities Layer: the receiver of `State` traffic pushes back when it
 cannot accept another message for a modality, and later invites the sender to resume.
 Neither message is sent in the absence of contention, so well-behaved single-writer
-subscriptions never exchange these messages at all.
+subscriptions never exchange these messages at all. Both appear as constructors of
+`InitiatorMessage` and of `ResponderMessage` above.
 
 #### Busy
 
 Reject an incoming `State` because the receiver is already processing another `State`
 for the same modality instance (or, for `scan.vmods` cluster members, for any member
 of the same cluster).
-
-```
-Busy(keyType: Type) {
-   modality: IndexedModalityReference(keyType)
-}
-```
 
 A peer that receives `Busy` for a modality must:
 
@@ -1277,12 +1221,6 @@ only the value the sender holds at the moment `Ready` arrives is transmitted.
 #### Ready
 
 Invite a previously-rejected sender to resume `State` transmission for a modality.
-
-```
-Ready(keyType: Type) {
-   modality: IndexedModalityReference(keyType)
-}
-```
 
 `Ready` is sent exactly once per preceding `Busy` on a given connection, by the peer
 that sent the `Busy`, once processing of the blocking `State` has completed and the
